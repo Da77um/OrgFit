@@ -1,0 +1,2046 @@
+/* ===========================================================================
+   OrgFit design system.
+
+   Source of truth for the visual direction is the brand identity package in
+   docs/identityreference/ — "OrgFit Identity.dc.html" (symbol, lockups, clear
+   space, minimum sizes) and "OrgFit Signature System.dc.html" (palette in use,
+   typographic roles, the in-platform screen in section 04, and the rule that
+   information lives in the shape, not the colour).
+
+   Three token layers, in order. A rebrand touches layer 1 and, rarely, layer 2.
+   No component below reads a literal colour, family or size.
+
+     1. BRAND     the identity's own primitives, in the identity's own words
+                  (ink, limestone, clay). Never used directly by a component.
+     2. SEMANTIC  what a primitive MEANS here (surface, text, border, action,
+                  danger). This is the layer components are allowed to read.
+     3. COMPONENT the few shape decisions a single family of components owns
+                  (chart scale, appbar height, rail width).
+
+   Two hard constraints this file is written around:
+
+     * Both origins run under a Content-Security-Policy whose style-src carries
+       a nonce and no 'unsafe-inline'. A `style` attribute is therefore INERT
+       in production. Nothing here may depend on one, and no component may
+       express a dynamic value through inline CSS — dynamic geometry is drawn
+       with SVG presentation attributes instead. See .meter and .radar below.
+     * Arabic is the default and the layout is RTL first. Every rule uses
+       logical properties. A physical left/right in this file is a defect.
+   =========================================================================== */
+
+/* Self-hosted because font-src is 'self'. Per-weight files carry unicode-range
+   for the Arabic and Latin subsets, so a browser fetches only the script it
+   actually paints. */
+@import "@fontsource/zain/400.css";
+@import "@fontsource/zain/700.css";
+@import "@fontsource/zain/800.css";
+@import "@fontsource/ibm-plex-sans-arabic/300.css";
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+:root {
+  color-scheme: light;
+
+  /* --- 1. BRAND ------------------------------------------------------- */
+  /* Ink on limestone, one unit in clay. Values taken verbatim from the
+     identity package; the frequency of each in the source documents is what
+     decided which became a surface and which became an accent. */
+  --brand-ink: #191614;
+  --brand-ink-soft: #3a342e;
+  --brand-ink-mute: #625b53;
+  --brand-ink-faint: #9a9186;
+  --brand-limestone: #e4dccf;
+  --brand-limestone-light: #efe8dd;
+  --brand-limestone-lighter: #f7f3ec;
+  --brand-rule: #cfc7ba;
+  --brand-rule-soft: #e3dcd1;
+  --brand-clay: #9a4e2a;
+  --brand-clay-light: #c97b52;
+  /* Clay darkened for small text on a light surface: #9a4e2a reaches 4.9:1 on
+     the lightest surface, which passes AA but leaves nothing for 12px mono
+     labels. This reaches 6.5:1. */
+  --brand-clay-deep: #7e3f22;
+
+  /* Functional status hues. The identity is deliberately ink + one clay and
+     says nothing about success or failure, so these four are introduced here
+     as a FUNCTIONAL set, held to the same muted, earth-weighted register so
+     they read as part of the same system. They are never the only carrier of
+     a state: every status also prints a word and a glyph. */
+  --brand-moss: #3f5f3a;
+  --brand-ochre: #7a5c12;
+  --brand-brick: #8a2015;
+
+  /* --- 2. SEMANTIC ---------------------------------------------------- */
+  --surface-page: var(--brand-limestone);
+  --surface: var(--brand-limestone-lighter);
+  --surface-muted: var(--brand-limestone-light);
+  --surface-sunken: var(--brand-limestone);
+  --surface-inverse: var(--brand-ink);
+
+  --text: var(--brand-ink);
+  --text-soft: var(--brand-ink-soft);
+  --text-muted: var(--brand-ink-mute);
+  --text-faint: var(--brand-ink-faint);
+  --text-inverse: var(--brand-limestone-light);
+  --text-accent: var(--brand-clay-deep);
+
+  --border: var(--brand-rule);
+  --border-soft: var(--brand-rule-soft);
+  --border-strong: var(--brand-ink);
+  --border-accent: var(--brand-clay);
+
+  --action: var(--brand-ink);
+  --action-text: var(--brand-limestone-light);
+  --action-hover: var(--brand-ink-soft);
+  --accent: var(--brand-clay);
+  --accent-on-dark: var(--brand-clay-light);
+
+  --focus: var(--brand-clay);
+  --danger: var(--brand-brick);
+  --warning: var(--brand-ochre);
+  --positive: var(--brand-moss);
+  --info: var(--brand-ink-mute);
+
+  --font-display: "Zain", "IBM Plex Sans Arabic", Tahoma, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans Arabic", Tahoma, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+
+  /* The identity measures in units of the rhombic dot. 1U here is 0.5rem, and
+     every gap in the product is an integer number of them. */
+  --u: 0.5rem;
+  --space-1: var(--u); /* 8  */
+  --space-2: calc(var(--u) * 2); /* 16 */
+  --space-3: calc(var(--u) * 3); /* 24 */
+  --space-4: calc(var(--u) * 4); /* 32 */
+  --space-5: calc(var(--u) * 6); /* 48 */
+  --space-6: calc(var(--u) * 8); /* 64 */
+
+  /* The identity is a drawn system: hairline rectangles, no rounding and no
+     shadow. The token stays so that the decision has one home. */
+  --radius: 0;
+  --radius-pill: 0;
+  --hairline: 1px;
+  --rule-strong: 2px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --leading-tight: 1.25;
+  --leading-snug: 1.5;
+  --leading-body: 1.75;
+  --tracking-micro: 0.14em;
+  --tracking-word: 0.24em;
+
+  --content-width: 84rem;
+  --reading-width: 42rem;
+
+  /* --- 3. COMPONENT --------------------------------------------------- */
+  --appbar-height: 3.5rem;
+  --rail-width: 15rem;
+  --control-height: 2.75rem; /* 44px touch target */
+
+  /* Charts. Replace these to rebrand a chart without touching a component.
+     The scale runs limestone → clay because the identity colours exactly one
+     concern; every shaded cell also prints its number. */
+  --chart-fill: var(--brand-ink);
+  --chart-track: var(--brand-rule-soft);
+  --chart-accent: var(--brand-clay);
+  --chart-grid: var(--brand-rule);
+  --chart-scale-1: #ddb9a3;
+  --chart-scale-2: #e6cbb6;
+  --chart-scale-3: #ecdcc9;
+  --chart-scale-4: #efe6d8;
+  --chart-scale-5: #f2efe6;
+}
+
+/* A visitor who asks for more contrast gets the strong rule everywhere and
+   loses the soft one. */
+@media (prefers-contrast: more) {
+  :root {
+    --border: var(--brand-ink-mute);
+    --border-soft: var(--brand-ink-mute);
+    --text-muted: var(--brand-ink-soft);
+    --text-faint: var(--brand-ink-soft);
+  }
+}
+
+/* ---------------------------------------------------------------- base --- */
+
+* {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  font-synthesis-weight: none;
+}
+/* Latin runs inside Arabic text: identifiers, codes, versions, timestamps.
+   They are always mono, always tabular and always left-to-right. */
+:lang(en) {
+  font-family: var(--font-body);
+}
+code,
+kbd,
+samp,
+time,
+.num,
+.micro,
+.code {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+/* The identity's small Latin label: uppercase, tracked, mono, and always read
+   left to right whatever the document direction.
+   Tracking and uppercasing are LATIN-ONLY operations. Letter-spacing an Arabic
+   word pulls its connected letterforms apart and text-transform does nothing to
+   it, so this class is reserved for Latin strings — codes, counts, formats,
+   versions — and carries lang="en" to prove it. Localized small text uses
+   .label below instead. */
+.micro {
+  display: inline-block;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+.micro-accent {
+  color: var(--text-accent);
+}
+/* The same role for localized text: small, quiet and set above a title or a
+   group of controls. No tracking, no case change, and the body face rather
+   than mono, because Arabic has neither an uppercase nor a monospace idiom. */
+.label {
+  display: inline-block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  color: var(--text-muted);
+}
+.label-accent {
+  color: var(--text-accent);
+}
+.code {
+  font-size: var(--text-sm);
+  unicode-bidi: isolate;
+  direction: ltr;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  margin-block: 0 var(--space-2);
+  text-wrap: balance;
+}
+h1 {
+  font-size: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.005em;
+}
+h2 {
+  font-size: clamp(1.375rem, 1.15rem + 0.9vw, 1.75rem);
+}
+h3 {
+  font-size: var(--text-xl);
+}
+h4 {
+  font-size: var(--text-lg);
+}
+/* Zain is a display face. Latin inside a heading borrows the body face so a
+   mixed Arabic/Latin title does not change texture mid-line. */
+h1 :lang(en),
+h2 :lang(en),
+h3 :lang(en) {
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+p {
+  margin-block: 0 var(--space-3);
+  max-inline-size: 72ch;
+}
+.lede {
+  font-size: var(--text-lg);
+  font-weight: 300;
+  line-height: var(--leading-body);
+  color: var(--text-soft);
+}
+a {
+  color: inherit;
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: from-font;
+}
+a:hover {
+  text-decoration-color: var(--accent);
+}
+.muted {
+  color: var(--text-muted);
+}
+.faint {
+  color: var(--text-faint);
+}
+strong,
+b,
+dt {
+  font-weight: 600;
+}
+bdi,
+.wrap-anywhere {
+  overflow-wrap: anywhere;
+}
+hr,
+.rule {
+  display: block;
+  border: 0;
+  border-block-start: var(--hairline) solid var(--border);
+  margin-block: var(--space-3);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+::selection {
+  background: var(--brand-clay-light);
+  color: var(--brand-ink);
+}
+
+.skip {
+  position: absolute;
+  inset-block-start: -8rem;
+  inset-inline-start: var(--space-2);
+  background: var(--surface);
+  border: var(--rule-strong) solid var(--border-strong);
+  padding: var(--space-2);
+  z-index: 60;
+}
+.skip:focus {
+  inset-block-start: var(--space-2);
+}
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- layout --- */
+
+.wrap {
+  max-inline-size: var(--content-width);
+  margin-inline: auto;
+  padding: var(--space-3);
+}
+main {
+  padding-block: var(--space-4);
+}
+/* A single column that is allowed to be NARROWER than its content. Without the
+   explicit minmax(0, 1fr) the implicit auto track is sized by its widest
+   child's min-content, and one long unbroken string then widens the whole
+   page — which is how a 320px viewport ends up scrolling sideways. */
+.stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+.stack-tight {
+  gap: var(--space-1);
+}
+/* A button inside a stack is a control, not a band: the grid must not stretch
+   it to the column width. */
+.stack > button,
+.stack > .button,
+.stack > form > button {
+  justify-self: start;
+}
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+.row-between {
+  justify-content: space-between;
+}
+.row-end {
+  justify-content: flex-end;
+}
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+.grid-even {
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+  margin-block-start: 0;
+}
+.spaced {
+  margin-block-start: var(--space-3);
+}
+.scroll {
+  overflow-x: auto;
+  max-inline-size: 100%;
+  scrollbar-width: thin;
+}
+
+/* ---------------------------------------------------- application shell --- */
+/* Mirrors section 04 of the signature system: an ink bar carrying the lockup
+   and the record's coordinates, a quiet rail, and the work on limestone. */
+
+.appbar {
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  border-block-end: var(--hairline) solid var(--brand-ink);
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 40;
+}
+.appbar-inner {
+  max-inline-size: var(--content-width);
+  margin-inline: auto;
+  min-block-size: var(--appbar-height);
+  padding-inline: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-block: var(--space-1);
+}
+.appbar a {
+  color: inherit;
+}
+.appbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  /* Clear space is one unit of the mark's height on all four sides. */
+  padding: var(--space-1);
+  margin: calc(var(--space-1) * -1);
+}
+.appbar-mark {
+  display: block;
+  block-size: 1.75rem;
+  inline-size: auto;
+  flex: none;
+}
+.appbar-word {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: var(--tracking-word);
+  padding-inline-end: var(--tracking-word);
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+.appbar-divider {
+  inline-size: var(--hairline);
+  block-size: 1.375rem;
+  background: var(--brand-ink-soft);
+  flex: none;
+}
+.appbar-context {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--brand-rule);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.appbar-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--brand-ink-faint);
+  flex-wrap: wrap;
+}
+.appbar-meta .micro {
+  color: inherit;
+}
+.appbar :focus-visible {
+  outline-color: var(--accent-on-dark);
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  max-inline-size: var(--content-width);
+  margin-inline: auto;
+  align-items: start;
+}
+.rail {
+  position: sticky;
+  inset-block-start: var(--appbar-height);
+  background: var(--surface-muted);
+  border-inline-end: var(--hairline) solid var(--border);
+  padding-block: var(--space-3);
+  min-block-size: calc(100vh - var(--appbar-height));
+}
+.rail-group + .rail-group {
+  margin-block-start: var(--space-3);
+  padding-block-start: var(--space-3);
+  border-block-start: var(--hairline) solid var(--border-soft);
+}
+.rail-label {
+  display: block;
+  padding-inline: var(--space-3);
+  padding-block-end: var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+.rail-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--control-height);
+  padding-inline: var(--space-3);
+  padding-block: var(--space-1);
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: var(--text-md);
+  border-inline-start: var(--rule-strong) solid transparent;
+}
+.rail-link:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.rail-link[aria-current="page"],
+.rail-link.current {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  border-inline-start-color: var(--accent);
+  text-decoration: none;
+}
+.rail-link .num {
+  margin-inline-start: auto;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+.canvas {
+  background: var(--surface);
+  min-block-size: calc(100vh - var(--appbar-height));
+  padding: var(--space-4) var(--space-3);
+  min-inline-size: 0;
+}
+
+/* Below the rail breakpoint the rail becomes a scrolling tab strip directly
+   under the bar. No JavaScript and no focus trap: the same links, re-flowed. */
+@media (max-width: 64rem) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rail {
+    position: static;
+    min-block-size: 0;
+    min-inline-size: 0;
+    border-inline-end: 0;
+    border-block-end: var(--hairline) solid var(--border);
+    padding-block: 0;
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .rail-group {
+    display: contents;
+  }
+  .rail-group + .rail-group {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .rail-label {
+    display: none;
+  }
+  .rail-link {
+    white-space: nowrap;
+    border-inline-start: 0;
+    border-block-end: var(--rule-strong) solid transparent;
+    padding-inline: var(--space-2);
+  }
+  .rail-link[aria-current="page"],
+  .rail-link.current {
+    border-inline-start: 0;
+    border-block-end-color: var(--accent);
+  }
+  .rail-link .num {
+    margin-inline-start: var(--space-1);
+  }
+  .canvas {
+    min-block-size: 0;
+    padding-inline: var(--space-2);
+  }
+}
+
+/* The pre-shell header kept for the sign-in and entry pages, which have no
+   organization context to hold a rail. */
+header {
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+}
+header a {
+  color: inherit;
+}
+.bar {
+  max-inline-size: var(--content-width);
+  margin-inline: auto;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-block-size: var(--appbar-height);
+}
+header :focus-visible {
+  outline-color: var(--accent-on-dark);
+}
+
+/* Lockup A at the one size the identity keeps the Arabic descriptor at: the
+   mark, a hairline, and the descriptor beneath the Latin name. Used on the
+   sign-in and entry screens, which are the only places with room for it. */
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.lockup-mark {
+  block-size: 4.5rem;
+  inline-size: auto;
+  flex: none;
+  color: var(--text);
+}
+.lockup-text {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: stretch;
+  min-inline-size: 0;
+}
+.lockup-word {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 2rem;
+  letter-spacing: var(--tracking-word);
+  padding-inline-end: var(--tracking-word);
+  line-height: 1;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.lockup-rule {
+  block-size: var(--hairline);
+  background: var(--border-strong);
+}
+.lockup-descriptor {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.15;
+}
+
+/* --------------------------------------------------------- page header --- */
+
+.page-head {
+  display: grid;
+  gap: var(--space-2);
+  padding-block-end: var(--space-3);
+  border-block-end: var(--hairline) solid var(--border-strong);
+  margin-block-end: var(--space-4);
+}
+.page-head .row-between {
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-accent);
+}
+.page-title {
+  margin: 0;
+}
+.page-sub {
+  margin: 0;
+  color: var(--text-muted);
+  max-inline-size: var(--reading-width);
+}
+.page-meta {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  color: var(--text-muted);
+}
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface-muted);
+  border: var(--hairline) solid var(--border);
+}
+.toolbar label {
+  min-inline-size: 10rem;
+}
+.toolbar .row {
+  gap: var(--space-1);
+}
+
+/* ------------------------------------------------------ panels / cards --- */
+
+.panel,
+.card {
+  background: var(--surface-muted);
+  border: var(--hairline) solid var(--border);
+  padding: var(--space-3);
+  min-inline-size: 0;
+}
+.panel {
+  padding: clamp(var(--space-3), 4vw, var(--space-5));
+}
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-block-end: var(--space-2);
+  margin-block-end: var(--space-3);
+  border-block-end: var(--hairline) solid var(--border-soft);
+}
+.card-head > h2,
+.card-head > h3 {
+  margin: 0;
+}
+.card-accent {
+  border-block-start: var(--rule-strong) solid var(--accent);
+}
+.login {
+  max-inline-size: 34rem;
+  margin-inline: auto;
+  margin-block: 8vh;
+  background: var(--surface-muted);
+}
+.login .micro {
+  display: block;
+  margin-block-end: var(--space-1);
+}
+
+/* A quiet quotation of the identity's "production note" block: a note that
+   qualifies what is on screen rather than warning about it. */
+.note {
+  display: flex;
+  gap: var(--space-2);
+  background: var(--surface-muted);
+  border-inline-start: var(--rule-strong) solid var(--accent);
+  padding: var(--space-2);
+  color: var(--text-soft);
+  font-size: var(--text-md);
+  max-inline-size: none;
+}
+.note p {
+  margin: 0;
+}
+
+/* ------------------------------------------------------------ stat tile --- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: var(--space-2);
+}
+.tile {
+  background: var(--surface-muted);
+  border: var(--hairline) solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-inline-size: 0;
+}
+/* A measured value: mono, tabular, and read left to right. The mono face has
+   no Arabic, and monospacing an Arabic word would break its joining anyway, so
+   a tile whose value is a WORD uses .tile-word instead. <Tile> picks. */
+.tile-value {
+  font-family: var(--font-mono);
+  font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+.tile-word {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.tile-note {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.tile-accent .tile-value {
+  color: var(--text-accent);
+}
+
+/* --------------------------------------------------------------- forms --- */
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: var(--text);
+  border-radius: var(--radius);
+}
+label {
+  display: grid;
+  gap: 0.35rem;
+  min-inline-size: 0;
+  font-size: var(--text-md);
+}
+label > span:first-child,
+.field-label {
+  color: var(--text-soft);
+  font-weight: 500;
+}
+input,
+select,
+textarea {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-block-size: var(--control-height);
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: var(--hairline) solid var(--border);
+  border-block-end-width: var(--rule-strong);
+  border-block-end-color: var(--brand-ink-faint);
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-block-end-color: var(--text-soft);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-block-end-color: var(--accent);
+}
+textarea {
+  display: block;
+  min-block-size: 6rem;
+  resize: vertical;
+  line-height: var(--leading-snug);
+}
+input[type="checkbox"],
+input[type="radio"] {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  min-block-size: 1.25rem;
+  accent-color: var(--brand-ink);
+  border-block-end-width: var(--hairline);
+}
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"],
+[aria-invalid="true"] > input,
+[aria-invalid="true"] > select,
+[aria-invalid="true"] > textarea {
+  border-color: var(--danger);
+  border-block-end-color: var(--danger);
+}
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.field-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.field-error {
+  font-size: var(--text-sm);
+  color: var(--danger);
+  font-weight: 500;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: var(--space-3);
+}
+fieldset {
+  min-inline-size: 0;
+  margin: 0;
+  border: var(--hairline) solid var(--border);
+  padding: var(--space-2);
+}
+legend {
+  max-inline-size: 100%;
+  font-weight: 600;
+  padding-inline: var(--space-1);
+}
+.choice {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--control-height);
+  padding-inline: var(--space-1);
+  cursor: pointer;
+}
+.choice:hover {
+  background: var(--surface);
+}
+.choice input[type="radio"],
+.choice input[type="checkbox"] {
+  flex: 0 0 1.25rem;
+  inline-size: 1.25rem;
+}
+.choice > span {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- buttons --- */
+
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-block-size: var(--control-height);
+  padding: 0.55rem 1.25rem;
+  background: var(--action);
+  color: var(--action-text);
+  border: var(--hairline) solid var(--action);
+  cursor: pointer;
+  text-decoration: none;
+  font-size: var(--text-md);
+  font-weight: 500;
+  inline-size: auto;
+  text-align: center;
+}
+button:hover:not(:disabled),
+.button:hover {
+  background: var(--action-hover);
+  border-color: var(--action-hover);
+}
+button:disabled,
+.button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+/* Secondary: the outlined form. Used for everything that is not the one
+   action a screen is for. */
+.button-secondary,
+button.button-secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.button-secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+.button-quiet,
+button.button-quiet {
+  background: transparent;
+  color: var(--text-soft);
+  border-color: transparent;
+  padding-inline: var(--space-2);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+}
+.button-quiet:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: transparent;
+  color: var(--text);
+}
+.button-danger,
+button.button-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--brand-limestone-lighter);
+}
+.button-danger:hover:not(:disabled) {
+  background: #6f1a11;
+  border-color: #6f1a11;
+}
+.button-small,
+button.button-small {
+  min-block-size: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  font-size: var(--text-sm);
+}
+
+/* ---------------------------------------------------------------- tabs --- */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-block-end: var(--hairline) solid var(--border);
+}
+.tabs > li {
+  flex: none;
+}
+.tabs button,
+.tabs .tab {
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  border-block-end: var(--rule-strong) solid transparent;
+  border-radius: 0;
+  padding-inline: var(--space-3);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tabs button:hover:not(:disabled),
+.tabs .tab:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+  border-color: transparent;
+  border-block-end-color: var(--border);
+}
+.tabs button[aria-current="page"],
+.tabs button[aria-selected="true"],
+.tabs .tab[aria-current="page"] {
+  color: var(--text);
+  border-block-end-color: var(--accent);
+  background: transparent;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------- badges and statuses --- */
+/* Colour is never the only signal: the component prints a glyph and a word
+   inside every badge, and the greyscale proof rule from the identity applies
+   — remove the hue and the badge still reads. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border: var(--hairline) solid var(--border);
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.7;
+  white-space: nowrap;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+.badge-glyph {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  line-height: 1;
+}
+.badge-positive {
+  border-color: var(--positive);
+  color: var(--positive);
+}
+.badge-caution {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.badge-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.badge-accent {
+  border-color: var(--accent);
+  color: var(--text-accent);
+}
+.badge-neutral {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+.badge-strong {
+  background: var(--surface-inverse);
+  border-color: var(--surface-inverse);
+  color: var(--text-inverse);
+}
+
+/* -------------------------------------------------------------- alerts --- */
+
+.alert {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2);
+  border: var(--hairline) solid var(--border);
+  border-inline-start-width: var(--rule-strong);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: var(--text-md);
+}
+.alert p,
+.alert ul {
+  margin: 0;
+  max-inline-size: none;
+}
+.alert-glyph {
+  font-family: var(--font-mono);
+  flex: none;
+  line-height: var(--leading-snug);
+}
+.alert-danger {
+  border-inline-start-color: var(--danger);
+  color: var(--danger);
+}
+.alert-warning {
+  border-inline-start-color: var(--warning);
+}
+.alert-success {
+  border-inline-start-color: var(--positive);
+}
+.alert-info {
+  border-inline-start-color: var(--border-strong);
+}
+.alert:empty {
+  display: none;
+}
+/* Bare live regions used across the product for a single sentence. They must
+   collapse when empty so they do not reserve a gap on a 320px screen. */
+p[role="alert"]:empty,
+p[role="status"]:empty {
+  display: none;
+  margin: 0;
+}
+p[role="alert"] {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------- absent states --- */
+/* Empty, loading, error and permission-denied share one shape so that "there
+   is nothing here" is never mistaken for "something failed". */
+
+.state {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-3);
+  border: var(--hairline) dashed var(--border);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+.state h2,
+.state h3 {
+  margin: 0;
+  color: var(--text);
+}
+.state p {
+  margin: 0;
+  max-inline-size: var(--reading-width);
+}
+.state-mark {
+  color: var(--border);
+  block-size: 2.5rem;
+  inline-size: auto;
+}
+.state-error {
+  border-style: solid;
+  border-inline-start-width: var(--rule-strong);
+  border-inline-start-color: var(--danger);
+  text-align: start;
+  justify-items: start;
+}
+.state-denied {
+  border-style: solid;
+  border-inline-start-width: var(--rule-strong);
+  border-inline-start-color: var(--warning);
+  text-align: start;
+  justify-items: start;
+}
+.state-loading .state-mark {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.skeleton {
+  display: block;
+  block-size: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    var(--border-soft),
+    var(--surface-sunken),
+    var(--border-soft)
+  );
+  background-size: 200% 100%;
+  animation: sweep 1.6s linear infinite;
+}
+@keyframes sweep {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* -------------------------------------------------------------- tables --- */
+
+table,
+.result-table {
+  border-collapse: collapse;
+  inline-size: 100%;
+  font-size: var(--text-md);
+}
+caption,
+.result-table caption {
+  text-align: start;
+  padding-block-end: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+th,
+td,
+.result-table th,
+.result-table td {
+  text-align: start;
+  padding: 0.5rem 0.75rem;
+  border-block-end: var(--hairline) solid var(--border-soft);
+  vertical-align: top;
+}
+thead th,
+.result-table thead th {
+  background: var(--surface-sunken);
+  border-block-end: var(--hairline) solid var(--border-strong);
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+tbody tr:hover {
+  background: var(--surface-sunken);
+}
+.result-table td,
+.result-table th {
+  border-inline-end: var(--hairline) solid var(--border-soft);
+}
+.result-table td:last-child,
+.result-table th:last-child {
+  border-inline-end: 0;
+}
+td .num,
+th .num {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+/* A wide operational table scrolls inside its own box so a 320px viewport
+   never scrolls the page itself, and its row header stays put while it does. */
+.table-wrap {
+  overflow-x: auto;
+  max-inline-size: 100%;
+  border: var(--hairline) solid var(--border);
+  background: var(--surface-muted);
+  scrollbar-width: thin;
+}
+.table-wrap > table {
+  margin: 0;
+}
+.table-sticky tbody th[scope="row"],
+.table-sticky thead th:first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  background: var(--surface-muted);
+  z-index: 1;
+  border-inline-end: var(--hairline) solid var(--border);
+}
+.table-sticky thead th:first-child {
+  background: var(--surface-sunken);
+  z-index: 2;
+}
+
+/* A disclosure is a control, so it is drawn as one. Used for the department
+   picker, the account panel and anywhere a secondary form is folded away. */
+details > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: var(--control-height);
+  padding-inline: var(--space-1);
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-soft);
+  list-style-position: inside;
+}
+details > summary:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+}
+details > summary::marker {
+  color: var(--text-faint);
+}
+details[open] > summary {
+  border-block-end: var(--hairline) solid var(--border-soft);
+  margin-block-end: var(--space-2);
+}
+details.card > summary,
+details.panel > summary {
+  min-block-size: auto;
+}
+
+/* Row actions are not page actions. A record list carries several of them per
+   row, and drawing each as the ink-filled primary makes a list of records read
+   as a wall of demands. */
+.directory-list button,
+.directory-list .button,
+.orgs button {
+  min-block-size: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  font-size: var(--text-sm);
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.directory-list button:hover:not(:disabled),
+.orgs button:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+
+.orgs,
+.directory-list,
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.orgs > li {
+  border-block-start: var(--hairline) solid var(--border-soft);
+}
+.orgs > li a {
+  display: grid;
+  gap: 0.15rem;
+  padding-block: var(--space-2);
+  padding-inline: var(--space-1);
+  text-decoration: none;
+}
+.orgs > li a:hover {
+  background: var(--surface-sunken);
+}
+.orgs > li a strong {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+/* A list whose items are records rather than lines: each one is its own card,
+   and the list reflows into columns when there is room. */
+.card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+  gap: var(--space-2);
+}
+.card-list > li {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  justify-items: start;
+}
+.card-list h2 {
+  font-size: var(--text-xl);
+  margin: 0;
+}
+.directory-list > li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border-block-start: var(--hairline) solid var(--border-soft);
+  padding-block: var(--space-2);
+}
+.directory-list > li > div {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+dl {
+  margin: 0;
+}
+dd {
+  margin-inline-start: 0;
+  overflow-wrap: anywhere;
+}
+.current {
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------- charts --- */
+/* Every chart in the product is SVG. That is a CSP decision before it is a
+   design one: a bar whose length is an inline style is silently zero-width
+   under this origin's policy, while an SVG width attribute is not CSS at all.
+   It is also what lets a chart keep its meaning in the greyscale proof. */
+
+.chart {
+  margin: 0;
+  min-inline-size: 0;
+}
+.chart svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  overflow: visible;
+}
+.chart figcaption,
+.chart-caption {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding-block-start: var(--space-1);
+}
+.meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+.meter svg {
+  flex: 1;
+  min-inline-size: 4rem;
+  block-size: 0.75rem;
+}
+/* SVG coordinates are not affected by the document direction, so a bar drawn
+   from x=0 grows to the right in both. A measurement must grow from the
+   reading start, so in RTL the whole track is mirrored. */
+[dir="rtl"] .meter svg {
+  transform: scaleX(-1);
+}
+.meter-track {
+  fill: var(--chart-track);
+}
+.meter-frame {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.meter-fill {
+  fill: var(--chart-fill);
+}
+.meter-fill-accent {
+  fill: var(--chart-accent);
+}
+.meter-value,
+.result-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-inline-size: 3rem;
+  text-align: start;
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-size: var(--text-md);
+}
+.radar-grid {
+  fill: none;
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+.radar-axis {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.radar-shape {
+  fill: var(--chart-fill);
+  fill-opacity: 0.14;
+  stroke: var(--chart-fill);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.radar-node {
+  fill: var(--chart-fill);
+}
+.radar-node-low {
+  fill: var(--chart-accent);
+}
+.radar-label {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  fill: var(--text-soft);
+  text-anchor: middle;
+}
+.spark-line {
+  fill: none;
+  stroke: var(--chart-fill);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.spark-node {
+  fill: var(--chart-fill);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Legacy bar markup kept working: the track/fill pair still renders as a
+   framed track, and a fill with no inline width no longer reads as a value.
+   New code uses <Meter>. */
+.result-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.result-track {
+  flex: 1;
+  min-inline-size: 4rem;
+  block-size: 0.75rem;
+  background: var(--chart-track);
+  border: var(--hairline) solid var(--border);
+  overflow: hidden;
+}
+.result-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--chart-fill);
+}
+.result-withheld {
+  color: var(--text-muted);
+  border-inline-start: var(--rule-strong) solid var(--border);
+  padding-inline-start: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+}
+.result-metric {
+  border: var(--hairline) solid var(--border);
+  background: var(--surface-muted);
+  padding: var(--space-3);
+}
+.result-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) 0;
+  border-block: var(--hairline) solid var(--border-soft);
+}
+.result-facts dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+.result-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+.heat-value {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.heatmap td {
+  white-space: nowrap;
+}
+.heatmap .heat-1 {
+  background: var(--chart-scale-1);
+}
+.heatmap .heat-2 {
+  background: var(--chart-scale-2);
+}
+.heatmap .heat-3 {
+  background: var(--chart-scale-3);
+}
+.heatmap .heat-4 {
+  background: var(--chart-scale-4);
+}
+.heatmap .heat-5 {
+  background: var(--chart-scale-5);
+}
+/* Not a shade of the scale: an absent cell is hatched, so it survives both a
+   greyscale print and a reader who cannot separate the scale's steps. */
+.heatmap .heat-none {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--surface-muted),
+    var(--surface-muted) 5px,
+    var(--surface-sunken) 5px,
+    var(--surface-sunken) 10px
+  );
+}
+.result-radar svg {
+  inline-size: 100%;
+  max-inline-size: 24rem;
+  block-size: auto;
+}
+.result-radar {
+  margin: 0;
+}
+
+/* --------------------------------------------------- overlays / drawers --- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(25 22 20 / 0.55);
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+.modal {
+  background: var(--surface);
+  border: var(--rule-strong) solid var(--border-strong);
+  padding: var(--space-4);
+  inline-size: min(38rem, 100%);
+  max-block-size: 90vh;
+  overflow-y: auto;
+}
+.modal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-block-end: var(--hairline) solid var(--border-strong);
+  padding-block-end: var(--space-2);
+  margin-block-end: var(--space-3);
+}
+.modal-head h2 {
+  margin: 0;
+}
+.modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-block-start: var(--space-3);
+  margin-block-start: var(--space-3);
+  border-block-start: var(--hairline) solid var(--border-soft);
+}
+.drawer {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: min(28rem, 100%);
+  background: var(--surface);
+  border-inline-start: var(--rule-strong) solid var(--border-strong);
+  padding: var(--space-3);
+  overflow-y: auto;
+  z-index: 55;
+}
+
+/* ------------------------------------------- questionnaire builder etc. --- */
+
+.instrument-workspace {
+  overflow-wrap: anywhere;
+}
+.instrument-workspace > * {
+  margin-block-end: var(--space-3);
+}
+.instrument-workspace textarea,
+.instrument-preview textarea {
+  font: inherit;
+}
+.instrument-workspace fieldset {
+  margin-block: var(--space-2);
+}
+.instrument-workspace legend {
+  font-weight: 600;
+}
+.instrument-workspace button {
+  margin-block: 0.2rem;
+}
+.builder-section {
+  border-block-start: var(--rule-strong) solid var(--border-strong);
+  padding-block: var(--space-3);
+}
+.builder-question {
+  background: var(--surface-muted);
+  padding: var(--space-2);
+  margin-block: var(--space-2);
+  border: var(--hairline) solid var(--border);
+  border-inline-start: var(--rule-strong) solid var(--border);
+}
+.builder-question[open] {
+  border-inline-start-color: var(--accent);
+}
+.builder-question summary {
+  font-weight: 600;
+  cursor: pointer;
+  min-block-size: var(--control-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.builder-question summary::marker {
+  color: var(--text-faint);
+}
+.builder-question > .stack {
+  margin-block: var(--space-3);
+}
+/* The preview is shown as paper on the workbench: a sheet, on the sunken
+   surface, at the width it will actually be read at. */
+.preview-paper {
+  padding: var(--space-3);
+  margin-inline: auto;
+  background: var(--surface);
+  border: var(--hairline) solid var(--border);
+  outline: var(--space-2) solid var(--surface-sunken);
+}
+.preview-paper.narrow {
+  max-inline-size: 320px;
+}
+.editor-root {
+  background: var(--surface);
+}
+.preview {
+  overflow-wrap: anywhere;
+  max-block-size: 25rem;
+  overflow: auto;
+  border: var(--hairline) solid var(--border);
+  background: var(--surface);
+  padding: var(--space-2);
+  font-size: var(--text-md);
+}
+.preview > div {
+  padding-block: var(--space-1);
+  border-block-end: var(--hairline) solid var(--border-soft);
+}
+nav a {
+  padding-block: 0.4rem;
+}
+
+/* ================================================== respondent survey === */
+/* The public origin runs under the same nonce-only style-src, so the survey
+   uses classes and never a style attribute — including for progress, which is
+   a discrete stepper rather than a computed width. */
+
+.survey {
+  max-inline-size: 46rem;
+  margin-inline: auto;
+}
+.survey-progress {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.stepper {
+  display: flex;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stepper li {
+  flex: 1;
+  block-size: 6px;
+  background: var(--chart-track);
+  border: var(--hairline) solid var(--border);
+  min-inline-size: 0.5rem;
+}
+.stepper .step-done {
+  background: var(--chart-fill);
+  border-color: var(--chart-fill);
+}
+.stepper .step-current {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.survey-question {
+  min-inline-size: 0;
+  margin-block: var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-inline-start: var(--rule-strong) solid var(--border);
+  background: var(--surface-muted);
+  padding: var(--space-3);
+}
+.survey-question legend {
+  max-inline-size: 100%;
+  font-weight: 600;
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+  padding-inline: 0;
+  padding-block-end: var(--space-1);
+}
+.survey-question[aria-invalid="true"] {
+  border-inline-start-color: var(--danger);
+}
+.survey-question .field-error {
+  padding-block-end: var(--space-1);
+}
+/* A long Arabic prompt is the normal case, not the exception. */
+.survey-prompt {
+  display: block;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+/* Rating scales. On a phone a ten-point scale must not become ten stacked
+   rows: the options become a wrapping band of equal, full-height targets with
+   the numeral as the visible label and the anchor words above the band. */
+.scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.scale-option {
+  flex: 1 1 2.75rem;
+  min-inline-size: 2.75rem;
+  min-block-size: var(--control-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--hairline) solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  padding: 0;
+  margin: 0;
+}
+/* The control IS the cell. An earlier attempt shrank the radio to 1px and took
+   its pointer events away, which left the numeral as the only hit target: fine
+   for a mouse, but the input itself was then unclickable — a keyboard or
+   assistive click landed on a span. The input now covers the whole option box
+   invisibly, so the entire 44px target is the native control. */
+.scale-option {
+  position: relative;
+}
+.scale-option input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.scale-option:hover {
+  background: var(--surface-sunken);
+}
+.scale-option:has(input:checked) {
+  background: var(--action);
+  border-color: var(--action);
+  color: var(--action-text);
+  font-weight: 600;
+}
+/* The checked state must survive a greyscale or high-contrast rendering, so
+   the selected option is also the only one carrying a heavy inline border. */
+.scale-option:has(input:checked)::after {
+  content: "";
+}
+.scale-option:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.scale-anchors {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Matrix questions. A grid on a wide screen; on a phone each row becomes its
+   own labelled group, because a horizontally scrolling matrix cannot be
+   answered one-handed. */
+.matrix {
+  display: grid;
+  gap: var(--space-2);
+}
+.matrix-row {
+  border: var(--hairline) solid var(--border-soft);
+  background: var(--surface);
+  padding: var(--space-2);
+}
+.matrix-row legend,
+.matrix-row .field-label {
+  font-weight: 500;
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.resume-code {
+  overflow-wrap: anywhere;
+  display: block;
+  padding: var(--space-2);
+  border: var(--hairline) solid var(--border);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+.save-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.save-chip-saved {
+  color: var(--positive);
+}
+.save-chip-dirty {
+  color: var(--warning);
+}
+.save-chip-failed {
+  color: var(--danger);
+  font-weight: 500;
+}
+/* The survey's own actions stay reachable without scrolling back up on a
+   phone. It is a normal flow element on a wide screen. */
+.survey-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-block-start: var(--space-3);
+  margin-block-start: var(--space-3);
+  border-block-start: var(--hairline) solid var(--border);
+}
+@media (max-width: 44rem) {
+  .survey-actions {
+    position: sticky;
+    inset-block-end: 0;
+    background: var(--surface);
+    border-block-start: var(--rule-strong) solid var(--border-strong);
+    padding: var(--space-2);
+    margin-inline: calc(var(--space-3) * -1);
+    margin-block-end: calc(var(--space-3) * -1);
+  }
+  .survey-actions > button,
+  .survey-actions > .button {
+    flex: 1 1 8rem;
+  }
+}
+
+/* --------------------------------------------------------- responsive --- */
+
+@media (max-width: 44rem) {
+  .wrap,
+  .bar {
+    padding-inline: var(--space-2);
+  }
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login {
+    margin-block: var(--space-3);
+  }
+  .panel {
+    padding: var(--space-3) var(--space-2);
+  }
+  .page-head {
+    margin-block-end: var(--space-3);
+  }
+  .appbar-context,
+  .appbar-divider {
+    display: none;
+  }
+  .appbar-inner {
+    padding-inline: var(--space-2);
+  }
+  .survey-question {
+    padding: var(--space-2);
+  }
+  h1 {
+    line-height: 1.3;
+  }
+}
+/* 320px is a supported width, not a degraded one. */
+@media (max-width: 22.5rem) {
+  .tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .toolbar {
+    padding: var(--space-1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .appbar,
+  .rail,
+  .skip,
+  .toolbar,
+  .survey-actions,
+  button {
+    display: none !important;
+  }
+  body,
+  .canvas,
+  .panel,
+  .card {
+    background: #fff;
+    color: #000;
+  }
+  .shell {
+    display: block;
+  }
+}

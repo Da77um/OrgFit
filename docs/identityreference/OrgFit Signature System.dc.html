@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;700;800;900&family=IBM+Plex+Sans+Arabic:wght@200;300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing:border-box; }
+body { margin:0; background:#E4DCCF; color:#191614; font-family:'IBM Plex Sans Arabic', sans-serif; }
+a { color:#9A4E2A; text-decoration:none; border-bottom:1px solid #CFC7BA; }
+a:hover { color:#191614; border-bottom-color:#9A4E2A; }
+</style>
+</helmet>
+
+<section id="2a" dir="rtl" lang="ar" style="display:flex;flex-direction:column;gap:32px;padding:40px;background:#E4DCCF">
+
+<div style="display:flex;align-items:center;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;color:#625B53" dir="ltr">
+  <span style="border:1px solid #191614;padding:3px 9px;color:#191614">2a</span>
+  <span>ORGFIT · GENERATIVE SIGNATURE SYSTEM · التوقيع المؤسسي</span>
+</div>
+
+<div style="width:1680px;background:#EFE8DD;border:1px solid #191614;padding:60px 64px;display:flex;flex-direction:column;gap:52px">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:64px;border-bottom:1px solid #191614;padding-bottom:26px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <h1 style="margin:0;font-family:'Zain',sans-serif;font-size:76px;font-weight:800;line-height:1;letter-spacing:0">لكل منظمة توقيعها</h1>
+      <p style="margin:0;font-size:22px;line-height:1.6;font-weight:300;max-width:900px">خمسة أبعاد للتقييم تُحرّك خمسة متغيّرات هندسية. الدرجات نفسها تُنتج الشكل نفسه دائمًا؛ فالتوقيع بصمةٌ محسوبة لا زخرفة.</p>
+    </div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:2;color:#3A342E;text-align:left;flex:none" dir="ltr">
+      <div>UNIT · RHOMBIC DOT · PEN {{ penLabel }}</div>
+      <div>DETERMINISTIC · SAME SCORES → SAME MARK</div>
+      <div>INK ON LIMESTONE · CLAY = SINGLE CONCERN</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:56px;align-items:stretch">
+    <div style="width:420px;flex:none;display:flex;flex-direction:column;gap:24px">
+      <div style="background:#F7F3EC;border:1px solid #CFC7BA;padding:32px">
+        <svg viewBox="0 0 300 220" dir="ltr" style="width:100%;display:block">
+          <g stroke="#191614" stroke-opacity=".3" stroke-width="0.8" fill="none" stroke-dasharray="4 4"><path d="M150 20v180M40 110h220"></path></g>
+          <polygon points="0,-34 44,0 0,34 -44,0" transform="translate(150,110) rotate(-20)" fill="#191614"></polygon>
+          <g stroke="#9A4E2A" stroke-width="1.2" fill="none"><path d="M150 110l58 -21"></path><path d="M186 110a36 36 0 0 0 -6 -13"></path></g>
+          <text x="196" y="128" fill="#9A4E2A" font-family="IBM Plex Mono" font-size="12" style="direction:ltr">20°</text>
+          <g stroke="#191614" stroke-width="0.8" fill="none"><path d="M264 76h12M264 144h12M270 76v68"></path></g>
+          <text x="252" y="115" fill="#191614" font-family="IBM Plex Mono" font-size="12" text-anchor="end" style="direction:ltr">1U</text>
+        </svg>
+        <div style="margin-top:20px;font-size:16px;line-height:1.75">الوحدة نقطةٌ معيّنة بزاوية القلم العربي. كل مسافة وكل امتداد في النظام يُقاس بعددٍ صحيح من هذه الوحدة.</div>
+      </div>
+      <div style="background:#191614;padding:28px 32px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;color:#C9A98F" dir="ltr">THE PIPELINE</span>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;line-height:2;color:#EFE8DD" dir="ltr">SCORES → STATIONS → UNITS → CONTOUR → SIGNATURE</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #CFC7BA;padding-bottom:12px">
+        <h2 style="margin:0;font-family:'Zain',sans-serif;font-size:34px;font-weight:700">المتغيّرات الخمسة</h2>
+        <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">One dimension · one variable</span>
+      </div>
+      <sc-for list="{{ params }}" as="p" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:32px;border-bottom:1px solid #E3DCD1;padding:14px 0">
+          <div style="width:64px;flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#9A4E2A" dir="ltr">{{ p.code }}</div>
+          <div style="width:210px;flex:none">
+            <div style="font-family:'Zain',sans-serif;font-size:27px;font-weight:700;line-height:1.2">{{ p.ar }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#625B53;margin-top:2px" dir="ltr">{{ p.en }}</div>
+          </div>
+          <div style="width:230px;flex:none">{{ p.demo }}</div>
+          <div style="flex:1;min-width:0;font-size:16px;line-height:1.7">{{ p.rule }}</div>
+        </div>
+      </sc-for>
+      <div style="display:flex;gap:24px;align-items:center;background:#F7F3EC;border-right:2px solid #9A4E2A;padding:20px 26px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#9A4E2A;flex:none" dir="ltr">CLAY RULE</span>
+        <div style="font-size:16px;line-height:1.7">يُلوَّن بالطين ذراعٌ واحدة فقط: البُعد الأدنى درجةً إذا نزل تحت {{ thresholdLabel }}. وإذا لم ينزل أي بُعد، فالتوقيع كله حِبر.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#F7F3EC;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:36px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A">01</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">تسعة توقيعات مُولَّدة</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">Nine organizational conditions</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
+    <sc-for list="{{ nine }}" as="s" hint-placeholder-count="9">
+      <div style="background:#EFE8DD;border:1px solid #CFC7BA;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #E3DCD1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.1em;color:#625B53" dir="ltr">
+          <span style="color:#191614">{{ s.code }}</span><span>INDEX {{ s.index }}</span>
+        </div>
+        <div style="padding:26px 26px 8px">{{ s.svg }}</div>
+        <div style="padding:0 22px 18px;display:flex;flex-direction:column;gap:12px;margin-top:auto">
+          <div style="font-size:16.5px;line-height:1.65;min-height:54px">{{ s.ar }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.06em;color:#3A342E;font-variant-numeric:tabular-nums;border-top:1px solid #E3DCD1;padding-top:12px" dir="ltr">{{ s.readout }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#9A4E2A" dir="ltr">{{ s.concern }}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+<div style="width:1680px;background:#EFE8DD;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:36px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A">02</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">منظمة واحدة · أربع سنوات</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">ORG-0288 · four annual assessments</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0">
+    <sc-for list="{{ years }}" as="y" hint-placeholder-count="4">
+      <div style="border-left:1px solid #CFC7BA;padding:0 30px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums" dir="ltr">
+          <span style="font-size:34px;font-weight:500;color:#191614">{{ y.year }}</span>
+          <span style="font-size:13px;color:#9A4E2A">{{ y.delta }}</span>
+        </div>
+        <div>{{ y.svg }}</div>
+        <div style="font-size:16px;line-height:1.6">{{ y.ar }}</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#3A342E;font-variant-numeric:tabular-nums;border-top:1px solid #E3DCD1;padding-top:12px" dir="ltr">{{ y.readout }}</div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display:flex;gap:24px;align-items:center;border-top:1px solid #CFC7BA;padding-top:24px">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#9A4E2A;flex:none" dir="ltr">READING THE SEQUENCE</span>
+    <div style="font-size:17px;line-height:1.7">تمتدّ الأذرع، وتضيق الفواصل، وتثقل الوحدات، ويستقيم الانحراف. التحسّن هنا مرئيٌّ قبل أن يُقرأ.</div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#F7F3EC;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:36px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A">03</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">أغلفة التقارير</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">A4 · one grid · three treatments</span>
+  </div>
+  <div style="display:flex;gap:26px;justify-content:space-between">
+    <div style="width:480px;height:679px;flex:none;background:#EFE8DD;border:1px solid #CFC7BA;padding:48px 44px;display:flex;flex-direction:column;position:relative">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#625B53" dir="ltr"><span style="color:#191614">ORG-0412</span><span>CONFIDENTIAL · 2026-09</span></div>
+      <div style="margin-top:44px">{{ coverOne }}</div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:16px">
+        <div style="font-family:'Zain',sans-serif;font-size:44px;font-weight:800;line-height:1.15">تقرير التشخيص المؤسسي</div>
+        <div style="height:1px;background:#191614"></div>
+        <div style="font-size:19px;line-height:1.6">شركة الرياض للصناعات التحويلية</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#625B53;font-variant-numeric:tabular-nums" dir="ltr">INDEX 86.0 · CYCLE 04 · 2026</div>
+        <div style="display:flex;align-items:center;gap:14px;padding-top:12px;border-top:1px solid #CFC7BA">
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:15px;font-weight:600;letter-spacing:.24em" dir="ltr">ORGFIT</span>
+          <span style="font-family:'Zain',sans-serif;font-size:15px;color:#625B53">منصة التشخيص والتطوير المؤسسي</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:480px;height:679px;flex:none;background:#191614;padding:48px 44px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #625B53;padding-bottom:14px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#9A9186" dir="ltr"><span style="color:#EFE8DD">ORG-0288</span><span>BOARD COPY · 2026-09</span></div>
+      <div style="margin-top:44px">{{ coverTwo }}</div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:16px">
+        <div style="font-family:'Zain',sans-serif;font-size:44px;font-weight:800;line-height:1.15;color:#EFE8DD">التقييم السنوي الرابع</div>
+        <div style="height:1px;background:#625B53"></div>
+        <div style="font-size:19px;line-height:1.6;color:#EFE8DD">الهيئة العامة للخدمات المشتركة</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#9A9186;font-variant-numeric:tabular-nums" dir="ltr">INDEX 72.8 · +34.4 SINCE 2023</div>
+        <div style="display:flex;align-items:center;gap:14px;padding-top:12px;border-top:1px solid #3A342E">
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:15px;font-weight:600;letter-spacing:.24em;color:#EFE8DD" dir="ltr">ORGFIT</span>
+          <span style="font-family:'Zain',sans-serif;font-size:15px;color:#9A9186">منصة التشخيص والتطوير المؤسسي</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:480px;height:679px;flex:none;background:#DCD1C0;border:1px solid #C9BCA6;padding:48px 44px;display:flex;flex-direction:column;position:relative">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #B9AC96;padding-bottom:14px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#8A7F6D" dir="ltr"><span>ORG-0731</span><span>BLIND EMBOSS · NO INK</span></div>
+      <div style="margin-top:44px;position:relative">
+        <div style="position:absolute;inset:0;transform:translate(-3px,-3px)">{{ coverThreeHi }}</div>
+        <div style="position:relative">{{ coverThreeLo }}</div>
+      </div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:16px">
+        <div style="font-family:'Zain',sans-serif;font-size:44px;font-weight:800;line-height:1.15;color:#B9AC96;text-shadow:-2px -2px 0 #EDE5D8">تقرير التشخيص المؤسسي</div>
+        <div style="height:1px;background:#B9AC96"></div>
+        <div style="font-size:19px;line-height:1.6;color:#A2957F">مجموعة نجد الطبية</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#A2957F;font-variant-numeric:tabular-nums" dir="ltr">DIE 92 MM · 0.9 MM DEPTH · UNCOATED 300 GSM</div>
+        <div style="display:flex;align-items:center;gap:14px;padding-top:12px;border-top:1px solid #C9BCA6">
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:15px;font-weight:600;letter-spacing:.24em;color:#B9AC96" dir="ltr">ORGFIT</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#EFE8DD;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:36px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A">04</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">التوقيع داخل المنصة</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">Diagnostic profile · RTL</span>
+  </div>
+  <div style="width:1552px;border:1px solid #CFC7BA;background:#F7F3EC;display:flex;flex-direction:column;overflow:hidden">
+    <div style="height:64px;background:#191614;display:flex;align-items:center;justify-content:space-between;padding:0 26px">
+      <div style="display:flex;align-items:center;gap:26px">
+        <span style="font-family:'IBM Plex Sans',sans-serif;font-size:15px;font-weight:600;letter-spacing:.24em;color:#EFE8DD" dir="ltr">ORGFIT</span>
+        <span style="width:1px;height:22px;background:#3A342E"></span>
+        <span style="font-family:'Zain',sans-serif;font-size:18px;color:#CFC7BA">الملف التشخيصي</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:22px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#9A9186" dir="ltr"><span>ORG-0412</span><span>CYCLE 04</span><span>2026-09-08</span></div>
+    </div>
+    <div style="display:flex;align-items:stretch">
+      <div style="width:212px;flex:none;background:#EFE8DD;border-left:1px solid #CFC7BA;padding:22px 0">
+        <sc-for list="{{ nav }}" as="n" hint-placeholder-count="6">
+          <div style="padding:13px 24px;font-size:15.5px;color:#3A342E;border-right:2px solid transparent">{{ n }}</div>
+        </sc-for>
+      </div>
+      <div style="flex:1;min-width:0;padding:34px;display:flex;flex-direction:column;gap:28px">
+        <div style="display:flex;gap:28px;align-items:stretch">
+          <div style="width:340px;flex:none;background:#EFE8DD;border:1px solid #CFC7BA;padding:26px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <span style="font-family:'Zain',sans-serif;font-size:22px;font-weight:700">التوقيع المؤسسي</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#625B53" dir="ltr">GENERATED</span>
+            </div>
+            <div>{{ dashSig }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.9;color:#3A342E;border-top:1px solid #E3DCD1;padding-top:12px" dir="ltr">HASH 4C1F-88A0-D3<br>REGENERATES IDENTICALLY</div>
+          </div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;gap:18px">
+              <div style="flex:1;background:#EFE8DD;border:1px solid #CFC7BA;padding:20px 22px">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#625B53" dir="ltr">INDEX</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:38px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.2" dir="ltr">86.0</div>
+              </div>
+              <div style="flex:1;background:#EFE8DD;border:1px solid #CFC7BA;padding:20px 22px">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#625B53" dir="ltr">DEPARTMENTS</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:38px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.2" dir="ltr">26</div>
+              </div>
+              <div style="flex:1;background:#EFE8DD;border:1px solid #CFC7BA;padding:20px 22px">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#625B53" dir="ltr">RESPONSES</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:38px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.2" dir="ltr">1,884</div>
+              </div>
+            </div>
+            <div style="flex:1;background:#EFE8DD;border:1px solid #CFC7BA;padding:24px 26px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #E3DCD1;padding-bottom:12px">
+                <span style="font-family:'Zain',sans-serif;font-size:22px;font-weight:700">الأبعاد الخمسة</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#625B53" dir="ltr">SCORE · VARIABLE · Δ</span>
+              </div>
+              <sc-for list="{{ dashRows }}" as="r" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;gap:20px">
+                  <span style="width:120px;flex:none;font-size:16px">{{ r.ar }}</span>
+                  <span style="width:44px;flex:none;font-family:'IBM Plex Mono',monospace;font-size:17px;font-variant-numeric:tabular-nums" dir="ltr">{{ r.v }}</span>
+                  <div style="flex:1;min-width:0;height:8px;background:#E3DCD1;position:relative">{{ r.bar }}</div>
+                  <span style="width:96px;flex:none;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;color:#625B53;text-align:left" dir="ltr">{{ r.var }}</span>
+                  <span style="width:52px;flex:none;font-family:'IBM Plex Mono',monospace;font-size:12px;font-variant-numeric:tabular-nums;text-align:left;color:#9A4E2A" dir="ltr">{{ r.d }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#F7F3EC;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:36px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A">05</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">القواعد</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">Sizes · invariants · single colour</span>
+  </div>
+  <div style="display:flex;gap:26px;align-items:stretch">
+    <div style="width:520px;flex:none;background:#EFE8DD;border:1px solid #CFC7BA;padding:32px;display:flex flex-direction:column">
+      <div style="display:flex;align-items:flex-end;gap:34px;justify-content:space-between;width:100%">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:150px">{{ ruleFull }}</div><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53" dir="ltr">150 · FULL</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:96px">{{ ruleMid }}</div><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#191614" dir="ltr">96 · MIN FULL</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:48px">{{ ruleSmall }}</div><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53" dir="ltr">48 · REDUCED</span></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:16px">{{ ruleSeal }}</div><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53" dir="ltr">16 · SEAL</span></div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
+      <sc-for list="{{ rules }}" as="r" hint-placeholder-count="6">
+        <div style="display:flex;gap:22px;align-items:flex-start;border-bottom:1px solid #E3DCD1;padding-bottom:14px">
+          <span style="width:104px;flex:none;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#9A4E2A;padding-top:4px" dir="ltr">{{ r.code }}</span>
+          <div style="flex:1;min-width:0;font-size:16.5px;line-height:1.7">{{ r.ar }}</div>
+        </div>
+      </sc-for>
+      <div style="display:flex;gap:26px;align-items:center;background:#EFE8DD;border:1px solid #CFC7BA;padding:22px 26px;margin-top:8px">
+        <div style="width:110px;flex:none">{{ greySig }}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#625B53;margin-bottom:8px" dir="ltr">GREYSCALE PROOF · 100% K</div>
+          <div style="font-size:16.5px;line-height:1.7">في الطبع أحادي اللون يسقط الطين إلى حِبر، ويظل البُعد الأدنى مقروءًا لأن ذراعه هي الأقصر. المعلومة في الشكل لا في اللون.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showStations&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Generation&quot;},&quot;clayThreshold&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:55,&quot;min&quot;:0,&quot;max&quot;:100,&quot;step&quot;:5,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Generation&quot;},&quot;penAngle&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:-20,&quot;min&quot;:-40,&quot;max&quot;:0,&quot;step&quot;:2,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Generation&quot;}}">
+const ORDER = ["structure", "performance", "capability", "culture", "governance"];
+const AR = { structure: "الهيكل التنظيمي", performance: "الأداء", capability: "القدرات", culture: "الثقافة", governance: "الحوكمة" };
+const CODE = { structure: "STR", performance: "PRF", capability: "CAP", culture: "CUL", governance: "GOV" };
+const BASE = [-90, -18, 54, 126, 198];
+const SKEW = [0, 15, -11, 8, -13];
+
+class Component extends DCLogic {
+  poly(k, cx, cy, s, rot, fill) {
+    return React.createElement("polygon", { key: k, points: "0,-3.4 4.4,0 0,3.4 -4.4,0",
+      transform: "translate(" + cx.toFixed(2) + "," + cy.toFixed(2) + ") rotate(" + rot.toFixed(2) + ") scale(" + s.toFixed(3) + ")", fill: fill });
+  }
+
+  sig(sc, o) {
+    o = o || {};
+    const size = o.size || 260, pen = this.pen(), U = o.U || 9;
+    const ink = o.ink || "#191614", clay = o.clay || "#9A4E2A";
+    const stations = o.stations !== false && (this.props.showStations ?? true);
+    const c = size / 2, els = [];
+    const interval = 1.85 - 0.75 * (sc.performance / 100);
+    const weight = 0.52 + 0.48 * (sc.governance / 100);
+    const skewAmt = 1 - sc.structure / 100;
+    const drift = (1 - sc.culture / 100) * 20;
+    const counts = ORDER.map(k => 2 + Math.round(5 * sc[k] / 100));
+    const angles = BASE.map((a, i) => a + SKEW[i] * skewAmt);
+    const vals = ORDER.map(k => sc[k]);
+    const lo = Math.min.apply(null, vals);
+    const concern = lo < (this.threshold()) ? vals.indexOf(lo) : -1;
+    const rad = d => d * Math.PI / 180;
+
+    if (o.frame !== false) {
+      const m = size * 0.024, L = size * 0.045;
+      els.push(React.createElement("path", { key: "fr", fill: "none", stroke: ink, strokeOpacity: 0.35, strokeWidth: size / 260,
+        d: "M" + m + " " + (m + L) + "V" + m + "H" + (m + L) + "M" + (size - m - L) + " " + m + "H" + (size - m) + "V" + (m + L) +
+           "M" + (size - m) + " " + (size - m - L) + "V" + (size - m) + "H" + (size - m - L) + "M" + (m + L) + " " + (size - m) + "H" + m + "V" + (size - m - L) }));
+    }
+    const tips = [];
+    angles.forEach((a, i) => {
+      const rMax = counts[i] * interval * U;
+      tips.push([c + Math.cos(rad(a)) * rMax, c + Math.sin(rad(a)) * rMax]);
+      if (stations) {
+        const rs = (size / 2 - size * 0.055);
+        els.push(React.createElement("line", { key: "st" + i, x1: c, y1: c, x2: c + Math.cos(rad(a)) * rs, y2: c + Math.sin(rad(a)) * rs,
+          stroke: ink, strokeOpacity: 0.16, strokeWidth: size / 300 }));
+      }
+    });
+    if (o.contour !== false) {
+      els.push(React.createElement("polygon", { key: "ct", points: tips.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" "),
+        fill: "none", stroke: ink, strokeOpacity: 0.45, strokeWidth: size / 290 }));
+    }
+    angles.forEach((a, i) => {
+      const fill = i === concern ? clay : ink;
+      for (let k = 1; k <= counts[i]; k++) {
+        const r = k * interval * U;
+        els.push(this.poly("u" + i + "-" + k, c + Math.cos(rad(a)) * r, c + Math.sin(rad(a)) * r,
+          weight * (size / 260), pen + (k - 1) * drift, fill));
+      }
+    });
+    els.push(this.poly("core", c, c, weight * 1.15 * (size / 260), pen, ink));
+    return React.createElement("svg", { viewBox: "0 0 " + size + " " + size, dir: "ltr",
+      style: { width: "100%", height: "auto", display: "block" } }, els);
+  }
+
+  seal(sc, o) {
+    o = o || {};
+    const size = o.size || 64, pen = this.pen(), c = size / 2, els = [], rad = d => d * Math.PI / 180;
+    const U = size * 0.055;
+    const counts = ORDER.map(k => 1 + Math.round(1 * sc[k] / 100));
+    BASE.forEach((a, i) => {
+      for (let k = 1; k <= counts[i]; k++) {
+        els.push(this.poly("s" + i + "-" + k, c + Math.cos(rad(a)) * (k * 2.1 * U), c + Math.sin(rad(a)) * (k * 2.1 * U),
+          size / 64 * 1.15, pen, "#191614"));
+      }
+    });
+    els.push(this.poly("sc", c, c, size / 64 * 1.3, pen, "#191614"));
+    return React.createElement("svg", { viewBox: "0 0 " + size + " " + size, dir: "ltr",
+      style: { width: "100%", height: "auto", display: "block" } }, els);
+  }
+
+  pen() { return this.props.penAngle ?? -20; }
+  threshold() { return this.props.clayThreshold ?? 55; }
+
+  demo(kind, level) {
+    const els = [], pen = this.pen(), U = 9, cx = 22, cy = 50, rad = d => d * Math.PI / 180;
+    if (kind === "stations") {
+      const sk = 1 - level;
+      BASE.forEach((a, i) => {
+        const ang = a + SKEW[i] * sk;
+        els.push(React.createElement("line", { key: "l" + i, x1: 50, y1: 50, x2: 50 + Math.cos(rad(ang)) * 42, y2: 50 + Math.sin(rad(ang)) * 42,
+          stroke: "#191614", strokeOpacity: 0.3, strokeWidth: 0.9 }));
+        els.push(this.poly("d" + i, 50 + Math.cos(rad(ang)) * 42, 50 + Math.sin(rad(ang)) * 42, 0.9, pen, "#191614"));
+      });
+      els.push(this.poly("c", 50, 50, 1, pen, "#191614"));
+      return els;
+    }
+    let count = 5, interval = 1.5, scale = 0.95, drift = 0;
+    if (kind === "extent") count = 2 + Math.round(5 * level);
+    if (kind === "interval") interval = 1.85 - 0.75 * level;
+    if (kind === "weight") { count = 4; scale = 0.52 + 0.48 * level; }
+    if (kind === "drift") drift = (1 - level) * 20;
+    for (let k = 1; k <= count; k++) {
+      els.push(this.poly(kind + k, cx + k * interval * U, cy, scale, pen + (k - 1) * drift, "#191614"));
+    }
+    els.push(this.poly(kind + "c", cx, cy, scale, pen, "#191614"));
+    return els;
+  }
+
+  paramDemo(kind) {
+    return React.createElement("svg", { viewBox: "0 0 230 100", dir: "ltr", style: { width: "100%", height: "auto", display: "block" } }, [
+      React.createElement("g", { key: "lo" }, this.demo(kind, 0)),
+      React.createElement("line", { key: "sep", x1: 112, y1: 14, x2: 112, y2: 86, stroke: "#191614", strokeOpacity: 0.2, strokeWidth: 0.8 }),
+      React.createElement("g", { key: "hi", transform: "translate(118,0)" }, this.demo(kind, 1)),
+      React.createElement("text", { key: "t0", x: 4, y: 94, fill: "#9A9186", fontFamily: "IBM Plex Mono", fontSize: 9 }, "00"),
+      React.createElement("text", { key: "t1", x: 122, y: 94, fill: "#9A9186", fontFamily: "IBM Plex Mono", fontSize: 9 }, "100")
+    ]);
+  }
+
+  readout(sc) { return ORDER.map(k => CODE[k] + " " + sc[k]).join("   "); }
+  index(sc) { return (ORDER.reduce((a, k) => a + sc[k], 0) / 5).toFixed(1); }
+  concernLabel(sc) {
+    const vals = ORDER.map(k => sc[k]), lo = Math.min.apply(null, vals);
+    if (lo >= this.threshold()) return "NO CLAY · ALL INK";
+    return "CLAY · " + CODE[ORDER[vals.indexOf(lo)]] + " " + lo;
+  }
+
+  renderVals() {
+    const P = [
+      { code: "ORG-0412", ar: "منظمة ناضجة عالية الأداء: محطاتٌ منتظمة، وفواصل ضيّقة، وسماكةٌ تامة.", sc: { structure: 88, performance: 84, capability: 86, culture: 82, governance: 90 } },
+      { code: "ORG-0517", ar: "نموٌّ سريع بحوكمة ضعيفة: امتدادٌ واسع بوحداتٍ رقيقة.", sc: { structure: 62, performance: 86, capability: 74, culture: 70, governance: 28 } },
+      { code: "ORG-0640", ar: "استقرارٌ مع تراجع ثقافي: انحرافٌ متزايد في محاور الوحدات.", sc: { structure: 78, performance: 70, capability: 72, culture: 30, governance: 74 } },
+      { code: "ORG-0288", ar: "كيانٌ في إعادة هيكلة: محطاتٌ مائلة وقدراتٌ متقدّمة عليها.", sc: { structure: 34, performance: 48, capability: 66, culture: 52, governance: 70 } },
+      { code: "ORG-0902", ar: "منظمة فتيّة ضعيفة القدرات: ذراع القدرات هي الأقصر.", sc: { structure: 56, performance: 62, capability: 22, culture: 68, governance: 44 } },
+      { code: "ORG-0155", ar: "جهةٌ حكومية: هيكلٌ متين وتنفيذٌ متباطئ متّسع الفواصل.", sc: { structure: 86, performance: 34, capability: 58, culture: 54, governance: 80 } },
+      { code: "ORG-0773", ar: "أزمةٌ في الأبعاد الخمسة: انكماشٌ عام مع بقاء الإطار قائمًا.", sc: { structure: 22, performance: 18, capability: 26, culture: 20, governance: 24 } },
+      { code: "ORG-0331", ar: "قربُ التميّز بفجوةٍ حرجة واحدة: ذراعٌ واحدة بلون الطين.", sc: { structure: 88, performance: 86, capability: 84, culture: 26, governance: 88 } },
+      { code: "ORG-1084", ar: "قياسٌ أساسي أول: توسّطٌ في كل بُعد، ولا لونَ إشارة.", sc: { structure: 52, performance: 50, capability: 54, culture: 48, governance: 52 } }
+    ];
+    const Y = [
+      { year: "2023", sc: { structure: 38, performance: 30, capability: 34, culture: 32, governance: 44 }, ar: "قياسٌ أساسي: أذرعٌ قصيرة ومحطاتٌ مائلة." },
+      { year: "2024", sc: { structure: 46, performance: 42, capability: 40, culture: 44, governance: 58 }, ar: "الحوكمة أولًا: الوحدات تكتسب سماكة." },
+      { year: "2025", sc: { structure: 58, performance: 56, capability: 52, culture: 58, governance: 70 }, ar: "الفواصل تضيق، والانحراف يستقيم." },
+      { year: "2026", sc: { structure: 72, performance: 74, capability: 66, culture: 70, governance: 82 }, ar: "امتدادٌ متوازن في الأبعاد الخمسة." }
+    ];
+    const prev = Y.map(y => Number(this.index(y.sc)));
+    const dashSc = P[0].sc;
+    const bar = (v, isLow) => React.createElement("div", { style: { position: "absolute", inset: "0 auto 0 0", width: (100 - v) + "%", background: "#E3DCD1" } },
+      React.createElement("div", { style: { position: "absolute", inset: "0 0 0 auto", width: "0" } }));
+    return {
+      penLabel: this.pen() + "°",
+      thresholdLabel: String(this.threshold()),
+      params: [
+        { code: "STR", ar: AR.structure, en: "STATION GEOMETRY", demo: this.paramDemo("stations"), rule: "انتظام المحطات الخمس. الهيكل القوي يثبّتها على 72°، والضعيف يُميلها." },
+        { code: "PRF", ar: AR.performance, en: "INTERVAL", demo: this.paramDemo("interval"), rule: "الفاصل بين الوحدات: 1.10U عند الأداء العالي، و1.85U عند المتباطئ." },
+        { code: "CAP", ar: AR.capability, en: "RADIAL EXTENT", demo: this.paramDemo("extent"), rule: "عدد الوحدات على الذراع: من 2 إلى 7 وحدات صحيحة، لكل بُعد ذراعه." },
+        { code: "CUL", ar: AR.culture, en: "ROTATION DRIFT", demo: this.paramDemo("drift"), rule: "انحراف تراكمي 0° إلى 20° لكل وحدة. الثقافة المتماسكة تُبقي القلم على زاويته." },
+        { code: "GOV", ar: AR.governance, en: "UNIT WEIGHT", demo: this.paramDemo("weight"), rule: "سماكة الوحدة من 0.52 إلى 1.00. الحوكمة هي ثقل الحِبر." }
+      ],
+      nine: P.map(p => ({ code: p.code, ar: p.ar, readout: this.readout(p.sc), index: this.index(p.sc),
+        concern: this.concernLabel(p.sc), svg: this.sig(p.sc, { size: 260 }) })),
+      years: Y.map((y, i) => ({ year: y.year, ar: y.ar, readout: this.readout(y.sc),
+        delta: i === 0 ? "BASELINE" : "+" + (prev[i] - prev[i - 1]).toFixed(1),
+        svg: this.sig(y.sc, { size: 260 }) })),
+      coverOne: this.sig(P[0].sc, { size: 392 }),
+      coverTwo: this.sig(Y[3].sc, { size: 392, ink: "#EFE8DD", clay: "#C97B52" }),
+      coverThreeHi: this.sig(P[4].sc, { size: 392, ink: "#F0E9DC", clay: "#F0E9DC" }),
+      coverThreeLo: this.sig(P[4].sc, { size: 392, ink: "#B5A78F", clay: "#B5A78F" }),
+      dashSig: this.sig(dashSc, { size: 288 }),
+      nav: ["المنظمات", "التقييمات", "الاستبانات", "الزيارات الميدانية", "النتائج", "التقارير"],
+      dashRows: ORDER.map((k, i) => ({ ar: AR[k], v: String(dashSc[k]), var: ["STATIONS", "INTERVAL", "EXTENT", "DRIFT", "WEIGHT"][i],
+        d: ["+6", "+4", "+9", "+2", "+5"][i],
+        bar: React.createElement("div", { style: { position: "absolute", top: 0, bottom: 0, right: 0, width: dashSc[k] + "%", background: "#191614" } }) })),
+      ruleFull: this.sig(P[1].sc, { size: 260 }),
+      ruleMid: this.sig(P[1].sc, { size: 260 }),
+      ruleSmall: this.sig(P[1].sc, { size: 260, stations: false, frame: false }),
+      ruleSeal: this.seal(P[1].sc, { size: 64 }),
+      greySig: this.sig(P[1].sc, { size: 260, clay: "#191614" }),
+      rules: [
+        { code: "MIN 96 PX", ar: "الصيغة الكاملة — بالمحطات والإطار والكُنتور — لا تُستخدم تحت 96 بكسل أو 26 مم." },
+        { code: "48 PX", ar: "الصيغة المختصرة: تسقط المحطات والإطار، وتبقى الوحدات والكُنتور." },
+        { code: "16 PX", ar: "الخاتم: وحدة المركز وخمس وحدات طرفية بفاصلٍ ثابت. لا يحمل درجات، ويُستعمل للأيقونة فقط." },
+        { code: "NEVER", ar: "لا تتغيّر زاوية القلم، ولا ترتيب المحطات الخمس، ولا شكل الوحدة، ولا يُلوَّن أكثر من ذراعٍ واحدة بالطين." },
+        { code: "NEVER", ar: "لا يُدوَّر التوقيع، ولا يُقصّ، ولا يُوضع على صورة أو تدريج، ولا تُضاف إليه أذرعٌ تجميلية." },
+        { code: "REGEN", ar: "التوقيع يُولَّد من الدرجات لحظة الإصدار، ولا يُرسم يدويًّا ولا يُعاد تحريره في ملفٍ متجهي." }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

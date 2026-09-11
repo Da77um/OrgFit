@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zain:wght@300;400;700;800;900&family=IBM+Plex+Sans+Arabic:wght@200;300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing:border-box; }
+body { margin:0; background:#E4DCCF; color:#191614; font-family:'IBM Plex Sans Arabic', sans-serif; }
+a { color:#9A4E2A; text-decoration:none; border-bottom:1px solid #CFC7BA; }
+a:hover { color:#191614; border-bottom-color:#9A4E2A; }
+</style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs>
+<symbol id="mark" viewBox="8 6 32 58">
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,14) rotate(-20)" fill="currentColor"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,56) rotate(-20)" fill="currentColor"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17,35) rotate(-20)" fill="#9A4E2A"></polygon>
+</symbol>
+<symbol id="mark-light" viewBox="8 6 32 58">
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,14) rotate(-20)" fill="#EFE8DD"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,56) rotate(-20)" fill="#EFE8DD"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17,35) rotate(-20)" fill="#C97B52"></polygon>
+</symbol>
+<symbol id="mark-tile" viewBox="0 0 32 32">
+  <rect x="0" y="0" width="32" height="32" fill="#191614"></rect>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17.5,7.4) rotate(-20) scale(0.62)" fill="#EFE8DD"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17.5,24.6) rotate(-20) scale(0.62)" fill="#EFE8DD"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(13,16) rotate(-20) scale(0.62)" fill="#C97B52"></polygon>
+</symbol>
+<symbol id="mark-emb-hi" viewBox="8 6 32 58">
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,14) rotate(-20)" fill="#F7F2E8"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17,35) rotate(-20)" fill="#F7F2E8"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,56) rotate(-20)" fill="#F7F2E8"></polygon>
+</symbol>
+<symbol id="mark-emb-lo" viewBox="8 6 32 58">
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,14) rotate(-20)" fill="#D2C7B5"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17,35) rotate(-20)" fill="#D2C7B5"></polygon>
+  <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,56) rotate(-20)" fill="#D2C7B5"></polygon>
+</symbol>
+</defs></svg>
+
+<section id="1a" dir="rtl" lang="ar" style="display:flex;flex-direction:column;gap:32px;padding:40px;background:#E4DCCF">
+
+<div style="display:flex;align-items:center;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;color:#625B53" dir="ltr">
+  <span style="border:1px solid #191614;padding:3px 9px;color:#191614">1a</span>
+  <span>ORGFIT · CONCEPT: النقطة · PASS 02 · SYMBOL / LOCKUPS / CLEAR SPACE / HERO</span>
+</div>
+
+<div style="width:1680px;height:860px;background:#EFE8DD;border:1px solid #191614;position:relative;overflow:hidden">
+  <sc-if value="{{ hairlineGrid }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;inset:0;background-image:linear-gradient(90deg,#191614 1px,transparent 1px);background-size:72px 72px;opacity:.06"></div>
+  </sc-if>
+  <div style="position:absolute;top:64px;right:96px;left:96px;height:1px;background:#191614;opacity:.4"></div>
+  <div style="position:absolute;top:36px;right:96px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.2em;color:#625B53" dir="ltr">PLUMB · 1U = 117 PX · TICK 0.5U · DEV 0.5U</div>
+
+  <svg viewBox="0 0 340 620" dir="ltr" style="position:absolute;top:100px;right:80px;width:340px;height:620px;display:block">
+    <g stroke="#191614" fill="none"><path d="M170 0v620" stroke-opacity=".38" stroke-dasharray="6 5"></path>
+    <path d="M282 13h20M282 71.5h14M282 130h20M282 188.5h14M282 247h20M282 305.5h14M282 364h20M282 422.5h14M282 481h20M282 539.5h14M282 598h20" stroke-opacity=".4"></path></g>
+    <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(170,130) rotate(-20) scale(8.5)" fill="#191614"></polygon>
+    <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(170,481) rotate(-20) scale(8.5)" fill="#191614"></polygon>
+    <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(111.5,305.5) rotate(-20) scale(8.5)" fill="#9A4E2A"></polygon>
+    <g stroke="#9A4E2A" stroke-width="1.5" fill="none"><path d="M111.5 218v-34M170 218h-58.5M111.5 214v9M170 214v9"></path></g>
+    <text x="116" y="176" fill="#9A4E2A" font-family="IBM Plex Mono" font-size="14" letter-spacing="1" style="direction:ltr" text-anchor="start">0.5U</text>
+  </svg>
+
+  <div style="position:absolute;top:250px;right:452px;display:flex;flex-direction:column;align-items:stretch;gap:20px">
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:106px;font-weight:600;letter-spacing:.2em;line-height:1;color:#191614;padding-right:.2em;white-space:nowrap;text-align:right" dir="ltr">ORGFIT</span>
+    <div style="height:1px;background:#191614"></div>
+    <span style="font-family:'Zain',sans-serif;font-size:56px;font-weight:700;line-height:1.15;color:#191614;white-space:nowrap">منصة التشخيص والتطوير المؤسسي</span>
+  </div>
+
+  <div style="position:absolute;bottom:88px;right:96px;left:96px;border-top:1px solid #191614;padding-top:26px;display:flex;justify-content:space-between;align-items:flex-start;gap:80px">
+    <p style="margin:0;font-size:24px;line-height:1.65;font-weight:300;max-width:860px;text-wrap:pretty">تقرأ أورجفت المنظمات كما يقرأ المهندس المنشأ: قياسٌ، ومقاطع، وتشخيصٌ، ثم قابليةٌ للتطوير</p>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:2;color:#3A342E;font-variant-numeric:tabular-nums;text-align:left" dir="ltr">
+      <div>ORG 0412 · DEPT 26 · STAFF 1,884</div>
+      <div>INDEX 68.4 / 100 · 2026-09-08</div>
+    </div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#F7F3EC;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A;letter-spacing:.1em">01</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">الرمز · قياس الألف</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">Symbol · three units · one measured offset</span>
+  </div>
+  <div style="display:flex;gap:48px;align-items:stretch">
+    <div style="width:460px;flex:none;background:#EFE8DD;border:1px solid #CFC7BA;padding:36px 44px">
+      <svg viewBox="0 0 210 264" dir="ltr" style="width:100%;display:block">
+        <sc-if value="{{ showConstruction }}" hint-placeholder-val="{{ true }}">
+          <g stroke="#191614" stroke-opacity=".3" stroke-width="0.8" fill="none">
+            <path d="M110 18v232" stroke-dasharray="5 4"></path>
+            <path d="M48 60h134M48 123h134M48 186h134"></path>
+          </g>
+          <g stroke="#9A4E2A" stroke-width="1" fill="none"><path d="M89 26v212" stroke-dasharray="5 4"></path><path d="M110 141h-21"></path><path d="M89 137v8M110 137v8"></path></g>
+          <g fill="#625B53" font-family="IBM Plex Mono" font-size="10" letter-spacing="0.6" style="direction:ltr" text-anchor="start">
+            <text x="186" y="63">1U</text><text x="186" y="126">1U</text><text x="186" y="189">1U</text>
+            <text x="8" y="88">PITCH</text><text x="8" y="101">1.5U</text>
+            <text x="8" y="151">PEN</text><text x="8" y="164">20°</text>
+          </g>
+          <text x="60" y="160" fill="#9A4E2A" font-family="IBM Plex Mono" font-size="10" style="direction:ltr" text-anchor="start">0.5U</text>
+        </sc-if>
+        <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(110,60) rotate(-20) scale(3)" fill="#191614"></polygon>
+        <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(110,186) rotate(-20) scale(3)" fill="#191614"></polygon>
+        <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(89,123) rotate(-20) scale(3)" fill="#9A4E2A"></polygon>
+      </svg>
+      <div style="margin-top:22px;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.9;color:#3A342E" dir="ltr">3 UNITS · PITCH 1.8U · MIDDLE UNIT OFFSET 0.5U TOWARD THE WRITING HAND · OFFSET UNIT IN CLAY</div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:52px">
+      <p style="margin:0;font-size:19px;line-height:1.8;max-width:660px;text-wrap:pretty">النقطة المعيّنة هي أداة القياس في الخط العربي، والألف تُقاس بها عمودًا. ثلاث وحدات تبني العمود، وواحدةٌ منها تنزاح نصف وحدة — الانزياح هو التشخيص، ولونه هو الطين</p>
+      <div style="display:flex;align-items:flex-end;gap:40px;border-top:1px solid #CFC7BA;padding-top:32px;flex-wrap:wrap">
+        <div style="display:flex;align-items:flex-end;gap:26px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><svg style="width:13px;height:24px;display:block"><use href="#mark"></use></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#191614">24</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><svg style="width:26px;height:48px;display:block"><use href="#mark"></use></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53">48</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><svg style="width:49px;height:88px;display:block"><use href="#mark"></use></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53">88</span></div>
+        </div>
+        <div style="border-right:1px solid #CFC7BA;padding-right:32px;display:flex;align-items:flex-end;gap:22px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><svg style="width:16px;height:16px;display:block"><use href="#mark-tile"></use></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#191614">16</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><svg style="width:32px;height:32px;display:block"><use href="#mark-tile"></use></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53">32</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px"><svg style="width:64px;height:64px;display:block"><use href="#mark-tile"></use></svg><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53">64</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div style="width:110px;height:110px;background:#191614;display:flex;align-items:center;justify-content:center"><svg style="width:36px;height:63px;display:block"><use href="#mark-light"></use></svg></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53" dir="ltr">REVERSED</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div style="width:110px;height:110px;background:#DCD1C0;border:1px solid #C9BCA6;display:flex;align-items:center;justify-content:center;position:relative">
+            <svg style="width:40px;height:70px;display:block;position:absolute;transform:translate(-3px,-3px)"><use href="#mark-emb-hi"></use></svg>
+            <svg style="width:40px;height:70px;display:block;position:relative"><use href="#mark-emb-lo"></use></svg>
+          </div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#625B53" dir="ltr">BLIND EMBOSS</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:36px;align-items:flex-start;border-top:1px solid #CFC7BA;padding-top:24px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#9A4E2A;flex:none;padding-top:2px" dir="ltr">SIZE RULE</span>
+        <p style="margin:0;font-size:15.5px;line-height:1.75;max-width:640px;text-wrap:pretty">الحدّ الأدنى للرمز المجرّد ٢٤ بكسل — أي أصغر من ذلك تتحول الوحدات إلى نقاطٍ غير مقروءة. أما أيقونة النظام والفافيكون فتستخدم صيغة المربّع: الرمز داخل حقلٍ حِبريّ بمسافةٍ مضغوطة، وهي الصيغة الوحيدة المسموحة عند ١٦ بكسل</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#F7F3EC;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A;letter-spacing:.1em">02</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">التركيبتان</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">Lockups · recommended vs fallback</span>
+  </div>
+  <div style="display:flex;gap:20px;align-items:flex-start;background:#EFE8DD;border-right:2px solid #9A4E2A;padding:18px 24px">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;color:#9A4E2A;flex:none;padding-top:3px" dir="ltr">PRODUCTION NOTE</span>
+    <p style="margin:0;font-size:15.5px;line-height:1.7;max-width:1100px">العربية معروضة هنا بضبطٍ طباعي مُحكم على خط Zain (مقاس، وتتبّع، ومقياس سطر) لا كرسمٍ متجهي نهائي. الرسم النهائي للوصف العربي وللبديل «أورجفت» يتطلب جلسة رسم حروف متجهية مع متخصص في الخط العربي — والانحراف مذكورٌ هنا صراحةً بدل تمريره</p>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:16px">
+      <span style="background:#9A4E2A;color:#F7F3EC;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;padding:4px 10px" dir="ltr">A · RECOMMENDED</span>
+      <span style="font-size:17px;color:#3A342E">الاسم بالحرف اللاتيني، والمعنى بالعربية — العربية هي الصوت الأكبر في التركيبة</span>
+    </div>
+    <div style="background:#EFE8DD;border:1px solid #CFC7BA;padding:72px 80px;display:flex;align-items:center;gap:56px">
+      <svg style="width:74px;height:130px;color:#191614;display:block;flex:none"><use href="#mark"></use></svg>
+      <div style="width:1px;height:130px;background:#CFC7BA;flex:none"></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:16px">
+        <span style="font-family:'IBM Plex Sans',sans-serif;font-size:58px;font-weight:600;letter-spacing:.24em;line-height:1;padding-right:.24em" dir="ltr">ORGFIT</span>
+        <div style="width:100%;height:1px;background:#191614"></div>
+        <span style="font-family:'Zain',sans-serif;font-size:40px;font-weight:700;line-height:1.15">منصة التشخيص والتطوير المؤسسي</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+      <div style="background:#191614;padding:44px 48px;display:flex;align-items:center;gap:28px;min-height:150px">
+        <svg style="width:40px;height:70px;display:block;flex:none"><use href="#mark-light"></use></svg>
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:9px">
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:26px;font-weight:600;letter-spacing:.26em;color:#EFE8DD;line-height:1;padding-right:.26em" dir="ltr">ORGFIT</span>
+          <span style="font-family:'Zain',sans-serif;font-size:20px;font-weight:400;color:#CFC7BA;line-height:1.2">التشخيص والتطوير المؤسسي</span>
+        </div>
+      </div>
+      <div style="background:#EFE8DD;border:1px solid #CFC7BA;padding:44px 48px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:14px;min-height:150px">
+        <div style="display:flex;align-items:center;gap:20px">
+          <svg style="width:26px;height:46px;color:#191614;display:block"><use href="#mark"></use></svg>
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:24px;font-weight:600;letter-spacing:.26em;line-height:1;padding-right:.26em" dir="ltr">ORGFIT</span>
+        </div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;color:#625B53" dir="ltr">ONE-LINE APP LOCKUP · UI BAR</span>
+      </div>
+      <div style="background:#EFE8DD;border:1px solid #CFC7BA;padding:36px 40px;display:flex;flex-direction:column;justify-content:center;gap:12px;min-height:150px">
+        <span style="font-family:'Zain',sans-serif;font-size:26px;font-weight:700;line-height:1.25">منصة التشخيص<br>والتطوير المؤسسي</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;color:#625B53" dir="ltr">DESCRIPTOR ALONE · DOCUMENT FOOT</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px;padding-top:12px">
+    <div style="display:flex;align-items:baseline;gap:16px">
+      <span style="border:1px solid #625B53;color:#625B53;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;padding:3px 10px;white-space:nowrap;flex:none" dir="ltr">B · FALLBACK</span>
+      <span style="font-size:17px;color:#3A342E">«أورجفت» نقلٌ صوتي لا معنى له في العربية — يُستخدم فقط إن أصرّ العميل على تعريب الاسم</span>
+    </div>
+    <div style="display:flex;gap:20px;align-items:stretch">
+      <div style="flex:1;background:#EFE8DD;border:1px solid #CFC7BA;padding:60px 72px;display:flex;align-items:center;gap:48px">
+        <svg style="width:60px;height:105px;color:#191614;display:block;flex:none"><use href="#mark"></use></svg>
+        <div style="width:1px;height:105px;background:#CFC7BA;flex:none"></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:12px">
+          <span style="font-family:'Zain',sans-serif;font-size:76px;font-weight:800;line-height:1;letter-spacing:-.01em">أورجفت</span>
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:15px;font-weight:500;letter-spacing:.34em;color:#625B53" dir="ltr">ORGFIT</span>
+        </div>
+      </div>
+      <div style="width:420px;flex:none;background:#EFE8DD;border:1px solid #CFC7BA;border-top:2px solid #9A4E2A;padding:36px 40px;display:flex;flex-direction:column;gap:14px;justify-content:center">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;color:#9A4E2A" dir="ltr">WHY A IS STRONGER</span>
+        <p style="margin:0;font-size:16px;line-height:1.75;text-wrap:pretty">في «أ» تحمل العربية الوصف المهني الذي يفهمه المجلس، ويبقى الاسم ثابتًا في المراسلات والأنظمة. في «ب» تُقرأ العربية كنقلٍ صوتي بلا دلالة، فتضعف السلطة المهنية للغلاف</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="width:1680px;background:#F7F3EC;border:1px solid #CFC7BA;padding:56px 64px;display:flex;flex-direction:column;gap:40px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #191614;padding-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:18px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#9A4E2A;letter-spacing:.1em">03</span><h2 style="margin:0;font-family:'Zain',sans-serif;font-size:38px;font-weight:700">المساحة الآمنة والحدّ الأدنى</h2></div>
+    <span style="font-family:'IBM Plex Sans',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#625B53" dir="ltr">Clear space = 1U · minimum sizes</span>
+  </div>
+  <div style="display:flex;gap:48px;align-items:stretch">
+    <div style="flex:1;min-width:0;background:#EFE8DD;border:1px solid #CFC7BA;padding:44px">
+      <div style="position:relative;padding:52px;border:1px dashed #9A4E2A">
+        <div style="position:absolute;inset:52px;border:1px solid #CFC7BA"></div>
+        <div style="position:absolute;top:14px;right:52px;left:52px;display:flex;align-items:center;justify-content:center;height:24px;color:#9A4E2A;font-family:'IBM Plex Mono',monospace;font-size:11px" dir="ltr">1U</div>
+        <div style="position:absolute;bottom:14px;right:52px;left:52px;display:flex;align-items:center;justify-content:center;height:24px;color:#9A4E2A;font-family:'IBM Plex Mono',monospace;font-size:11px" dir="ltr">1U</div>
+        <div style="position:absolute;right:8px;top:52px;bottom:52px;display:flex;align-items:center;color:#9A4E2A;font-family:'IBM Plex Mono',monospace;font-size:11px" dir="ltr">1U</div>
+        <div style="position:absolute;left:8px;top:52px;bottom:52px;display:flex;align-items:center;color:#9A4E2A;font-family:'IBM Plex Mono',monospace;font-size:11px" dir="ltr">1U</div>
+        <div style="display:flex;align-items:center;gap:40px;padding:22px 30px">
+          <svg style="width:52px;height:91px;color:#191614;display:block;flex:none"><use href="#mark"></use></svg>
+          <div style="width:1px;height:91px;background:#CFC7BA;flex:none"></div>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:11px">
+            <span style="font-family:'IBM Plex Sans',sans-serif;font-size:40px;font-weight:600;letter-spacing:.24em;line-height:1;padding-right:.24em" dir="ltr">ORGFIT</span>
+            <div style="width:100%;height:1px;background:#191614"></div>
+            <span style="font-family:'Zain',sans-serif;font-size:28px;font-weight:700;line-height:1.15">منصة التشخيص والتطوير المؤسسي</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:22px;font-size:16px;line-height:1.75">المساحة الآمنة تساوي وحدةً واحدة من ارتفاع الرمز، تُقاس من الحدّ الخارجي للتركيبة على الجهات الأربع، ولا يدخلها نصٌّ ولا صورة ولا حدّ صفحة</div>
+    </div>
+    <div style="width:520px;flex:none;display:flex;flex-direction:column;gap:20px">
+      <div style="background:#EFE8DD;border:1px solid #CFC7BA;padding:32px 36px;display:flex;align-items:center;gap:28px">
+        <div style="display:flex;align-items:flex-end;gap:16px;flex:none">
+          <svg style="width:16px;height:16px;display:block"><use href="#mark-tile"></use></svg>
+          <svg style="width:13px;height:24px;display:block"><use href="#mark"></use></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;color:#191614" dir="ltr">BARE MIN 24 PX · TILE 16 PX · PRINT 8 MM</div>
+          <div style="font-size:15px;color:#3A342E;line-height:1.6;margin-top:6px">الفافيكون وأيقونة النظام بصيغة المربّع، والرمز المجرّد للمقاسات الأكبر</div>
+        </div>
+      </div>
+      <div style="background:#EFE8DD;border:1px solid #CFC7BA;padding:32px 36px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <svg style="width:14px;height:24px;color:#191614;display:block;flex:none"><use href="#mark"></use></svg>
+          <span style="font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:.24em" dir="ltr">ORGFIT</span>
+        </div>
+        <div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em" dir="ltr">LOCKUP A · MIN 32 MM / 120 PX WIDE</div>
+          <div style="font-size:15px;color:#3A342E;line-height:1.6;margin-top:6px">دون هذا المقاس يُحذف الوصف العربي ويبقى الرمز وحده</div>
+        </div>
+      </div>
+      <div style="background:#EFE8DD;border:1px solid #CFC7BA;padding:32px 36px;display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;color:#9A4E2A" dir="ltr">PRINT NOTE</div>
+        <div style="font-size:15px;line-height:1.7;color:#3A342E">الوحدة الطينية تُطبع بلونٍ مفرد (Pantone 7523 C أو أقرب) ولا تُفصل رباعيًّا في المقاسات الصغيرة</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showConstruction&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Presentation&quot;},&quot;hairlineGrid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Presentation&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showConstruction: this.props.showConstruction ?? true,
+      hairlineGrid: this.props.hairlineGrid ?? true
+    };
+  }
+}
+</script>
+</body>
+</html>

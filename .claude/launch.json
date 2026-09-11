@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000,
+      "url": "http://127.0.0.1:3000"
+    },
+    {
+      "name": "dev:respondent",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:respondent"
+      ],
+      "port": 3001,
+      "url": "http://localhost:3001"
+    }
+  ]
+}

@@ -21,6 +21,7 @@ work/
 tmp/
 logs/
 *.log
+*.tsbuildinfo
 playwright-report/
 test-results/
 

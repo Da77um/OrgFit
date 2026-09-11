@@ -1,0 +1,53 @@
+name: Foundation checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_ADMIN_DATABASE_URL: postgresql://postgres:synthetic-ci-only@127.0.0.1:5432/postgres
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:directory
+      - run: npm run test:instruments
+      - run: npm run test:scoring
+      - run: npm run test:scoring-db
+      - run: npm run test:checkpoint-b
+      - run: npm run test:campaigns
+      - run: npm run test:respondent
+      - run: npm run test:privacy
+      - run: npm run test:checkpoint-c
+      - run: npm run test:disclosure
+      - run: npm run test:publication
+      - run: npm run test:recommendations
+      - run: npm run test:checkpoint-d
+      - run: npm run test:comparison
+      - run: npm run test:history
+      # The report renderer needs a browser build before its suite runs.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:reports
+      - run: npm run test:checkpoint-e
+      - run: npm run test:visits
+      - run: npm run build
+      - run: npm run check:boundaries
+      - run: npm run test:production
+      - run: mkdir -p work && npm run test:e2e
+      - run: npm audit --audit-level=high

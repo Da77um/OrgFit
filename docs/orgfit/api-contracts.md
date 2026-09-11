@@ -1,0 +1,137 @@
+# OrgFit API contracts — Phase 01
+
+2026-09-08 · Design specification, no endpoints implemented
+
+Phase 08 implementation note: [publication.md](publication.md) records the actual results contract. The implemented surface is `GET O/assessments/:round/results[/departments|/questions]` with `results.read`; `locale` is the only accepted query parameter and every other slice returns 400 UNSUPPORTED_FILTER. The SafeCell shape below is implemented with `band` added and `unit` drawn from a fixed set; `distribution` is `{kind,total,bins:[{key,label,count,share}]}`. Phase 10 implementation note: [history.md](history.md) records the actual history and comparison contract. Implemented: `GET O/history` (series list), `GET O/history/:series` (chronological rounds plus the automatic company trend), `GET O/comparisons[?seriesId=]`, `GET O/comparisons/:id`, `GET O/comparisons/proposal?left=&right=` and `POST O/comparisons`. Reads need `results.read`; the proposal and the review both additionally need `instruments.manage`. The Comparison DTO is implemented as `{id,classification,comparable,left,right,metricMappings,groupMappings,populationCaveats,rationale,reviewedBy,reviewedAt,cells:[{metricKey,groupKey,label,groupLabel,direction,status,reasonCode,left:SafeCell|null,right:SafeCell|null,pointChange,percentChange,improvement,improved}]}`, with `status` one of COMPARABLE/GAP/NOT_COMPARABLE and every numeric field null unless both sides are released and the mapped pair is still equivalent under the pinned definitions.
+
+Phase 09 implementation note: [recommendations.md](recommendations.md) records the actual recommendation contract. `GET O/assessments/:round/results/recommendations` is implemented as a fourth fixed view under the same `results.read` capability and the same `locale`-only query rule, returning `{items:[{id,groupKey,metricKey,ruleKey,ruleHash,rulesVersion,priority,dedupKey,exclusivityGroup,severity,text:{title,body,action,rationale},evidence:{schemaVersion,items:[{metricKey,groupKey,value,unit,band}]},action|null}],previewCount,rulesVersion,metrics}`. `PATCH O/recommendation-actions/:id` is implemented with `:id` as the **recommendation instance** identifier — the action row is one to one with the instance and is created on first save — taking `{status,ownerStaffId?,dueDate?,staffNotes?,resolution?}` with an idempotency key, `If-Match` on update, and a required resolution for `DONE`/`DISMISSED`.
+
+Phase 12 implementation note: [visits.md](visits.md) records the actual field-visit contract. Implemented: `GET/POST O/visits`, `GET/PATCH O/visits/:id`, `POST O/visits/:id/transition`, `POST O/visits/:id/follow-ups`, `PATCH O/visits/:id/follow-ups/:fid`, `GET O/follow-ups`, `GET O/visit-consultants`, `POST O/visits/:id/attachments`, `PUT O/visits/:id/attachments/:aid/content`, `GET .../download`, `GET .../preview` and `DELETE .../:aid` — all under `visits.manage` alone. Two departures from the design above. The attachment upload is **two** calls rather than three: the separate `POST .../complete` step is folded into the content `PUT`, which authorizes and quarantines the row before writing the object, so no ordering exists in which bytes are stored for a row the caller may not touch. And a completed visit's PATCH takes an `amendmentReason`, which the database requires rather than the route (D-088). Visit list filters are `from`, `to`, `consultantId`, `state` and `limit`; follow-up filters are `status`, `dueBefore`, `ownerStaffId` and `limit`; every other query parameter returns 400 UNSUPPORTED_FILTER.
+
+Phase 04 implementation note: [instruments.md](instruments.md) records the actual questionnaire API and persistence contract. Later proposed endpoints below remain unimplemented design references.
+
+Implementation note (Phase 03): the foundation and directory now implement a bounded subset. See [foundation.md](foundation.md) and [directory.md](directory.md) for actual routes. D-038 replaces the proposed asynchronous import/source-upload transport below with a 1 MiB/500-row synchronous JSON upload/review/commit flow; the privacy, authorization and transaction requirements are retained. Later-phase endpoints in this design remain unimplemented.
+
+## 1. Common contract
+
+Staff base `/api/v1`, public base `/public/v1` on a separate survey origin. `O` below expands to `/api/v1/organizations/:org`. All staff endpoints require active MFA-authenticated OrgFit session, current epoch and organization assignment or SUPER_ADMIN, then the listed capability. Super Admin has all capabilities but never raw-answer/draft access. No registration endpoint. Org creation, staff/access/policy administration and audits require Super Admin. Global instrument editing requires instruments.manage; org copies additionally require scope authorization. Inaccessible object substitution returns 404, missing capability on an accessible context 403.
+
+UUID route values are validated and resolved through scoped repositories; every nested ID must belong to org and its stated parent. Reject conflicting organization/group/actor input. Public input never determines org/group/score: unknown such fields are rejected 400 and no client value is trusted. This implements the blueprint's instruction to ignore client authority without silently accepting arbitrary properties. No staff endpoint returns anonymous response IDs, typed answers, individual scores, ciphertext or draft handles.
+
+Requests are UTF-8 JSON with unknown properties rejected, except actual binary file upload. Defaults: staff JSON<=2 MiB, public body<=2 MiB; public instrument has <=200 answer-bearing items and <=10000 invited members. Text fields default <=500 characters, prose<=5000; instrument limits may be lower. Builder validation rejects a configuration whose mandatory payload could exceed the finalization ceiling. Content is sanitized, not executable HTML. Body/type limits checked before expensive crypto/validation. Staff list default 25, max100, opaque cursor, allowlisted sort/filter; response `{items:[DTO],nextCursor:string|null}`. No unbounded database exports through list endpoints.
+
+Mutable update `If-Match: "revision"` required; absent precondition 400 PRECONDITION_REQUIRED, stale 409 REVISION_CONFLICT. Successful mutation returns updated DTO and ETag. Create/commit/job actions require UUID `Idempotency-Key`, scoped to active actor+organization+operation for 24h. Same key/same normalized non-secret request returns existing resource receipt; changed request returns 409 IDEMPOTENCY_CONFLICT. Always reauthorize before returning receipt. Global admin mutations use analogous access-scoped receipt. No stored request/response bodies, only safe hash/resource/status. Token issuance and public finalization explicitly override this rule below.
+
+Success shape `{data:DTO}` (lists as above); creation 201, async jobs 202 with `{id,state}`, synchronous success 200, deletion/logout 204. Error `{code:string,message:string,fieldErrors?:[{path,code,message}],administrativeRequestId?:uuid}`; last field staff-only. Public field errors identify question keys but never echo answers. Statuses: 400 MALFORMED/UNKNOWN_FIELD, 401 SESSION_REQUIRED, 403 FORBIDDEN, 404 NOT_FOUND, 409 revision/state conflict, 422 VALIDATION_FAILED, 429 RATE_LIMITED with Retry-After, 503 TEMPORARILY_UNAVAILABLE. No SQL details, participant enumeration or distributed-trace IDs in public output.
+
+Cookie-authenticated mutations require same-origin/CSRF validation; secure host-only HttpOnly cookies, restrictive CORS, no-store private/public session responses, no-referrer public pages. Staff `Accept-Language: ar|en` or saved locale chooses localized messages; ar default. Canonical decimal wire values are strings (no exponent, NaN or Infinity); dates ISO YYYY-MM-DD, instants RFC3339 UTC and explicit IANA timezone for scheduling. Arabic-Indic numerals normalized at input before sending canonical values; never score translated labels. Language switching changes presentation, not stored answers.
+
+The canonical decoded AnswerSet and draft plaintext cap is 1 MiB in addition to the HTTP ceiling; encrypted/base64 expansion must fit the body ceiling without truncation. Manual bulk link exports use the separately bounded encrypted export payload (16 MiB) and its transactional receipt, not the public JSON API body.
+
+## 2. Reusable DTOs (closed schemas)
+
+`?` marks optional input; `|null` explicit nullable output. Each mutable administrative DTO includes id, revision and allowed administrative timestamps. Sensitive completion DTO explicitly omits timestamps. Create shapes exclude all server-owned ID/org/actor/state/audit fields. PATCH allows only the same writable keys for that entity, never arbitrary schema columns. Exact database fields and JSON shape dictionaries are in [proposed-schema.md](proposed-schema.md).
+
+| DTO | Input / safe response shape |
+|---|---|
+| OrganizationInput / Organization | `{code,nameAr,nameEn?,industry?,contact?,timezone,notes?}` → same fields + id,revision,status. |
+| DepartmentInput / Department | `{code,nameAr,nameEn?,parentDepartmentId?:uuid|null}` → same + id,revision,status. Parent must be same org; reject cycles. |
+| ParticipantInput / Participant | `{privateReference,displayName,departmentId?:uuid|null,position?,jobLevel?,gender?,ageGroup?,yearsOfService?:decimal|null,contact?}` → same + id,revision,status. Never answer/history scores. |
+| Definition / Version | Full versioned instrument JSON from schema §8, including ordered sections/questions, options/matrix, dimensions/score definitions/bands/rules and locales; response id,revision,state,contentHash. Draft editing preserves stable keys unless deliberate duplicate; server creates fresh keys for duplication. No skip logic key allowed. |
+| SeriesInput / Series | `{nameAr,nameEn?,purpose,questionnaireFamilyId}` → id,revision,status plus fields. |
+| RoundInput / Round | `{seriesId,label,periodStart,periodEnd?,questionnaireVersionId,populationDefinition,notes?}` → id,revision,state,versionId,campaignId|null plus fields. |
+| CampaignInput / Campaign | `{roundId,questionnaireVersionId,target:{mode,participantId?|participantIds?|departmentId?},startsAt,endsAt:null|UTC,timezone,locales,privacyPolicyVersion,threshold}` → id,revision,state,releaseState,timing,frozenInvitedCount|null,versionId. Target is private and absent from respondent context. |
+| Participation | `{invitationId,participantId,displayReference,displayName,status:READY|COMPLETED|REVOKED,issued:boolean,generation:integer}`. No updated/completed time, response ID, draft status or score. Aggregate totals `{invited,completed,outstanding,revoked,eligible,rate:decimal|null}` with eligible=invited-revoked and null rate if zero. |
+| SafeCell | `{groupKey,metricKey,status,reasonCode:string|null,value:decimal|null,contributorCount:integer|null,coverage:decimal|null,direction:null|HIGH_GOOD|HIGH_RISK,unit,distribution:null|SafeDistribution}`. All sensitive numeric fields null unless AVAILABLE. Values never exist in hidden companion properties. |
+| Snapshot | `{id,revision,period,versions,groups:[safeGroup],cells:[SafeCell],recommendations:[safeInstance],methodology,limitations}`. Only PUBLISHED current nonrevoked release; no candidate/calculation endpoint. |
+| Comparison | `{id,classification,leftSnapshotId,rightSnapshotId,metricMappings,populationCaveats,cells:[{left:SafeCell,right:SafeCell,pointChange:decimal|null,improvement:decimal|null,status}]}`. Delta null unless both eligible and comparable. |
+| VisitInput / Visit | `{relatedRoundId?:uuid|null,assignedConsultantId,scheduledStart,scheduledEnd?:UTC|null,timezone,purpose,notes?,findings?,recommendations?,followUpDate?:date|null}` → id,revision,state,completedAt|null plus fields. |
+| Report / Export | `{id,state,locale?,format?,expiresAt,sourceVersionManifest?,downloadAvailable:boolean,errorCode?:safeCode}`; no storage path/signed secret. Named export never mixes snapshot data. |
+
+## 3. Staff endpoint inventory
+
+All `:id` reads return the named DTO; mutations enforce state-machines guards. GETs never change business state. Delete means unpublished-only removal where explicit; otherwise archive. Lists inherit pagination above. `directory.manage` governs directory exports in v1; participation.read/export remain separate. Read-only assigned-organization overview exposes operational counts only, not names absent directory/participation rights.
+
+| Method and path | Authority | Request → response / state and idempotency |
+|---|---|---|
+| GET /api/v1/auth/start; GET /api/v1/auth/callback | OIDC flow, no staff session yet | Bound state/nonce/PKCE; callback verifies issuer/audience/MFA then pre-existing enabled staff membership, issues session; failure generic 401. Never public account creation. |
+| POST /api/v1/auth/logout; GET/PATCH /api/v1/profile | Own staff | Logout revokes current session; profile `{locale}` only; IdP handles password/MFA recovery. |
+| GET/POST /api/v1/staff; GET/PATCH /api/v1/staff/:id | Super Admin | Create `{issuer,subject,email,displayName,role,capabilities,organizationIds}` for approved existing identity; PATCH membership/status/capabilities. Returns safe staff DTO, revokes sessions on disable/epoch change. No email sent. |
+| POST /api/v1/staff/:id/revoke-sessions | Super Admin | `{reason}` → epoch/status receipt; idempotent staff action. |
+| GET /api/v1/home; GET /api/v1/organizations | Staff | Authorized shortcuts/operational totals only; no pooled scores. |
+| POST /api/v1/organizations; PATCH O; POST O/archive | Super Admin for create/archive; directory.manage for edit | OrganizationInput / `{reason}` → Organization; revision and idempotency rules. |
+| GET O; GET O/overview | Assigned staff | Organization identity/operational summary plus links; results fetched separately with results.read. |
+| GET/POST O/departments; GET/PATCH O/departments/:id; POST .../:id/archive | directory.manage | DepartmentInput / `{reason}` → Department; tree/assigned org validation. |
+| GET/POST O/participants; GET/PATCH O/participants/:id; POST .../:id/archive | directory.manage | ParticipantInput / `{reason}` → Participant. GET invitation history separately requires participation.read; no answer history. |
+| POST O/imports; PUT O/imports/:id/source; POST .../:id/validate | directory.manage | Create `{filename,size,format:CSV|XLSX}` → import ID and authenticated upload path; upload bytes; validate `{mapping}` →202 job. Source MIME/size verified, quarantine scanned where applicable; no directory mutation. |
+| GET O/imports/:id; GET .../:id/errors; POST .../:id/commit | directory.manage | Validation preview `{validCount,errorCount,validationRevision,rows:boundedPreview}`; commit `{validationRevision,sourceDigest,confirmValidRows:true}` with revision/key → committed count/receipt. Newly conflicting records require new preview. Error file authorized private stream. |
+| POST O/directory-exports; GET O/private-exports/:id; GET .../:id/download | directory.manage for DIRECTORY; kind-specific otherwise | Allowlisted private directory filters →202 export; current capability enforced on each download. No analytic fields. |
+| GET/POST /api/v1/questionnaires; GET /api/v1/questionnaires/:id | instruments.manage, source scope | `{scope:GLOBAL|organizationId,nameAr,nameEn?}` → Questionnaire. Query scope only authorized one; templates marked illustrative. |
+| POST /api/v1/questionnaires/:id/clone; POST .../:id/archive | instruments.manage plus target scope | `{targetScope,nameAr}` / `{reason}` → new Questionnaire/archived receipt; source GLOBAL or same org. |
+| GET/POST /api/v1/questionnaires/:id/versions | instruments.manage | `{copyVersionId?:uuid}` → new draft Version; response list of versions. |
+| GET/PUT/DELETE /api/v1/questionnaires/:id/versions/:v | instruments.manage | PUT complete Definition with expected revision; DELETE only DRAFT and no refs. GET parent/version scope must match. |
+| PUT .../versions/:v/sections; /questions; /dimensions; /interpretations; /recommendations | instruments.manage | `{items:[correspondingDefinitionPart]}`; atomic replacement of that section against version revision; same full publish validators. No silent cross-version reference. |
+| POST .../versions/:v/publish; /retire | instruments.manage | `{}` / `{reason}` → Version; guarded immutable transition. |
+| POST .../versions/:v/preview | instruments.manage | `{syntheticAnswers:AnswerSet,locale}` → transient calculated synthetic scores/validation; no real invitation, persist or assessment results. Never accepts response IDs. |
+| GET/POST O/assessment-series; PATCH O/assessment-series/:id | campaigns.manage for write; results.read or campaigns.manage for list | SeriesInput → Series. |
+| GET/POST O/assessments; GET/PATCH O/assessments/:id | campaigns.manage for write, results.read or campaigns.manage read | RoundInput → Round. Version/collection definition editable only DRAFT; notes separately audited. |
+| POST O/campaigns; GET O/campaigns/:id | campaigns.manage | CampaignInput → Campaign; one campaign/round, invalid ownership 404/422. |
+| PATCH O/campaigns/:id | campaigns.manage | DRAFT fields only; later timing through dedicated endpoint. |
+| POST O/campaigns/:id/launch; /close; /cancel; /archive | campaigns.manage | Launch `{}`; other actions `{reason}`; launch creates no returned tokens. Receipt idempotent. Closure/cancel use campaign-first lock; no reopen endpoint. |
+| PUT O/campaigns/:id/end-date | campaigns.manage | `{endsAt:UTC|null}` → Campaign; exclusive end and non-reopening guards. |
+| GET O/campaigns/:id/participation | participation.read | Allowlisted READY/COMPLETED/REVOKED filters → Participation list and operational totals, no exact completion timing. |
+| POST O/campaigns/:cid/invitations/:id/issue; /rotate | campaigns.manage | `{expectedGeneration:integer}` (rotate also `{reason}`) → one-time `{url,generation,displayReference}`. No cached token receipt/body/hash. Under lock current generation must match; retries with previous generation return 409 TOKEN_ALREADY_ISSUED and current generation, never old plaintext. To recover lost reply, explicitly rotate still-READY invitation with new expected generation. |
+| POST .../invitations/:id/revoke | campaigns.manage | `{expectedGeneration,reason}` → status receipt; completed denial 409. |
+| POST O/campaigns/:id/link-exports | campaigns.manage | `{invitationIds:[uuid],expectedGenerations:[integer],confirmRotation:boolean}`; atomic sorted issuance/rotation plan →202 restricted encrypted file, expires<=24h. Invalid member/generation aborts entire plan. Explicit action can invalidate existing unused links, never completes invitations. |
+| POST O/campaigns/:id/participation-exports | participation.export | `{format:CSV|XLSX}` →202 private export; no answers, scores or final-response identifiers. |
+| GET O/assessments/:id/results; /results/departments; /results/questions; /results/recommendations | results.read | Only allow `locale` and fixed published group/metric keys appropriate to view. Unsupported slices return 400 UNSUPPORTED_FILTER. Before release 409 RESULTS_NOT_READY with safe release state; revoked 409 RESULTS_UNAVAILABLE. |
+| PATCH O/recommendation-actions/:id | results.read | `{status,ownerStaffId?,dueDate?,staffNotes?,resolution?}` expected revision → action. No automatic evidence edits. |
+| GET O/history; POST O/comparisons; GET O/comparisons/:id | results.read; review creation additionally instruments.manage | Create `{leftRoundId,rightRoundId,mapping,classification,rationale}` → immutable reviewed Comparison; incompatible may be documented but never produces numeric delta. Same series/org, no participant linking. |
+| POST O/reports; GET O/reports; GET O/reports/:id; GET .../:id/download | reports.manage AND results.read | `{snapshotId,comparisonIds:[],locale,format,commentary?,themeVersion}` →202 Report; available immutable sources only, no raw source option. Authenticated streaming rechecks access/source/expiry. |
+| GET/POST O/visits; GET/PATCH O/visits/:id | visits.manage | VisitInput → Visit; completed PATCH requires explicit amendment reason and preserves completion. |
+| POST O/visits/:id/transition | visits.manage | `{targetState,reason?}` expected revision → Visit. |
+| GET/POST O/visits/:id/follow-ups; PATCH .../follow-ups/:fid; GET O/follow-ups | visits.manage | `{title,ownerStaffId,dueDate,notes?,status?}` → action; same visit/org; query status/dueBefore only. |
+| POST O/visits/:id/attachments; PUT .../attachments/:aid/content; POST .../:aid/complete | visits.manage | `{filename,size,declaredType}` → authenticated upload path; stream bytes to quarantine; complete `{}` →202 scan; never trust browser checksum/type. |
+| GET O/visits/:id/attachments/:aid/download; DELETE .../:aid | visits.manage | CLEAN + current same-org permission; deletion expires/revokes access and queues governed cleanup, no arbitrary storage path. |
+| GET/PUT /api/v1/settings/:key; GET/POST /api/v1/retention-policies | Super Admin | Typed allowlisted new version and rationale; threshold>=5, no secrets returned; recording policy approval is explicit, not inferred from a default. |
+| GET /api/v1/audit; POST /api/v1/audit-exports | Super Admin | Bounded org/actor/action/time filters; sanitized audit only, never survey event search. |
+| GET /health/live; /health/ready | Infrastructure restricted readiness | Liveness coarse OK; readiness exposes no DB credentials, provider identifiers or data. |
+
+## 4. Public input/answer schema
+
+`AnswerSet` is `{versionId:uuid,answers:[{questionKey:string,value:AnswerValue}]}`; each question key appears once. All mandatory questions present, optional absent means missing. Section CONTENT has no answer. Matrix value contains each required fixed row exactly once. All stable option/row keys must belong to the pinned version. No client timestamps, score, organization, department, participant or session ID in answers.
+
+| Type | AnswerValue |
+|---|---|
+| SHORT_TEXT/LONG_TEXT | `{type:"text",text:string}` with trimmed blank test and configured length (500/5000 defaults) |
+| MULTIPLE_CHOICE/DROPDOWN | `{type:"choice",optionKey:string}` |
+| CHECKBOXES | `{type:"choices",optionKeys:[unique string]}` with configured min/max |
+| YES_NO | `{type:"boolean",value:boolean}` |
+| RATING_5/RATING_10 | `{type:"rating",value:integer}` within 1..5 or 1..10 |
+| NUMBER | `{type:"number",value:decimalString}` finite, within bounds and precision |
+| DATE | `{type:"date",value:ISODate}` valid calendar day within configured range |
+| MATRIX | `{type:"matrix",rows:[{rowKey:string,columnKey:string}]}` unique known fixed rows/columns |
+
+Public context `{access:NOT_YET_OPEN|OPEN|CLOSED|UNAVAILABLE|ACCEPTED,instrument?:PublicInstrument,locales:[ar|en],notice:i18n,endsAt:UTC|null}`. PublicInstrument contains title/introduction/sections/prompts/options/help/required/input-validation only, not scoring/rules/roster. Status/accepted responses omit form where no longer accessible.
+
+| Method and path | Request and authorization | Response and invariants |
+|---|---|---|
+| POST /public/v1/invitations/exchange | `{token:base64url}` from URL fragment, optional locale; >=256-bit token. Edge/body logs disabled. | 200 context + short-lived host-only session cookie; no token echo or identity. Invalid/revoked generic 401/UNAVAILABLE. Opening never consumes. Remove fragment via replaceState immediately after reading. |
+| GET /public/v1/status | Current invitation cookie, no input IDs | 200 `{access}`; completed current session returns ACCEPTED even if campaign now closed; no answers. |
+| POST /public/v1/session/refresh | Current unexpired session, CSRF; no resume secret | 200 generic renewed session within absolute limit; current generation checked. Expired absolute limit requires original link exchange. |
+| POST /public/v1/draft | Current OPEN/READY session; `{handle:uuid,cipherVersion:"DF1",nonce:base64url,ciphertext:base64url,expectedRevision:0}` | 201 `{handle,revision:1,expiresAt}`. Browser creates random handle/key; server binds handle to invitation. Existing draft 409 DRAFT_EXISTS without contents; collision rejected. |
+| PUT /public/v1/draft | Same session; `{handle,cipherVersion,nonce,ciphertext,expectedRevision>=1}` | 200 `{handle,revision:next,expiresAt}` after durable write. 409 DRAFT_CONFLICT; never acknowledge saved before commit. No key/plaintext. |
+| POST /public/v1/resume | Current OPEN/READY session; `{handle}` only, parsed from private code locally | 200 `{handle,cipherVersion,nonce,ciphertext,revision,expiresAt}` if bound/current/nonexpired. Secret never submitted; invalid handle generic 404 DRAFT_UNAVAILABLE. Original link alone cannot decrypt even if it could obtain ciphertext. |
+| POST /public/v1/draft/start-over | Current OPEN/READY session; `{confirmDiscard:true}` | 204 after invalidate/delete old draft; does not reveal handle or contents. New POST draft creates new key/handle. Any old concurrent saves fail. |
+| POST /public/v1/review | Current OPEN/READY session, AnswerSet; not a persistence API | 200 `{valid:boolean,fieldErrors:[],answeredCount,requiredCount}`; transient gateway validation only, no scoring, body echo/cache/log or completion. UI review displays its own local answers. Finalize repeats validation; review is not a reservation or authorization token. |
+| POST /public/v1/finalize | Current session + AnswerSet; CSRF, current generation, pinned version | 200 `{access:"ACCEPTED"}` only after atomic durable acceptance; repeated completed requests return same generic body without comparing stored payload. 422 invalid answers does not consume, 409 collection unavailable, 503 uncertainty/retry. No idempotency-key cache, submission ID or acceptance timestamp. |
+
+The original invitation link plus private resume code is required on a new device; the code is not an account or standalone login credential. DF1 key/handle decoding stays in browser memory; only handle traverses resume endpoint. Local completion success clears local resume material; lost success response is resolved by status and then local cleanup.
+
+Rate limits start with blueprint exchange 30/min transient IP +10/min keyed token bucket; draft30/min/session; final5/min/session. Review10/min/session; tune for shared NAT/accessibility using aggregate counters. No rate-limit event consumes invitation. Abuse buckets short TTL (development 10min), never copied to anonymous data. These values and session TTLs in privacy protocol need operational verification, not inferred production acceptance.
+
+## 5. Negative cases and compatibility
+
+Contract tests must include foreign org and foreign parent UUIDs, disabled/revoked permissions between job request/run/download, unsupported filters, stale revisions and repeated mutation keys, malformed decimal/date/unknown item, public trace/body leakage, token lost-reply rotation, original-link draft confidentiality, close/end races and rejected replay after finalization. PDF/XLSX and all chart/tooltips use the same Snapshot/SafeCell contract; no alternate raw source endpoint exists. Staff result/participation files remain distinct.
+
+Wire version v1 and schemaVersion 1 are development contracts. Breaking changes require a new version plus persisted instrument compatibility review, not silent reinterpretation. No endpoints, tests or authentication provider were implemented in Phase 01.
