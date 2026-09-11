@@ -1202,7 +1202,11 @@ Brings the whole product up on **staff `http://127.0.0.1:3100`**, **respondent `
 
 ### Commit
 
-`95c72fa` — unchanged. This session created no commit.
+`57a2d3a` — **Add the implementation through Phase 12 and the UI/UX design-system pass**, on `main`, parent `95c72fa`.
+
+This is the first commit to carry any code. `95c72fa` held only the blueprint and the phased workflow; everything Phases 02–12 produced had been left uncommitted in the working tree across sessions, so this one commit records that body of work together with the design pass made on top of it. It is a single commit because the earlier phases' history cannot be reconstructed after the fact — not because they belong together. 238 files. The repository has no remote and nothing was pushed.
+
+`.gitignore` keeps `work/`, `node_modules/`, `.next/` and every `.env.*` out; only the two `.env*.example` templates are tracked, and they carry placeholders. `.gitattributes` pins `*.sql` to LF, and the stored migration blobs were checked to contain no CR, so the migration checksums are stable across a Windows or Linux checkout.
 
 ### Exact next action
 
