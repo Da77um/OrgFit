@@ -9,15 +9,23 @@ import {
   flowCookie,
   cookieOptions,
 } from "../../../../../../src/auth";
+import {
+  activateInvitation,
+  authenticate,
+  inspectInvitation,
+} from "../../../../../../src/local-auth";
+import { checkPasswordPolicy } from "../../../../../../src/password";
 import { readConfig } from "../../../../../../src/config";
 import { withStaff, requireAccess } from "../../../../../../src/db";
 import {
   AppError,
   accessInput,
   createStaffInput,
+  invitationInput,
   checkMutation,
   digest,
   jsonInput,
+  secret,
   uuid,
 } from "../../../../../../src/security";
 import { response, safeError, requestLocale } from "../../../../../../src/http";
@@ -67,7 +75,9 @@ async function handle(req: Request, ctx: Context) {
           jar.get(flowCookie())?.value,
         );
         const profile = await withStaff(token, async (_tx, p) => p);
-        const res = NextResponse.redirect(`${config.STAFF_ORIGIN}/`);
+        // `/` is the public overview page; the workspace lives behind its own
+        // protected route and is where an authenticated staff member lands.
+        const res = NextResponse.redirect(`${config.STAFF_ORIGIN}/workspace`);
         res.cookies.set(sessionCookie(), token, {
           ...cookieOptions(),
           maxAge: 43200,
@@ -83,6 +93,71 @@ async function handle(req: Request, ctx: Context) {
         res.cookies.set(flowCookie(), "", { ...cookieOptions(), maxAge: 0 });
         return res;
       }
+    }
+    // --- local access: sign in, inspect an invitation, activate ------------
+    //
+    // These three are pre-session by necessity. They carry the same
+    // same-origin and JSON checks every other mutation does (checkMutation
+    // above), and each one refuses outright unless the database's local access
+    // switch is on — see db/migrations/016_local_access.sql.
+    if (req.method === "POST" && path === "auth/password") {
+      const data = await jsonInput(
+        req,
+        z
+          .object({
+            email: z.string().trim().min(3).max(320),
+            password: z.string().min(1).max(200),
+          })
+          .strict(),
+      );
+      const result = await authenticate(data.email, data.password);
+      if (result.outcome === "RATE_LIMITED")
+        throw new AppError("RATE_LIMITED", 429);
+      // One reply for a wrong password and for an address that is not staff.
+      if (result.outcome !== "SIGNED_IN")
+        throw new AppError(
+          result.outcome === "UNAVAILABLE"
+            ? "TEMPORARILY_UNAVAILABLE"
+            : "SESSION_REQUIRED",
+          result.outcome === "UNAVAILABLE" ? 503 : 401,
+        );
+      const profile = await withStaff(result.token, async (_tx, p) => p);
+      const res = response({ redirect: "/workspace" });
+      res.cookies.set(sessionCookie(), result.token, {
+        ...cookieOptions(),
+        maxAge: 43200,
+      });
+      res.cookies.set("orgfit-locale", profile.locale, {
+        ...cookieOptions(),
+        maxAge: 31536000,
+      });
+      return res;
+    }
+    if (req.method === "POST" && path === "auth/invitation") {
+      const data = await jsonInput(
+        req,
+        z.object({ token: z.string().max(200) }).strict(),
+      );
+      return response(await inspectInvitation(data.token));
+    }
+    if (req.method === "POST" && path === "auth/activate") {
+      const data = await jsonInput(
+        req,
+        z
+          .object({
+            token: z.string().max(200),
+            displayName: z.string().trim().min(1).max(500),
+            password: z.string().min(1).max(200),
+          })
+          .strict(),
+      );
+      // The policy is enforced here as well as advertised on the screen, so a
+      // request that skipped the form cannot install a weaker credential.
+      if (checkPasswordPolicy(data.password))
+        throw new AppError("VALIDATION_FAILED", 422);
+      return response(
+        await activateInvitation(data.token, data.displayName, data.password),
+      );
     }
     if (req.method === "POST" && path === "locale") {
       const data = await jsonInput(
@@ -162,6 +237,58 @@ async function handle(req: Request, ctx: Context) {
             ).rows[0].data,
             nextCursor: null,
           });
+        // --- staff invitations ------------------------------------------
+        // The only way a new staff account comes into existence on the local
+        // path. The role, the capabilities and the organizations are the
+        // administrator's choice and are frozen onto the invitation row; the
+        // person activating it supplies a name and a password and nothing else.
+        if (req.method === "GET" && path === "staff/invitations") {
+          if (profile.role !== "SUPER_ADMIN")
+            throw new AppError("FORBIDDEN", 403);
+          return response({
+            items: (
+              await sql<{
+                data: unknown;
+              }>`select access.list_invitations() as data`.execute(tx)
+            ).rows[0].data,
+            nextCursor: null,
+          });
+        }
+        if (req.method === "POST" && path === "staff/invitations") {
+          if (profile.role !== "SUPER_ADMIN")
+            throw new AppError("FORBIDDEN", 403);
+          const body = await jsonInput(req, invitationInput);
+          const idem = uuid.safeParse(req.headers.get("idempotency-key"));
+          if (!idem.success) throw new AppError("PRECONDITION_REQUIRED", 400);
+          // The secret is generated here, stored only as a digest, and returned
+          // exactly once — the same shape the respondent invitation uses. It is
+          // not sent anywhere: the administrator delivers it out of band.
+          const token = secret();
+          const created = await sql<{
+            id: string;
+          }>`select access.create_invitation(${digest(token)},${JSON.stringify(body)}::jsonb,${idem.data}::uuid,${digest(JSON.stringify(body))}) as id`.execute(
+            tx,
+          );
+          return response(
+            {
+              id: created.rows[0].id,
+              url: `${config.STAFF_ORIGIN}/activate#${token}`,
+            },
+            201,
+          );
+        }
+        if (
+          req.method === "POST" &&
+          /^staff\/invitations\/[\w-]+\/revoke$/.test(path)
+        ) {
+          if (profile.role !== "SUPER_ADMIN")
+            throw new AppError("FORBIDDEN", 403);
+          await jsonInput(req, z.object({}).strict());
+          await sql`select access.revoke_invitation(${uuid.parse(path.split("/")[2])}::uuid)`.execute(
+            tx,
+          );
+          return new NextResponse(null, { status: 204 });
+        }
         if (
           (req.method === "POST" && path === "staff") ||
           (req.method === "PATCH" && /^staff\/[\w-]+$/.test(path))

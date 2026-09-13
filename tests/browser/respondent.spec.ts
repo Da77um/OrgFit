@@ -18,7 +18,7 @@ async function issueLink(page: Page) {
   await page.getByRole("link", { name: "المتابعة عبر موفر الهوية" }).click();
   await page.getByLabel("Identity").selectOption("admin");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(`${STAFF}/`);
+  await expect(page).toHaveURL(`${STAFF}/workspace`);
 
   const headers = () => ({ Origin: STAFF, "Idempotency-Key": randomUUID() });
   const base = `${STAFF}/api/v1/organizations/${ids.orgA}`;

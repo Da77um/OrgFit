@@ -53,7 +53,10 @@
     "attachments:scan": "tsx scripts/scan-attachments.ts",
     "attachments:expire": "tsx scripts/expire-attachments.ts",
     "test:visits": "tsx --test --test-concurrency=1 tests/visits.test.ts",
-    "showcase": "tsx scripts/showcase.ts"
+    "showcase": "tsx scripts/showcase.ts",
+    "db:provision-dev": "tsx scripts/provision-dev.ts",
+    "db:bootstrap-dev-admin": "tsx scripts/bootstrap-dev-admin.ts",
+    "test:access": "tsx --test --test-concurrency=1 tests/access.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1128.0",

@@ -26,6 +26,27 @@ export const accessInput = z
       .refine((a) => new Set(a).size === a.length),
   })
   .strict();
+// A staff invitation. The administrator decides every field here; the person
+// activating the account supplies only a display name and a password, and the
+// activation routine reads the role and access back off this row rather than
+// off anything the activating request sends. `expiresInHours` is bounded so an
+// invitation cannot be issued that effectively never expires.
+export const invitationInput = z
+  .object({
+    email: z.email().max(320),
+    role: z.enum(["SUPER_ADMIN", "STAFF"]),
+    capabilities: z
+      .array(z.enum(capabilities))
+      .max(8)
+      .refine((a) => new Set(a).size === a.length),
+    organizationIds: z
+      .array(uuid)
+      .max(100)
+      .refine((a) => new Set(a).size === a.length),
+    locale: z.enum(["ar", "en"]).default("ar"),
+    expiresInHours: z.int().min(1).max(168).default(72),
+  })
+  .strict();
 export const createStaffInput = accessInput.extend({
   issuer: z.url().max(500),
   subject: z.string().min(1).max(500),

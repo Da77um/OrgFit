@@ -13,7 +13,7 @@ async function login(page: Page) {
   await page.getByRole("link", { name: "المتابعة عبر موفر الهوية" }).click();
   await page.getByLabel("Identity").selectOption("admin");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL("http://127.0.0.1:3000/");
+  await expect(page).toHaveURL("http://127.0.0.1:3000/workspace");
   await page.request.patch("/api/v1/profile", {
     headers: { Origin: "http://127.0.0.1:3000" },
     data: { locale: "ar" },

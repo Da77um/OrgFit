@@ -23,7 +23,7 @@ async function login(page: Page) {
   await page.getByRole("link", { name: "المتابعة عبر موفر الهوية" }).click();
   await page.getByLabel("Identity").selectOption("admin");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(`${STAFF}/`);
+  await expect(page).toHaveURL(`${STAFF}/workspace`);
 }
 
 // A scan run under the scanner's own credential, exactly as the operator script

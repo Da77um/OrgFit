@@ -15,6 +15,10 @@ const codes: Record<string, number> = {
   IMPORT_EXPIRED: 409,
   IMPORT_CHANGED: 409,
   PRECONDITION_REQUIRED: 400,
+  // Phase: landing and local access. A throttled sign-in is neither a bad
+  // request nor a wrong password; the caller is told to wait, and is told the
+  // same thing whether or not the address exists.
+  RATE_LIMITED: 429,
   VALIDATION_FAILED: 422,
   // Phase 12. A visit that cannot move where the caller asked, and an
   // attachment that has not been proven clean, are both conflicts rather than
@@ -60,11 +64,13 @@ export function safeError(error: unknown, locale: Locale = "ar") {
           ? m.notFound
           : status === 409
             ? m.conflict
-            : status === 413
-              ? m.tooLarge
-              : status < 500
-                ? m.invalid
-                : m.unavailable;
+            : status === 429
+              ? m.rateLimited
+              : status === 413
+                ? m.tooLarge
+                : status < 500
+                  ? m.invalid
+                  : m.unavailable;
   return NextResponse.json(
     { code, message },
     { status, headers: { "Cache-Control": "no-store" } },

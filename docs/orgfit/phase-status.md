@@ -1,6 +1,6 @@
 # OrgFit phase status
 
-Updated: 2026-09-10
+Updated: 2026-09-13
 
 ## Current position
 
@@ -11,6 +11,8 @@ Updated: 2026-09-10
 **This is not production readiness, not a privacy approval and not a proof of anonymity.** A per-person score is derivable from published output by design and with the owner's knowledge, and **an independent privacy reviewer has not yet seen CE-001** — P-008 still requires that before real respondent data is collected. The privacy processor still decrypts every accepted answer for an eligible campaign; that is an explicit trust assumption, not a cryptographic property. The key custody adapter is a local development stand-in with no backup-safe crypto-erasure. The disclosure controls are k-thresholding plus complementary and homogeneity suppression — not differential privacy. Recommendation texts, band names and report wording are synthetic and illustrative. P-001 through P-008 remain unapproved, P-009 is answered, and P-010 is new and open. Uploaded visit attachments are type-verified and heuristically scanned, not scanned by an antivirus engine.
 
 Phase 12 adds a **new** production input: **P-010**, a maintained malware scanning engine for visit attachments. The bundled scanner is a content verifier — magic-byte typing, OOXML part inspection and the EICAR marker — and no deployment may treat its `CLEAN` verdict as a malware guarantee.
+
+**2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
 Next step: **Phase 13 — localization, mobile, accessibility and complete journey refinement**, as development work only, using its prompt and [visits.md](visits.md), [respondent.md](respondent.md) and [foundation.md](foundation.md). Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
@@ -1212,6 +1214,77 @@ This is the first commit to carry any code. `95c72fa` held only the blueprint an
 
 **Phase 13 — localization, mobile, accessibility and complete journey refinement**, as the Phase 12 handoff already directed. Read its prompt with [respondent.md](respondent.md), [foundation.md](foundation.md) and [visits.md](visits.md), and start from the "Remaining UI/UX work" list above: the report renderer's typography, a real accessibility audit with a tool and a screen reader, the visit screens' keyboard and screen-reader pass, and tablet widths. The design system those phases should build on is `src/theme.css`, `src/ui.tsx` and `apps/staff/app/shell.tsx`; new screens should reach for its components rather than restating markup.
 
+
+## Branded landing page, authentication, and development admin bootstrap — 2026-09-13 — COMPLETE (development)
+
+**This is not Phase 13, and Phase 13 is not started.** The owner asked for a public overview page in the existing identity, an email/password staff sign-in, invitation-only staff activation as the scoped meaning of "signup", and a seeded local Super Admin. The internal-only access model is unchanged: no public registration, no client or respondent accounts. Full record: [landing-and-access.md](landing-and-access.md). Decisions: D-100 … D-106.
+
+**The password path is development-only.** A password session satisfies no second factor. Migration 016 leaves it switched off; only the development bootstrap, which refuses production and non-loopback databases, turns it on. Production authentication is still OIDC with MFA under P-005.
+
+### Brand references and installed skills used
+
+- [docs/identityreference/](../identityreference/) through the existing token layers in `src/theme.css` and components in `src/ui.tsx` (the `Mark`, ink/limestone/clay, Zain / IBM Plex Sans Arabic / IBM Plex Mono, zero radius, hairline rules, the greyscale-proof rule, the 120px descriptor rule). No new colour, face or token was introduced.
+- Skill `anthropic-skills:impeccable` (read and applied: persuade-mode page, no eyebrow labels on the landing, no identical-card grid, one authored motion moment, drawn icons, contrast/focus/state floor). `anthropic-skills:frontend-design` was listed but not separately loaded. No dedicated accessibility-audit skill or tool (axe, Lighthouse, screen reader) was available or run.
+
+### Routes and screens
+
+`/` public overview page (header with lockup, section nav, AR/EN switch, sign-in; hero with a labelled synthetic figure; capabilities; workflow; privacy with its limit; product panels; FAQ; closing action; footer). `/workspace` — the former home, moved. `/login` — email/password + identity provider + generic errors, 429 state, expired-session state. `/activate#<token>` — missing, invalid, expired, used, withdrawn, valid form, activated. APIs: `POST /api/v1/auth/password`, `/auth/invitation`, `/auth/activate`; Super Admin `GET/POST /api/v1/staff/invitations`, `POST …/:id/revoke`.
+
+### Changed files and migrations
+
+New: `db/migrations/016_local_access.sql`; `src/password.ts`, `src/password-policy.ts`, `src/local-auth.ts`, `src/landing-i18n.ts`, `src/landing.css`; `apps/staff/app/page.tsx` (overview), `landing-ui.tsx`, `figures.tsx`, `login/login-form.tsx`, `activate/page.tsx`, `activate/activate-form.tsx`; `scripts/bootstrap-dev-admin.ts`, `scripts/provision-dev.ts`; `.env.bootstrap.example`; `tests/access.test.ts`, `tests/browser/access.spec.ts`; `docs/orgfit/landing-and-access.md`.
+
+Moved: `apps/staff/app/page.tsx` → `apps/staff/app/workspace/page.tsx`.
+
+Modified: `apps/staff/app/api/v1/[...path]/route.ts` (three pre-session endpoints, invitation administration, OIDC callback lands on `/workspace`), `login/page.tsx`, `shell.tsx` and the organization/questionnaire pages (links to `/workspace`, `?expired=1`), `src/i18n.ts`, `src/http.ts` (`RATE_LIMITED` 429), `src/security.ts` (`invitationInput`), `package.json` (`db:provision-dev`, `db:bootstrap-dev-admin`, `test:access`), browser specs re-pointed from `/` to `/workspace` (assertions unchanged in force), `README.md`, `decisions.md`, this file.
+
+Migration 016 restates the audit action/field CHECK lists from 015 plus `INVITATION_CREATED`, `INVITATION_ACCEPTED`, `PASSWORD_SET` and `password`; replaces `access.actor()`; relaxes `staff_session_mfa_verified_check` for `auth_method='PASSWORD'` only. Migrations 001–015 are untouched.
+
+### Seed outcome
+
+A persistent local database `orgfit_dev` was provisioned on the loopback development cluster (127.0.0.1:55432) and the development Super Admin was **created** with the requested address, role `SUPER_ADMIN` and display name. A second run reported **already present** and changed nothing. The credential was read from the ignored `.env.bootstrap`, is not in any tracked file, log, screenshot or document, and the password met the enforced policy. (The scratch `orgfit_dev` created minutes earlier in the same session was dropped once and re-provisioned to correct migration 016 before it was ever committed; it held no work.)
+
+Real sign-in was verified over HTTP against the running application: correct credentials → 200 with the session cookie; `/api/v1/profile` → `SUPER_ADMIN`, the requested display name; `/workspace` → 200; Super Admin API → 200; wrong password → 401; unknown address → 401 with the same message; cross-origin POST → 403; logout → 204, then profile 401 and `/workspace` → `/login?expired=1`; anonymous `/workspace` → `/login`; anonymous API → 401; `/` → 200.
+
+### Tests and visual checks actually completed
+
+Local PostgreSQL 18.4 loopback cluster, Node 24.13.1, Chromium via Playwright, Windows 11.
+
+| Check | Result |
+|---|---|
+| `npm run test:access` (A-0 … A-7) | **8 passed** |
+| `npm test`, `test:integration`, `test:directory`, `test:instruments`, `test:scoring`, `test:scoring-db`, `test:checkpoint-b`, `test:campaigns`, `test:respondent`, `test:privacy`, `test:checkpoint-c`, `test:disclosure`, `test:publication`, `test:recommendations`, `test:checkpoint-d`, `test:comparison`, `test:history`, `test:reports`, `test:checkpoint-e`, `test:visits` | all pass (5/8/6/8/15/5/3/18/24/17/21/16/13/13/18/13/8/17/11/14) with migration 016 applied |
+| `npx playwright test` (all specs, including 4 new) | **32 passed** (final full run, after the last repairs) |
+| `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:boundaries` | clean |
+
+Visual and behavioural inspection (dev server against `orgfit_dev`, plus scripted Chromium): Arabic RTL and English LTR at 1440px; 768px; 720px (the 200%-zoom equivalent of 1440); 375px and 320px — no horizontal overflow on `/`, `/login`, `/activate`; an injected 40-character unbroken Arabic run in the hero at 320px; mobile menu open/close, Escape returns focus; keyboard tab order skip link → brand → four section links → language → sign-in, each with the 3px clay outline; reduced motion (`animation-name: none`, `scroll-behavior: auto`) vs. the one load-time animation otherwise; login generic error; activation missing state. Production build started **unconfigured**: `/`, `/login`, `/activate`, `/workspace` all 200 with no console CSP violation and no product `style` attribute (in development, the only `[style]` elements are Next's overlay, as in the design pass).
+
+Defects found by this verification and repaired: unknown address answered **503 instead of 401** (an enumeration signal); mobile menu rendered open (`display:grid` beat `[hidden]`); menu sign-in button text nearly invisible (link colour beat button colour); footer descriptor muted-on-ink; workspace `main` padding opened a gap under the header; Arabic figure labels clipped outside the SVG (text anchor wrongly swapped under RTL); unbroken text could widen a 320px page; `/login` **threw 500** when configuration was absent (it rendered an unavailable state before this change); activation ignored a second link pasted into the same tab (fragment-only change); `local_access_enabled()` was not granted to `orgfit_auth`.
+
+### Required checks not run
+
+- No automated accessibility audit (axe/Lighthouse), no screen reader, no measured contrast audit beyond reading the token pairs; no WCAG conformance claim.
+- No real browser zoom — 200% was checked as the equivalent CSS viewport width.
+- Rate limiting's screen was checked with a stubbed 429; the lock itself is tested at database level (A-5), not through the browser.
+- No timing measurement of the equal-cost rejection path; it is equal by construction only.
+- MFA for password sessions: none exists, by design; not a check that could pass.
+- Remote CI has not run.
+
+### Remaining defects and environment limitations
+
+- **No screen for issuing staff invitations** — the API exists (Super Admin), the UI does not.
+- The test harness resets LOGIN role passwords on whatever cluster it uses; with `orgfit_dev` on the same cluster, rerun `scripts/provision-dev.ts` (same `DEV_ROLE_PASSWORD`) after tests. Documented.
+- The hero figure's SVG text becomes small at 320–375px; it is labelled for assistive technology and is illustrative, but it is not comfortably readable at that width.
+- Crash recovery of the local cluster after the machine restart took about eight minutes because the harness retains every test database.
+- P-005 (production identity provider and MFA) is unchanged and still open; nothing here is production authentication.
+
+### Commit
+
+Recorded in the commit that adds this entry, on `main`. No remote, nothing pushed, nothing deployed, no message or invitation sent.
+
+### Exact next action
+
+**Phase 13 — localization, mobile, accessibility and complete journey refinement**, unchanged from the design-pass handoff, now also covering the overview, sign-in and activation screens, and adding an invitation-issuing screen for Super Admins if the owner wants one before Phase 14.
 
 ## Handoff format for subsequent steps (template)
 

@@ -13,7 +13,9 @@ test("anonymous APIs and staff page denied; respondent build has no staff API", 
   request,
 }) => {
   expect((await request.get("/api/v1/profile")).status()).toBe(401);
-  await page.goto("/");
+  // "/" is the public overview page now; the workspace moved to /workspace and
+  // is still refused without a session.
+  await page.goto("/workspace");
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "ar");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
@@ -39,7 +41,7 @@ test("real signed OIDC login, org scoping, persistent AR/EN, CSRF, logout and mo
   request,
 }) => {
   await login(page);
-  await expect(page).toHaveURL("http://127.0.0.1:3000/");
+  await expect(page).toHaveURL("http://127.0.0.1:3000/workspace");
   await expect(page.getByText("منظمة تجريبية أ")).toBeVisible();
   await expect(page.getByText("منظمة تجريبية ب")).toHaveCount(0);
   await page.getByLabel("اللغة").selectOption("en");
@@ -116,7 +118,7 @@ test("disabling a logged-in staff member denies the next request", async ({
   page,
 }) => {
   await login(page);
-  await expect(page).toHaveURL("http://127.0.0.1:3000/");
+  await expect(page).toHaveURL("http://127.0.0.1:3000/workspace");
   const { migration } = JSON.parse(
     await readFile("work/e2e-fixture.json", "utf8"),
   );

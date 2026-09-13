@@ -10,7 +10,7 @@ test("AR/EN scoring sandbox, golden score, boundary inputs, no posts and reload 
   await page.getByRole("link", { name: "المتابعة عبر موفر الهوية" }).click();
   await page.getByLabel("Identity").selectOption("admin");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL("http://127.0.0.1:3000/");
+  await expect(page).toHaveURL("http://127.0.0.1:3000/workspace");
   const localeResponse = await page.request.patch("/api/v1/profile", {
     headers: { Origin: "http://127.0.0.1:3000" },
     data: { locale: "ar" },

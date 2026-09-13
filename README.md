@@ -34,6 +34,7 @@ Run phases sequentially. If a tool creates an isolated checkout, ensure the prev
 | [Field visits](docs/orgfit/visits.md) | Visit lifecycle, follow-up actions, and private attachments: the quarantine, the scanner credential, and what a visit may never name. |
 | [Checkpoint E](docs/orgfit/checkpoint-e.md) | History and report consistency gate: what passed, the chart-label repair, and the differencing finding the owner accepted and declared. |
 | [Recommendations](docs/orgfit/recommendations.md) | Deterministic rules, the evaluator's UNKNOWN handling, immutable instances and the separate staff action record. |
+| [Overview and access](docs/orgfit/landing-and-access.md) | Public overview page, development-only password sign-in, invitation-only activation and the local administrator bootstrap. |
 
 ## Product boundaries
 
@@ -120,3 +121,9 @@ Attachments are private, bounded and quarantined. An upload mints a **generated*
 The bundled scanner is a **content verifier, not an antivirus engine** — magic-byte typing, OOXML part inspection and the EICAR marker. Supplying a maintained engine is production input P-010; attachment types and size limits remain P-007 and the retention window P-004.
 
 Run `npm run test:visits` and `npx playwright test tests/browser/visits.spec.ts`. **Checkpoint F has not run.**
+
+## Overview page, staff sign-in and invitation activation
+
+See [landing-and-access.md](docs/orgfit/landing-and-access.md). Apply migration 016. `/` is now the public overview page and the workspace home is `/workspace`. `/login` offers the identity provider whenever OIDC is configured, and an email/password form **only** where the database's local access switch is on; `/activate#<token>` activates an account from a Super Admin's invitation, whose role and access the invitee cannot change. There is no public registration.
+
+The password path is **development-only**: a password session satisfies no second factor, migration 016 leaves the switch off, and only `scripts/bootstrap-dev-admin.ts` — which refuses production and non-loopback databases — turns it on while creating the local Super Admin from the ignored `.env.bootstrap` (template: `.env.bootstrap.example`). `scripts/provision-dev.ts` creates a persistent local `orgfit_dev` database. Run `npm run test:access` and `npx playwright test tests/browser/access.spec.ts`.

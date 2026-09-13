@@ -162,7 +162,7 @@ export function Workspace({
             <a className="rail-link" href="/questionnaires">
               {m.questionnaires}
             </a>
-            <a className="rail-link" href="/">
+            <a className="rail-link" href="/workspace">
               {m.home}
             </a>
           </div>
@@ -189,7 +189,7 @@ export function AppBar({
     <header className="appbar">
       <div className="appbar-inner">
         <div className="row" role="none">
-          <Lockup href="/" label={m.title} />
+          <Lockup href="/workspace" label={m.title} />
           {context && (
             <>
               <span className="appbar-divider" aria-hidden="true" />
@@ -208,7 +208,7 @@ export function AppBar({
 function SrOnlyHome({ label }: { label: string }) {
   return (
     <p className="visually-hidden">
-      <a href="/">{label}</a>
+      <a href="/workspace">{label}</a>
     </p>
   );
 }

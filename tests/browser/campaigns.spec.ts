@@ -13,7 +13,7 @@ test("Arabic campaign journey: review warnings, launch freeze, one-time link, pa
   await page.getByRole("link", { name: "المتابعة عبر موفر الهوية" }).click();
   await page.getByLabel("Identity").selectOption("admin");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(`${ORIGIN}/`);
+  await expect(page).toHaveURL(`${ORIGIN}/workspace`);
   await page.request.patch("/api/v1/profile", {
     headers: { Origin: ORIGIN },
     data: { locale: "ar" },

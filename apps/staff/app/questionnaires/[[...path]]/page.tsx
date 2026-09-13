@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages */
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { sessionCookie } from "../../../../../src/auth";
@@ -43,7 +42,9 @@ export default async function Page({
     );
   } catch (e) {
     if (e instanceof Error && e.message === "SESSION_REQUIRED")
-      redirect("/login");
+      // A stale cookie means the session ended rather than never existed, so the
+      // sign-in screen is told to say so instead of showing a bare form.
+      redirect(jar.get(sessionCookie())?.value ? "/login?expired=1" : "/login");
     const m = messages(localeOf(jar.get("orgfit-locale")?.value));
     return (
       <main id="main" className="wrap">
@@ -52,7 +53,7 @@ export default async function Page({
             ? m.notFound
             : m.unavailable}
         </p>
-        <a href="/">{m.home}</a>
+        <a href="/workspace">{m.home}</a>
       </main>
     );
   }
