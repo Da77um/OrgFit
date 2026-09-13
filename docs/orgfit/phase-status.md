@@ -1372,7 +1372,7 @@ No migration, schema, API contract, capability, lifecycle, disclosure, publicati
 
 ### Commit
 
-**None yet** — the Phase 13 changes are uncommitted in the working tree on `main`, on top of `28ca5fa`. No remote, nothing pushed or deployed. A stale staff dev server from the previous session was stopped with the owner's approval so the harness could bind port 3000.
+`f1d372b` — **Phase 13: localization, mobile, accessibility and journey refinement**, on `main`, parent `28ca5fa`. The ignore rules kept `work/` and every environment file out of it. No remote, nothing pushed or deployed. A stale staff dev server from the previous session was stopped with the owner's approval so the harness could bind port 3000.
 
 ### Exact next action
 
