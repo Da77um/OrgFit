@@ -106,6 +106,8 @@ const ar = {
   back: "رجوع",
   results: "النتائج",
   viewResults: "عرض النتائج المنشورة",
+  belowThresholdFinal:
+    "شارك في هذه الحملة عدد أقل من الحد الأدنى للنشر، لذلك لن تُنشر لها أي نتائج. هذه النتيجة نهائية.",
 } as const;
 export type CampaignMessageKey = keyof typeof ar;
 const en: Record<CampaignMessageKey, string> = {
@@ -217,5 +219,7 @@ const en: Record<CampaignMessageKey, string> = {
   back: "Back",
   results: "Results",
   viewResults: "View published results",
+  belowThresholdFinal:
+    "Fewer people than the release threshold took part in this campaign, so no results will ever be published for it. This outcome is final.",
 };
 export const campaignMessages = (v: Locale) => (v === "en" ? en : ar);

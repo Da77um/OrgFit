@@ -9,7 +9,10 @@ const ar = {
   departments: "الأقسام",
   questions: "تحليل الأسئلة",
   loading: "جارٍ التحميل…",
-  notReady: "ستتوفر النتائج بعد إغلاق الجمع واجتياز فحوص الخصوصية.",
+  // CF-003: said "will be available", which is false for a round that closed
+  // below the threshold. It now states the rule, which is true in every case.
+  notReady:
+    "لا توجد نتائج منشورة لهذه الجولة. تُنشر النتائج فقط بعد إغلاق الجمع واجتياز فحوص الخصوصية، ولا تُنشر أبدًا إذا شارك عدد أقل من الحد الأدنى.",
   unavailable: "النتائج غير متاحة لهذه الجولة.",
   contributors: "عدد المساهمين",
   threshold: "الحد الأدنى للنشر",
@@ -124,7 +127,7 @@ const en: Record<ResultsKey, string> = {
   questions: "Question analysis",
   loading: "Loading…",
   notReady:
-    "Results will be available after closure and privacy checks.",
+    "No results are published for this round. Results publish only after collection closes and privacy checks pass, and never if fewer people than the threshold took part.",
   unavailable: "Results are not available for this round.",
   contributors: "Contributors",
   threshold: "Publication threshold",

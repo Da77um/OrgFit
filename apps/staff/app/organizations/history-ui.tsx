@@ -204,21 +204,33 @@ function ComparisonDetail({
 }) {
   return (
     <div className="stack">
+      {/* U+2192 is not mirrored by the bidi algorithm, so on an RTL page it
+          would point back at the earlier round. The arrow follows the reading
+          direction instead. */}
       <h3>
-        {view.left.label} → {view.right.label}
+        <bdi>{view.left.label}</bdi> {locale === "ar" ? "←" : "→"}{" "}
+        <bdi>{view.right.label}</bdi>
       </h3>
       <dl className="result-facts">
         <div>
           <dt>{m.classification}</dt>
-          <dd>{m[view.classification as keyof M] ?? view.classification}</dd>
+          {/* Words, not a readout: the mono LTR face pulls Arabic letters
+              apart (CF-002). */}
+          <dd className="fact-text">
+            {m[view.classification as keyof M] ?? view.classification}
+          </dd>
         </div>
         <div>
           <dt>{m.reviewedBy}</dt>
-          <dd>{view.reviewedBy ?? "—"}</dd>
+          <dd className="fact-text">
+            <bdi>{view.reviewedBy ?? "—"}</bdi>
+          </dd>
         </div>
         <div>
           <dt>{m.reviewedAt}</dt>
-          <dd>{view.reviewedAt.slice(0, 10)}</dd>
+          <dd>
+            <bdi dir="ltr">{view.reviewedAt.slice(0, 10)}</bdi>
+          </dd>
         </div>
         <div>
           <dt>{m.contributors}</dt>
@@ -266,14 +278,23 @@ function ComparisonDetail({
                   {localeText(cell.label, locale)}
                   <span className="muted"> · {localeText(cell.groupLabel, locale)}</span>
                 </th>
-                <td>{cell.left?.value ?? "—"}</td>
-                <td>{cell.right?.value ?? "—"}</td>
+                {/* Signed values and percentages are isolated left to right:
+                    under RTL "-5.7" printed as "5.7-" and "-10.2%" as "%10.2-",
+                    which reads as the opposite change (CF-004). */}
+                <td><bdi dir="ltr">{cell.left?.value ?? "—"}</bdi></td>
+                <td><bdi dir="ltr">{cell.right?.value ?? "—"}</bdi></td>
                 <td>
-                  {cell.pointChange === null
-                    ? "—"
-                    : `${Number(cell.pointChange) > 0 ? "+" : ""}${cell.pointChange}`}
+                  <bdi dir="ltr">
+                    {cell.pointChange === null
+                      ? "—"
+                      : `${Number(cell.pointChange) > 0 ? "+" : ""}${cell.pointChange}`}
+                  </bdi>
                 </td>
-                <td>{cell.percentChange === null ? "—" : `${cell.percentChange}%`}</td>
+                <td>
+                  <bdi dir="ltr">
+                    {cell.percentChange === null ? "—" : `${cell.percentChange}%`}
+                  </bdi>
+                </td>
                 <td>
                   {cell.improved === null
                     ? cell.status === "COMPARABLE"
@@ -313,7 +334,12 @@ export function History({
     base = messages(locale);
   const org = path[0],
     seriesId = path[2] ?? "";
-  const canReview = profile.capabilities.includes("instruments.manage");
+  // Same rule as the server's access.has_capability and every other screen: a
+  // Super Admin holds every capability. Without the role clause the review
+  // form was hidden from the one account the server always allows (CF-001).
+  const canReview =
+    profile.role === "SUPER_ADMIN" ||
+    profile.capabilities.includes("instruments.manage");
   const [list, setList] = useState<SeriesSummary[]>([]);
   const [series, setSeries] = useState<{
     nameAr: string;
@@ -458,7 +484,9 @@ export function History({
                       }
                     >
                       {m[item.classification as keyof M] ?? item.classification} ·{" "}
-                      {item.reviewedAt.slice(0, 10)}
+                      {/* An ISO date beside Arabic words is reordered to
+                          "14-09-2026" unless isolated (CF-004). */}
+                      <bdi dir="ltr">{item.reviewedAt.slice(0, 10)}</bdi>
                     </button>
                   </li>
                 ))}
@@ -482,8 +510,11 @@ export function History({
                       >
                         <option value="">—</option>
                         {released.map((round) => (
+                          // An option holds text only, so the date is isolated
+                          // with LRI/PDI (what <bdi dir="ltr"> does) rather than
+                          // markup; beside Arabic it otherwise reads 01-01-2026.
                           <option key={round.roundId} value={round.roundId}>
-                            {round.label} · {round.periodStart}
+                            {`${round.label} · \u2066${round.periodStart}\u2069`}
                           </option>
                         ))}
                       </select>

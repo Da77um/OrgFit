@@ -147,6 +147,7 @@ thead th{background:var(--report-accent-soft);color:var(--report-ink);font-weigh
 thead{display:table-header-group;}
 tbody tr{break-inside:avoid;}
 td.num,th.num{text-align:${model.direction === "rtl" ? "left" : "right"};font-variant-numeric:tabular-nums;}
+td.num{direction:ltr;unicode-bidi:isolate;}
 th.wide{width:40%;}
 .withheld{color:var(--report-withheld);font-style:italic;}
 .note{background:var(--report-surface-alt);border-${model.direction === "rtl" ? "right" : "left"}:2pt solid var(--report-rule-strong);padding:5pt 7pt;margin:6pt 0;font-size:var(--report-font-size-small);}

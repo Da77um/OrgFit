@@ -440,10 +440,11 @@ function Departments({ data, m, locale }: { data: ViewData; m: M; locale: Locale
                       <>
                         <span className="heat-value">{current!.value}</span>
                         {points !== null && (
+                          // A signed number is isolated left to right: under
+                          // RTL "-10.0" otherwise prints as "10.0-" (CF-004).
                           <span className="muted">
                             {" "}
-                            ({Number(points) > 0 ? "+" : ""}
-                            {points})
+                            (<bdi dir="ltr">{Number(points) > 0 ? "+" : ""}{points}</bdi>)
                           </span>
                         )}
                         <span className="muted"> · {current!.contributorCount}</span>
@@ -884,8 +885,13 @@ export function Results({
             <li key={item}>
               <button
                 aria-current={view === item ? "page" : undefined}
-                disabled={busy}
-                onClick={() => setView(item)}
+                // Busy tabs stay focusable (CF-005): \`disabled\` threw keyboard
+                // focus off the tab just activated and left the scrolling tab
+                // strip with nothing a keyboard could reach.
+                aria-disabled={busy || undefined}
+                onClick={() => {
+                  if (!busy) setView(item);
+                }}
               >
                 {m[item]}
               </button>

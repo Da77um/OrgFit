@@ -1,10 +1,10 @@
 # OrgFit phase status
 
-Updated: 2026-09-13
+Updated: 2026-09-14
 
 ## Current position
 
-**Phase 13 is COMPLETE as development work; Checkpoint F has not run.** See the Phase 13 handoff below. Phases 00–13 are complete and Checkpoints A, B, C, D and E passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
+**Checkpoint F PASSED as an implementation gate on 2026-09-14** — see [checkpoint-f.md](checkpoint-f.md) and the handoff below. Phases 00–13 are complete and Checkpoints A–F passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
 
 **CE-001 is real, accepted and declared — not closed.** An individual contributor's own score is recoverable from two published releases: to within about a point at company level, and **to 0.01 of a point from a single department row of a reviewed comparison**, measured against independently recomputed true scores. The gate returned BLOCKED and escalated it as P-009 rather than choosing a remedy, because every remedy changes what the product may publish. **The owner answered on 2026-09-10: accept and declare.** That made the caveat wording the whole control, so the wording was rewritten to state the consequence instead of reassuring, and a targeted caveat now fires only where two rounds' contributor counts differ by fewer than the threshold (D-086). Nothing else in the gate blocked; CE-002, a chart-label defect found by looking at rendered pages, was repaired.
 
@@ -14,7 +14,7 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
-Next step: **Checkpoint F — full functional journey**, in a fresh session, using its prompt and the Phase 13 handoff below. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
+Next step: **Phase 14 — security, retention, backups and resilience**, as development work, in a fresh session, using its prompt and the Checkpoint F handoff below. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
 
@@ -39,7 +39,7 @@ Next step: **Checkpoint F — full functional journey**, in a fresh session, usi
 | E | History/report consistency checkpoint | PASS — checkpoint-e.md (implementation gate only; CE-001 accepted under P-009) |
 | 12 | Field visits/attachments/follow-ups | COMPLETE — visits.md and evidence below |
 | 13 | Localization/mobile/accessibility refinement | COMPLETE — development evidence below; no real device or screen reader |
-| F | Full functional journey checkpoint | NOT RUN |
+| F | Full functional journey checkpoint | PASS — checkpoint-f.md (implementation gate; emulated devices only) |
 | 14 | Security/retention/backups/resilience | NOT STARTED |
 | 15 | Release candidate/production readiness | NOT STARTED |
 | G | Final go/no-go checkpoint | NOT RUN |
@@ -1377,6 +1377,43 @@ No migration, schema, API contract, capability, lifecycle, disclosure, publicati
 ### Exact next action
 
 **Checkpoint F — full functional journey**, in a fresh session, with its prompt, this handoff, [respondent.md](respondent.md) and [visits.md](visits.md). Checkpoint F should record plainly which real devices, browsers and assistive technologies are genuinely unavailable rather than treat the emulated runs above as device evidence.
+
+## Checkpoint F handoff — 2026-09-13 to 14
+
+- Step and status: **PASS as an implementation gate.** Full record: [checkpoint-f.md](checkpoint-f.md). Not production readiness, not a privacy approval, not device evidence.
+
+### What was run
+
+`tests/browser/checkpoint-f.spec.ts` (new): ten serial stages of one staff journey in two new synthetic organizations — organizations, departments and a CSV import with errors; clone, edit, scoring preview and publish; series, round, 12-person campaign and 12 links obtained by hand; respondents in Arabic at 320 px (save, second-device resume, keyboard) and English at 375 px; the live outstanding list; close, process, publish; results, departments, questions and recommendations; a second compatible round reviewed on the history screen and an incompatible version refused; Arabic and English PDF and XLSX; a field visit with a follow-up and a scanned attachment; a below-threshold campaign; and organization scoping by a staff member of the other organization. The Phase 13 respondent journey, localization and axe specs were re-run with it.
+
+### Findings
+
+- **CF-001** — the history screen hid comparison review from the Super Admin (UI gate lacked the role clause the server and every other screen apply). Repaired.
+- **CF-002** — Arabic classification and reviewer name set in the mono LTR readout, letters disconnected; RTL heading arrow pointed backwards. Repaired.
+- **CF-003** — a below-threshold round told staff results "will be available". Repaired without changing the API contract (D-113).
+- **CF-004** — signed numbers, percentages and dates reversed beside Arabic on screen and in the Arabic PDF (`10.0-`, `%10.2-`, `14-09-2026`). Repaired (D-113).
+- **CF-005** — results tabs `disabled` while loading dropped keyboard focus and left the 320 px tab strip unreachable (found by axe, intermittently). Repaired.
+- No privacy leak, no cross-organization access, no core journey failure.
+
+### Changed files
+
+New: `tests/browser/checkpoint-f.spec.ts`, `docs/orgfit/checkpoint-f.md`. Repairs: `apps/staff/app/organizations/{history,results,campaigns,visits}-ui.tsx`, `src/report-html.ts`, `src/theme.css`, `src/results-i18n.ts`, `src/campaign-i18n.ts`. Records: `docs/orgfit/decisions.md` (D-113), this file. No migration, schema, API contract or permission change; no test weakened.
+
+### Tests actually run
+
+See the table in [checkpoint-f.md](checkpoint-f.md#tests-actually-run): the complete node gate (22 suites) and build checks after CF-001; the report, history, comparison, publication and Checkpoint D/E suites after CF-002–CF-004; and the final build checks with the full browser suite — **clean; 52 passed**.
+
+### Genuinely unavailable
+
+No real iOS or Android device, no WebKit or Firefox, no screen reader, no real browser zoom, no manual keyboard pass by a person. Not run: `test:production`, `npm audit`, remote CI, S3, a real antivirus engine.
+
+### Commit
+
+**None yet** — the Checkpoint F changes are uncommitted on `main`, on top of `2fcbbc0`. No remote, nothing pushed.
+
+### Exact next action
+
+**Phase 14 — security, retention, backups and resilience**, development work only, in a fresh session. CE-001 and P-008 remain open; P-001 … P-008 and P-010 unapproved.
 
 ## Handoff format for subsequent steps (template)
 

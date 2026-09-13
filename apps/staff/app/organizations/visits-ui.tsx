@@ -916,7 +916,9 @@ export function Visits({
                         <tr key={a.id}>
                           <th scope="row">{a.originalName}</th>
                           <td>{a.contentType ?? a.declaredType}</td>
-                          <td>{kilobytes(a.size)}</td>
+                          <td>
+                            <bdi dir="ltr">{kilobytes(a.size)}</bdi>
+                          </td>
                           <td>
                             {m[a.scanStatus]}
                             {a.rejectionCode

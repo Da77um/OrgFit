@@ -577,6 +577,14 @@ export function Campaigns({
           )}
         </section>
 
+        {/* A closed campaign that finished below the threshold says so, rather
+            than leaving the results page to be the first to mention it (CF-003). */}
+        {campaign.release_state === "INSUFFICIENT_DATA" && (
+          <section className="stack">
+            <h2>{m.results}</h2>
+            <p role="note">{m.belowThresholdFinal}</p>
+          </section>
+        )}
         {campaign.release_state === "PUBLISHED" && (
           <section className="stack">
             <h2>{m.results}</h2>
