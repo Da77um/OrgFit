@@ -54,6 +54,7 @@ type Access =
   | "CLOSED"
   | "ACCEPTED"
   | "SESSION_EXPIRED"
+  | "RATE_LIMITED"
   | "UNAVAILABLE";
 type Answers = Record<string, string | string[]>;
 type Stage = "loading" | "welcome" | "form" | "review" | "accepted" | "blocked";
@@ -64,7 +65,8 @@ type SaveState =
   | "saved"
   | "failed"
   | "conflict"
-  | "exists";
+  | "exists"
+  | "limited";
 type DraftState = { handle: string; key: CryptoKey; raw: Uint8Array; revision: number };
 type Messages = ReturnType<typeof respondentMessages>;
 
@@ -235,9 +237,11 @@ export default function Survey() {
         // when the visitor actually arrived with a link. Someone opening the
         // bare survey origin gets the generic unavailable message instead, and
         // learns nothing about whether any questionnaire exists.
-        const expired =
-          (e as Error).message === "SESSION_REQUIRED" && token !== null;
-        setAccess(expired ? "SESSION_EXPIRED" : "UNAVAILABLE");
+        const code = (e as Error).message;
+        const expired = code === "SESSION_REQUIRED" && token !== null;
+        // A limit says "wait", not "this link is invalid": the invitation is
+        // untouched, and reopening the link a minute later works.
+        setAccess(expired ? "SESSION_EXPIRED" : code === "RATE_LIMITED" ? "RATE_LIMITED" : "UNAVAILABLE");
         setStage("blocked");
       }
     })();
@@ -260,7 +264,11 @@ export default function Survey() {
   // decide for the respondent.
   const unsaved =
     (stage === "form" || stage === "review") &&
-    (save === "dirty" || save === "failed" || save === "conflict" || save === "exists");
+    (save === "dirty" ||
+      save === "failed" ||
+      save === "conflict" ||
+      save === "exists" ||
+      save === "limited");
   useEffect(() => {
     if (!unsaved) return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -464,7 +472,9 @@ export default function Survey() {
           ? "conflict"
           : code === "DRAFT_EXISTS"
             ? "exists"
-            : "failed",
+            : code === "RATE_LIMITED"
+              ? "limited"
+              : "failed",
       );
     }
   }, [document_, draft, locale, versionId, handleTerminal]);
@@ -627,6 +637,8 @@ export default function Survey() {
         } catch {
           /* the generic message already stands */
         }
+      } else if (code === "RATE_LIMITED") {
+        setError(m.rateLimited);
       } else if (code === "NETWORK") {
         // No answer arrived. The submission may or may not have been accepted,
         // and saying either would be a guess.
@@ -673,7 +685,9 @@ export default function Survey() {
               : m.closed
             : access === "SESSION_EXPIRED"
               ? m.sessionExpired
-              : m.unavailable;
+              : access === "RATE_LIMITED"
+                ? m.rateLimited
+                : m.unavailable;
     // A closed campaign, a link that was never valid and an expired session
     // are three different facts. None of them is an error the visitor caused,
     // and none of them may hint at whether a questionnaire exists.
@@ -1318,12 +1332,15 @@ function SaveBar({
           ? offline
             ? m.saveFailedOffline
             : m.saveFailed
-          : save === "conflict" || save === "exists"
-            ? m.conflictTitle
+          : save === "limited"
+            ? m.rateLimited
+            : save === "conflict" || save === "exists"
+              ? m.conflictTitle
             : save === "dirty"
               ? m.notSaved
               : "";
-  const broken = save === "failed" || save === "conflict" || save === "exists";
+  const broken =
+    save === "failed" || save === "conflict" || save === "exists" || save === "limited";
   const chip =
     save === "saved"
       ? "save-chip save-chip-saved"

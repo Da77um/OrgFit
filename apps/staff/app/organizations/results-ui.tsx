@@ -7,6 +7,7 @@ import type { DirectoryRecord } from "../../../../src/directory";
 import { messages, type Locale } from "../../../../src/i18n";
 import { resultsMessages, localeText } from "../../../../src/results-i18n";
 import { ReportsPanel } from "./reports-ui";
+import { utcDate } from "../../../../src/zoned-time";
 import { Workspace, organizationName } from "../shell";
 import {
   Alert,
@@ -325,7 +326,7 @@ function Overview({ data, m, locale }: { data: ViewData; m: M; locale: Locale })
       <div className="tiles">
         <Tile label={m.contributors} value={data.contributorCount ?? "—"} />
         <Tile label={m.threshold} value={data.threshold} />
-        <Tile label={m.generated} value={data.generatedAt?.slice(0, 10) ?? "—"} />
+        <Tile label={m.generated} value={utcDate(data.generatedAt) || "—"} />
       </div>
       {/* Provenance: which engine, which disclosure rules, which snapshot. It
           stays on screen because a released number only means something with

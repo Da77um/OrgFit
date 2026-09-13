@@ -16,6 +16,8 @@ import {
   draftStartOver,
   review,
   finalize,
+  rateLimit,
+  RateLimited,
 } from "../../../../../../src/respondent";
 import { respondentMessages } from "../../../../../../src/respondent-i18n";
 import { localeOf, type Locale } from "../../../../../../src/i18n";
@@ -104,8 +106,15 @@ async function body<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
   return result.data;
 }
 function errorBody(error: unknown, locale: Locale) {
-  const app = translateRespondentError(error);
   const m = respondentMessages(locale);
+  // A limit is stated as a wait, with the standard header, and never as an
+  // error about the link: nothing about the invitation has changed.
+  if (error instanceof RateLimited)
+    return noStore(
+      { code: "RATE_LIMITED", message: m.rateLimited },
+      { status: 429, headers: { "Retry-After": String(error.retryAfter) } },
+    );
+  const app = translateRespondentError(error);
   const message =
     app.status === 401
       ? m.sessionExpired
@@ -132,6 +141,7 @@ async function handle(
 
     if (req.method === "POST" && path === "invitations/exchange") {
       const input = await body(req, respondentInput.exchangeInput);
+      await rateLimit("exchange", req.headers, { token: input.token });
       const result = await exchange(input.token);
       const res = ok(result.context);
       if (result.session)
@@ -149,15 +159,16 @@ async function handle(
     }
     if (req.method === "GET" && path === "instrument")
       return ok(await instrument(session));
-    if (req.method === "POST" && path === "draft")
-      return ok(
-        await draftCreate(session, await body(req, respondentInput.draftCreateInput)),
-        201,
-      );
-    if (req.method === "PUT" && path === "draft")
-      return ok(
-        await draftSave(session, await body(req, respondentInput.draftSaveInput)),
-      );
+    if (req.method === "POST" && path === "draft") {
+      const input = await body(req, respondentInput.draftCreateInput);
+      await rateLimit("draft", req.headers, { session });
+      return ok(await draftCreate(session, input), 201);
+    }
+    if (req.method === "PUT" && path === "draft") {
+      const input = await body(req, respondentInput.draftSaveInput);
+      await rateLimit("draft", req.headers, { session });
+      return ok(await draftSave(session, input));
+    }
     if (req.method === "POST" && path === "resume")
       return ok(
         await draftRead(session, await body(req, respondentInput.resumeInput)),
@@ -175,10 +186,9 @@ async function handle(
         await review(session, await body(req, respondentInput.answersInput)),
       );
     if (req.method === "POST" && path === "finalize") {
-      const result = await finalize(
-        session,
-        await body(req, respondentInput.answersInput),
-      );
+      const input = await body(req, respondentInput.answersInput);
+      await rateLimit("final", req.headers, { session });
+      const result = await finalize(session, input);
       // Generic acceptance only. No response identifier, no submission time and
       // no indication of whether this attempt or an earlier one wrote the row.
       return ok({ access: result.access });

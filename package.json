@@ -57,7 +57,12 @@
     "db:provision-dev": "tsx scripts/provision-dev.ts",
     "db:bootstrap-dev-admin": "tsx scripts/bootstrap-dev-admin.ts",
     "test:access": "tsx --test --test-concurrency=1 tests/access.test.ts",
-    "test:localization": "tsx --test tests/localization.test.ts"
+    "test:localization": "tsx --test tests/localization.test.ts",
+    "retention:run": "tsx scripts/retention.ts",
+    "tombstones:ship": "tsx scripts/ship-tombstones.ts",
+    "restore:reapply": "tsx scripts/restore-reapply.ts",
+    "ops:check": "tsx scripts/ops-check.ts",
+    "test:operations": "tsx --test --test-concurrency=1 tests/operations.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1128.0",

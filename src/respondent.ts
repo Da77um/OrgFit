@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import { z } from "zod";
 import { withGateway, inGatewayTransaction } from "./gateway-db";
 import { AppError, digest, secret } from "./security";
-import { tokenPattern, tokenDigest } from "./invitation-token";
+import { tokenPattern, tokenDigest, openingDigests } from "./invitation-token";
 import {
   inflateInstrument,
   type NodeRecord,
@@ -12,6 +12,14 @@ import {
 import { validateAnswers } from "./scoring";
 import { sealEnvelope, MAX_ENVELOPE_BYTES } from "./intake-envelope";
 import { ScoringError } from "./scoring";
+import {
+  clientBucket,
+  limitFor,
+  rateDigest,
+  windowStart,
+  WINDOW_SECONDS,
+  type Bucket,
+} from "./rate-limit";
 
 // The respondent gateway.
 //
@@ -74,6 +82,7 @@ const publicStatus: Record<string, number> = {
   DRAFT_UNAVAILABLE: 404,
   VALIDATION_FAILED: 422,
   MALFORMED: 400,
+  RATE_LIMITED: 429,
   TEMPORARILY_UNAVAILABLE: 503,
 };
 export function publicError(code: string) {
@@ -110,11 +119,18 @@ const call = async <T>(client: PoolClient, sqlText: string, params: unknown[]) =
 async function exchangeInner(token: string) {
   const value = secret();
   return withGateway(async (client) => {
-    const context = await call<Record<string, unknown>>(
-      client,
-      "SELECT core.gateway_exchange($1,$2) AS data",
-      [tokenDigest(token), digest(value)],
-    );
+    // Current key first; the previous key only during a rotation window. An
+    // unknown digest has no side effect, so trying the second changes nothing
+    // for a link that is simply invalid.
+    let context: Record<string, unknown> = { access: "UNAVAILABLE" };
+    for (const candidate of openingDigests(token)) {
+      context = await call<Record<string, unknown>>(
+        client,
+        "SELECT core.gateway_exchange($1,$2) AS data",
+        [candidate, digest(value)],
+      );
+      if (context.access !== "UNAVAILABLE") break;
+    }
     return {
       context,
       session: context.access === "UNAVAILABLE" ? null : value,
@@ -149,13 +165,38 @@ type InstrumentPayload = {
   notice: Record<string, string>;
   endsAt: string | null;
 };
+// Published instruments, keyed by version AND schema hash. A published version
+// cannot change (the database refuses it), and a different hash is a different
+// key, so a cached tree is never stale. What is cached is the questionnaire —
+// the same for every respondent of the campaign — never a session, a draft or
+// an answer. The session is resolved by the database on every call regardless.
+const instrumentCache = new Map<string, { metadata: InstrumentPayload["metadata"]; nodes: NodeRecord[]; document: ReturnType<typeof inflateInstrument> }>();
+const INSTRUMENT_CACHE_ENTRIES = 32;
 async function readInstrument(client: PoolClient, sessionDigest: Buffer) {
-  const raw = await call<InstrumentPayload>(
+  const ref = await call<Omit<InstrumentPayload, "metadata" | "nodes">>(
     client,
-    "SELECT intake.gateway_instrument($1) AS data",
+    "SELECT intake.gateway_instrument_ref($1) AS data",
     [sessionDigest],
   );
-  return { raw, document: inflateInstrument(raw.metadata, raw.nodes) };
+  const key = `${ref.versionId}:${ref.instrumentHash}`;
+  let entry = instrumentCache.get(key);
+  if (!entry) {
+    const full = await call<InstrumentPayload>(
+      client,
+      "SELECT intake.gateway_instrument($1) AS data",
+      [sessionDigest],
+    );
+    entry = { metadata: full.metadata, nodes: full.nodes, document: inflateInstrument(full.metadata, full.nodes) };
+    if (`${full.versionId}:${full.instrumentHash}` === key) {
+      if (instrumentCache.size >= INSTRUMENT_CACHE_ENTRIES)
+        instrumentCache.delete(instrumentCache.keys().next().value!);
+      instrumentCache.set(key, entry);
+    }
+  }
+  const raw: InstrumentPayload = { ...ref, metadata: entry.metadata, nodes: entry.nodes };
+  // A copy per caller, so validation that normalizes values in place can never
+  // alter the shared tree.
+  return { raw, document: structuredClone(entry.document) };
 }
 async function instrumentInner(sessionRaw: string | undefined) {
   const d = sessionValue(sessionRaw);
@@ -322,6 +363,55 @@ async function finalizeInner(
     );
   });
 }
+
+// ---------------------------------------------------------------------------
+// Rate limits. Called by the route BEFORE the routine it protects, and changing
+// nothing but a counter: a limited request never reaches exchange, draft or
+// acceptance, so it can never consume or rotate an invitation.
+// ---------------------------------------------------------------------------
+export class RateLimited extends AppError {
+  constructor(readonly retryAfter: number) {
+    super("RATE_LIMITED", 429);
+  }
+}
+async function hit(bucket: Bucket, material: Buffer | string) {
+  const start = windowStart();
+  const result = await withGateway((client) =>
+    call<{ allowed: boolean; retryAfter: number }>(
+      client,
+      "SELECT intake.rate_hit($1,$2,$3,$4,$5) AS data",
+      [bucket, rateDigest(bucket, material, start), start, limitFor(bucket), WINDOW_SECONDS],
+    ),
+  );
+  if (!result.allowed) throw new RateLimited(result.retryAfter);
+}
+async function limitInner(
+  kind: "exchange" | "draft" | "final",
+  headers: Headers,
+  material: { token?: string; session?: string },
+) {
+  if (kind === "exchange") {
+    const ip = clientBucket(headers);
+    if (ip) await hit("exchange_ip", ip);
+    // A malformed token is refused by exchange itself; only a well-formed one
+    // has a digest worth counting.
+    if (material.token && tokenPattern.test(material.token))
+      await hit("exchange_token", tokenDigest(material.token));
+    return;
+  }
+  // No session means the routine will refuse anyway; nothing to count.
+  if (!material.session || !sessionPattern.test(material.session)) return;
+  await hit(kind === "draft" ? "draft_session" : "final_session", digest(material.session));
+}
+export const rateLimit = (
+  kind: "exchange" | "draft" | "final",
+  headers: Headers,
+  material: { token?: string; session?: string },
+) =>
+  limitInner(kind, headers, material).catch((e: unknown) => {
+    if (e instanceof RateLimited) throw e;
+    throw translate(e);
+  });
 
 export const respondentInput = {
   exchangeInput,

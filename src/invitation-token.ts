@@ -26,6 +26,21 @@ export function tokenDigest(token: string) {
   if (!tokenPattern.test(token)) throw new AppError("NOT_FOUND", 404);
   return createHmac("sha256", digestKey()).update(token).digest();
 }
+/** Digests to try when a link is OPENED: the current key, then — during a
+ *  rotation window only — the previous key. Issuance always uses the current
+ *  key (tokenDigest), so a rotated deployment stops minting old-key digests at
+ *  once and the previous key can be removed when the last old link has been
+ *  used, expired or reissued. The previous key never verifies a session, a
+ *  draft or a submission; it only finds an invitation. */
+export function openingDigests(token: string) {
+  const digests = [tokenDigest(token)];
+  const previous = process.env.INVITATION_DIGEST_KEY_PREVIOUS;
+  if (previous) {
+    if (!/^[a-f0-9]{64}$/.test(previous)) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+    digests.push(createHmac("sha256", Buffer.from(previous, "hex")).update(token).digest());
+  }
+  return digests;
+}
 export function digestsEqual(a: Buffer, b: Buffer) {
   return a.length === b.length && timingSafeEqual(a, b);
 }

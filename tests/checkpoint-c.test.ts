@@ -202,9 +202,17 @@ test("Checkpoint C: privacy and submission reliability gate", async (t) => {
             "intake.draft_start_over",
             "intake.finalization_context",
             "intake.gateway_instrument",
+            // Phase 14, changed deliberately and recorded in phase-status.md:
+            // gateway_instrument_ref resolves the session exactly as
+            // gateway_instrument does and returns only the version id, hash
+            // and the campaign's frozen notice fields; rate_hit increments a
+            // counter keyed by an HMAC and returns only allowed/retryAfter. It
+            // reads no invitation, draft, envelope or answer.
+            "intake.gateway_instrument_ref",
+            "intake.rate_hit",
             "intake.session_invitation",
           ],
-          "the gateway's executable intake surface must be exactly the session-scoped routines",
+          "the gateway's executable intake surface must be exactly the session-scoped routines plus the Phase 14 counter",
         );
         assert.deepEqual(
           forRole("orgfit_processor"),

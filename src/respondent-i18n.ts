@@ -119,6 +119,8 @@ export const respondentAr = {
   issueTooFew: "اختر {min} على الأقل.",
   issueTooMany: "اختر {max} على الأكثر.",
   invalidSummary: "إجابات تحتاج إلى تصحيح:",
+  rateLimited:
+    "محاولات كثيرة خلال وقت قصير. انتظر دقيقة ثم أعد المحاولة؛ لم يتغير شيء في رابطك أو إجاباتك.",
 } as const;
 export type RespondentKey = keyof typeof respondentAr;
 export const respondentEn: Record<RespondentKey, string> = {
@@ -232,6 +234,8 @@ export const respondentEn: Record<RespondentKey, string> = {
   issueTooFew: "Choose at least {min}.",
   issueTooMany: "Choose no more than {max}.",
   invalidSummary: "Answers that need correcting:",
+  rateLimited:
+    "Too many attempts in a short time. Wait a minute and try again; nothing about your link or your answers has changed.",
 };
 /** Fill {name} placeholders. Values are inserted as text, never as markup. */
 export const fill = (template: string, values: Record<string, string | number>) =>

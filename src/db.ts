@@ -92,4 +92,11 @@ export async function readiness() {
     database("staff"),
   );
   if (!rows[0]?.ready) throw new Error("Unready");
+  // A restored environment stays unready until its deletion tombstones have
+  // been replayed (scripts/restore-reapply.ts), so a load balancer never routes
+  // traffic to data that was deleted after the backup was taken.
+  const gate = await sql<{ ready: boolean }>`select ops.ready() as ready`.execute(
+    database("staff"),
+  );
+  if (!gate.rows[0]?.ready) throw new Error("Unready");
 }

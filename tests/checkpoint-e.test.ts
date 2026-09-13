@@ -918,7 +918,10 @@ test("Checkpoint E: history and report consistency gate", async (t) => {
       // Versions and dates.
       assert.equal(model.manifest.find((x) => x.label.includes("محرك"))?.value, overview.versions!.scoring);
       const generated = model.identity.find((x) => x.label === "تاريخ إصدار النتائج")!.value;
-      assert.ok(generated.startsWith(String(overview.generatedAt).slice(0, 10)));
+      // Compared as instants in UTC, as both surfaces now display them. The
+      // earlier string slice took the server's local date and failed for runs
+      // between 21:00 and 24:00 UTC, which is how the dashboard defect was found.
+      assert.ok(generated.startsWith(new Date(String(overview.generatedAt)).toISOString().slice(0, 10)));
 
       // Overall and dimensions: value, band and status, three ways.
       const workbookRows = new Map<string, { value: unknown; band: unknown; status: unknown }>();

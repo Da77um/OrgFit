@@ -4,7 +4,7 @@ Updated: 2026-09-14
 
 ## Current position
 
-**Checkpoint F PASSED as an implementation gate on 2026-09-14** — see [checkpoint-f.md](checkpoint-f.md) and the handoff below. Phases 00–13 are complete and Checkpoints A–F passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
+**Phase 14 is COMPLETE as development work** — see the Phase 14 handoff below and its five documents. Phases 00–14 are complete and Checkpoints A–F passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
 
 **CE-001 is real, accepted and declared — not closed.** An individual contributor's own score is recoverable from two published releases: to within about a point at company level, and **to 0.01 of a point from a single department row of a reviewed comparison**, measured against independently recomputed true scores. The gate returned BLOCKED and escalated it as P-009 rather than choosing a remedy, because every remedy changes what the product may publish. **The owner answered on 2026-09-10: accept and declare.** That made the caveat wording the whole control, so the wording was rewritten to state the consequence instead of reassuring, and a targeted caveat now fires only where two rounds' contributor counts differ by fewer than the threshold (D-086). Nothing else in the gate blocked; CE-002, a chart-label defect found by looking at rendered pages, was repaired.
 
@@ -14,7 +14,7 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
-Next step: **Phase 14 — security, retention, backups and resilience**, as development work, in a fresh session, using its prompt and the Checkpoint F handoff below. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
+Next step: **Phase 15 — final release candidate and production readiness**, in a fresh session, starting from the release-readiness gap list in the Phase 14 handoff. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
 
@@ -40,7 +40,7 @@ Next step: **Phase 14 — security, retention, backups and resilience**, as deve
 | 12 | Field visits/attachments/follow-ups | COMPLETE — visits.md and evidence below |
 | 13 | Localization/mobile/accessibility refinement | COMPLETE — development evidence below; no real device or screen reader |
 | F | Full functional journey checkpoint | PASS — checkpoint-f.md (implementation gate; emulated devices only) |
-| 14 | Security/retention/backups/resilience | NOT STARTED |
+| 14 | Security/retention/backups/resilience | COMPLETE — security-review.md, privacy-verification.md, retention-backup-runbook.md, incident-runbook.md, performance-results.md |
 | 15 | Release candidate/production readiness | NOT STARTED |
 | G | Final go/no-go checkpoint | NOT RUN |
 
@@ -1414,6 +1414,65 @@ No real iOS or Android device, no WebKit or Firefox, no screen reader, no real b
 ### Exact next action
 
 **Phase 14 — security, retention, backups and resilience**, development work only, in a fresh session. CE-001 and P-008 remain open; P-001 … P-008 and P-010 unapproved.
+
+## Phase 14 handoff — 2026-09-14
+
+- Step and status: **COMPLETE for the development scope.** Not production readiness, not a privacy or security approval, not a proof of anonymity. Recovery and load figures come from one developer machine.
+
+### Implemented behavior
+
+- **Public gateway rate limits** (D-114): exchange per trusted-proxy IP bucket and per token, draft writes and final submissions per session; database-counted fixed windows keyed by windowed HMACs; a limit never touches an invitation; 429 with `Retry-After` and a truthful respondent message.
+- **Digest-key rotation window** (D-120): `INVITATION_DIGEST_KEY_PREVIOUS` lets outstanding links open while issuance uses the new key.
+- **Retention** (D-115): 16 policy classes seeded as unapproved non-production defaults; core purge, whole-campaign anonymous purge, run ledger, alert while unapproved.
+- **Deletion tombstones and restore gate** (D-116): triggers for non-time-derived deletions; ledger shipped outside backups; both readiness endpoints closed until `restore:reapply` replays it; intake re-erased only where nothing further is lost, otherwise an incident keeps the environment closed.
+- **Alerts** (`ops:check`): count mismatch, blocked publication, overdue intake, backup staleness, low disk, queue backlogs, export failures, scan backlog, token abuse, retention stale or unapproved, restore pending.
+- **Performance repairs found by measurement**: RLS init-plan evaluation (migration 018, D-118) and a hash-keyed published-instrument cache with per-request session checks (D-119).
+- **Consistency repair**: dashboard/history dates in UTC like the reports (D-122).
+- Respondent `/health/ready`; production smoke asserts headers and CORS; build boundary forbids the operator module in either web app.
+
+### Changed files and migrations
+
+New: `db/migrations/017_operations.sql`, `db/migrations/018_policy_performance.sql`, `db/anonymous/002_retention.sql`, `src/rate-limit.ts`, `src/operations.ts`, `scripts/retention.ts`, `scripts/ship-tombstones.ts`, `scripts/restore-reapply.ts`, `scripts/ops-check.ts`, `apps/respondent/app/health/ready/route.ts`, `tests/operations.test.ts`, `tests/ops/restore-drill.ts`, `tests/ops/load.ts`, `docs/orgfit/security-review.md`, `privacy-verification.md`, `retention-backup-runbook.md`, `incident-runbook.md`, `performance-results.md`.
+
+Modified: `src/respondent.ts` (rate limits, rotation-aware exchange, instrument cache), `src/invitation-token.ts`, `src/gateway-db.ts` and `src/db.ts` (restore gate in readiness), `src/respondent-i18n.ts`, `src/zoned-time.ts`, `apps/respondent/app/public/v1/[...path]/route.ts`, `apps/respondent/app/survey-ui.tsx` (limit states), `apps/staff/app/organizations/results-ui.tsx` and `history-ui.tsx` (UTC dates), `scripts/check-boundaries.ts`, `tests/production-smoke.ts`, `tests/checkpoint-c.test.ts` and `tests/checkpoint-e.test.ts` (deliberate assertion changes, D-121 and D-122), `package.json`, `.env.example`, `.env.operator.example`, `README.md`, `decisions.md` (D-114 … D-122).
+
+Migrations 001–016 are untouched.
+
+### Tests actually run and exact results
+
+Local PostgreSQL 18.4 loopback cluster, Node 24.13.1, Chromium, Windows 11 on a 12-core Snapdragon X Elite with 31.6 GiB.
+
+| Check | Result |
+|---|---|
+| `npm run test:operations` (O-1 … O-8) | 9 pass (O-1 populated 016→latest upgrade 115 ms) |
+| All node suites (gate 1): `test`, `test:localization`, `test:integration`, `test:directory`, `test:instruments`, `test:scoring`, `test:scoring-db`, `test:checkpoint-b`, `test:campaigns`, `test:respondent`, `test:privacy`, `test:disclosure`, `test:publication`, `test:recommendations`, `test:checkpoint-d`, `test:comparison`, `test:history`, `test:reports`, `test:visits`, `test:access` | all pass |
+| Gate 1 failures, repaired and re-run (gate 2) | `test:checkpoint-c` 21/21 after D-121; `test:checkpoint-e` 11/11 after D-122; lint clean after removing an unused test import |
+| `typecheck`, `lint`, `build`, `check:boundaries`, `test:production` | clean / pass |
+| `npx playwright test` (all 52 specs, final run) | **52 passed** |
+| Timed restore drill (`tests/ops/restore-drill.ts`) | backup 4.3 s; PITR 7.3 s; data loss 17.4 s; base-only 6.0 s; replay removed revived data before opening; crashed processor resumed marker-first |
+| Load (`tests/ops/load.ts`) | all baseline targets met after PERF-1/PERF-2 (see performance-results.md) |
+| `npm audit` (all and production) | 0 vulnerabilities |
+| Secret scan, tracked files and full history | clean |
+
+**Not run:** real identity provider/MFA, TLS, proxy/CDN/WAF, managed database PITR, S3 lifecycle and KMS deletion, real antivirus, HTTP-level load, penetration test, paging integration, a restore of production-sized data.
+
+### Defects found during the phase and repaired
+
+SEC-F1 no public rate limiting; SEC-F2 digest-key rotation broke all links; SEC-F3 directory timeout at 100k (per-row RLS functions); SEC-F4 37% failures at 200 concurrent sessions; SEC-F5 respondent readiness ignored the restore gate; SEC-F6 missing retention/tombstones; SEC-F7 no header/CORS assertion; SEC-F8 dashboard/PDF date disagreement near UTC midnight. Implementation defects of my own caught before completion: `RETURN next` parsed as `RETURN NEXT`; a trigger reading columns absent from other tables; `= ANY((SELECT …))` parsed as a subquery; `spawnSync` hanging on `pg_ctl start`; a base-only restore that lacked the backup's own WAL.
+
+### Release-readiness gap list for Phase 15
+
+Blocking production (owner inputs): P-001/P-008 independent privacy and security review including CE-001; P-002 hosting, domain/TLS, network separation, proxy logging; P-003 managed key custody with real deletion (SEC-H1); P-004 retention approval and measured production RPO/RTO; P-005 production IdP and MFA; P-006 approved instruments; P-007 data and attachment policy; P-010 antivirus engine (SEC-H2).
+
+Implementation or operational work: SEC-M1 staff-side rate limiting at the edge; SEC-M2 configure the trusted IP header; SEC-M3 object-locked tombstone ledger; SEC-M4 enforce server logging settings; SEC-M5 release revocation routine; SEC-M6 audited intake-erasure tool for restore incidents; SEC-M7 staging rehearsal through the real proxy with TLS and `sslmode=verify-full`; SEC-L3 wire alerts to paging; re-measure load and restore on production hardware; real iOS/Android and screen-reader passes (carried from Phase 13 and Checkpoint F).
+
+### Commit
+
+**None yet** — Checkpoint F and Phase 14 changes are uncommitted on `main`, on top of `2fcbbc0`. No remote, nothing pushed or deployed, no external message sent.
+
+### Exact next action
+
+**Phase 15 — final release candidate and production readiness**, in a fresh session, starting from the gap list above. Deployment requires explicit authorization.
 
 ## Handoff format for subsequent steps (template)
 

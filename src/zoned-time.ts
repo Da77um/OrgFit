@@ -99,6 +99,13 @@ export function formatInZone(iso: string | null | undefined, timeZone: string) {
   return instantToWallClock(iso, timeZone).replace("T", " ");
 }
 
+/** The UTC calendar date of an instant, for events with no record timezone.
+ *  Slicing the database's timestamp text gives the date in the SERVER's zone
+ *  instead, which disagreed with the reports' UTC dates near midnight. */
+export function utcDate(iso: string | null | undefined) {
+  return formatInZone(iso, "UTC").slice(0, 10);
+}
+
 /** An event with no record timezone (a report job, an audit time) is shown in
  *  UTC and says so, rather than in whatever zone the viewing browser is in. */
 export function formatUtc(iso: string | null | undefined) {

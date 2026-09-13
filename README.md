@@ -138,3 +138,15 @@ npx playwright test tests/browser/journey.spec.ts tests/browser/localization.spe
 ```
 
 The accessibility spec uses axe-core (dev dependency only). A clean run is not a WCAG conformance claim; no real iOS or Android device and no screen reader have been used. **Checkpoint F has not run.**
+
+## Security, retention, backups and resilience (Phase 14)
+
+Apply migrations **017** (rate limits, retention policy, deletion tombstones, restore gate, alert inputs) and **018** (row-security evaluation that scales), and anonymous migration **002** (whole-campaign retention). Operator jobs: `retention:run`, `tombstones:ship`, `restore:reapply`, `ops:check` — see [retention-backup-runbook.md](docs/orgfit/retention-backup-runbook.md) and [incident-runbook.md](docs/orgfit/incident-runbook.md). New configuration is documented in `.env.example` (rate limits, digest-key rotation) and `.env.operator.example` (ledger, backups, disk).
+
+```bash
+npm run test:operations
+npx tsx tests/ops/restore-drill.ts   # timed backup/PITR/base-only restore on a throwaway cluster
+npx tsx tests/ops/load.ts            # 100k directory, 10k campaign, 200 concurrent respondents
+```
+
+Evidence and residual issues: [security-review.md](docs/orgfit/security-review.md), [privacy-verification.md](docs/orgfit/privacy-verification.md), [performance-results.md](docs/orgfit/performance-results.md). **Retention durations are unapproved defaults; recovery figures are from one developer machine; this is not production readiness.**

@@ -115,4 +115,7 @@ export async function gatewayReadiness() {
       WHERE grantee='orgfit_gateway'`,
   );
   if (priv[0].tables !== "0") throw new Error("Unready");
+  // Phase 14: closed while a restored environment awaits its tombstone replay.
+  const { rows: gate } = await gatewayPool().query<{ ready: boolean }>("SELECT ops.ready() AS ready");
+  if (!gate[0]?.ready) throw new Error("Unready");
 }

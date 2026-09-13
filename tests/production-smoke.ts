@@ -47,6 +47,31 @@ try {
   assert.ok(csp.includes("'nonce-"));
   assert.ok(!csp.includes("unsafe-eval"));
   assert.ok(!csp.includes("unsafe-inline"));
+  // Phase 14: no cross-origin grant anywhere, including a hostile preflight;
+  // no framework banner; the protective headers on a page and on the API.
+  assert.equal(login.headers.get("access-control-allow-origin"), null);
+  assert.equal(login.headers.get("x-powered-by"), null);
+  assert.equal(login.headers.get("x-frame-options"), "DENY");
+  assert.equal(login.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(login.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(login.headers.get("cache-control"), "no-store");
+  const preflight = await fetch("http://127.0.0.1:3099/api/v1/profile", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://attacker.example",
+      "Access-Control-Request-Method": "PATCH",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.equal(preflight.headers.get("access-control-allow-origin"), null);
+  assert.equal(preflight.headers.get("access-control-allow-credentials"), null);
+  const forged = await fetch("http://127.0.0.1:3099/api/v1/profile", {
+    method: "PATCH",
+    headers: { Origin: "https://attacker.example", "Content-Type": "application/json" },
+    body: JSON.stringify({ locale: "en" }),
+  });
+  assert.ok([401, 403, 503].includes(forged.status), `forged mutation ${forged.status}`);
+  assert.equal(forged.headers.get("access-control-allow-origin"), null);
   console.log(
     "Production build fails safely with missing environment; Arabic fallback and strict CSP verified.",
   );

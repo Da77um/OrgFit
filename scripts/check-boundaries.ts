@@ -20,7 +20,7 @@ async function files(dir: string): Promise<string[]> {
 // custody secret is present in its environment, and src/instrument-records.ts is
 // permitted because the gateway must render the pinned questionnaire.
 const forbidden =
-  /node_modules[/\\](kysely|openid-client|exceljs|csv-parse|jszip|playwright|playwright-core|@aws-sdk)[/\\]|src[/\\](auth|db|directory|imports|import-storage|import-parser|instruments|instrument-templates|campaigns|link-storage|key-custody|processor|publication|results|reports|report-db|report-storage|report-worker|report-pdf|report-xlsx|participation-storage|visits|attachment-storage|attachment-scan|attachment-worker|scanner-db)\./;
+  /node_modules[/\\](kysely|openid-client|exceljs|csv-parse|jszip|playwright|playwright-core|@aws-sdk)[/\\]|src[/\\](auth|db|directory|imports|import-storage|import-parser|instruments|instrument-templates|campaigns|link-storage|key-custody|processor|publication|results|reports|report-db|report-storage|report-worker|report-pdf|report-xlsx|participation-storage|visits|attachment-storage|attachment-scan|attachment-worker|scanner-db|operations)\./;
 const traces = await files(resolve("apps/respondent/.next/server"));
 if (!traces.length) throw new Error("Build the respondent app first");
 for (const f of traces) {
@@ -39,7 +39,9 @@ for (const f of staffTraces) {
   // src/visits.ts and src/attachment-storage.ts are the staff half of Phase 12
   // and are permitted; the scanner loop and its credential are not.
   const text = await readFile(f, "utf8");
-  if (/src[/\\](processor|gateway-db|respondent|publication)\./.test(text))
+  // Phase 14: the operator module (retention, tombstone replay, alerts) runs
+  // under the migrator credential and must never be bundled into a web app.
+  if (/src[/\\](processor|gateway-db|respondent|publication|operations)\./.test(text))
     throw new Error(
       "Staff build contains gateway, processor or publication module",
     );

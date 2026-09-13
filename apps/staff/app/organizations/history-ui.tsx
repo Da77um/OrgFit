@@ -7,6 +7,7 @@ import type { DirectoryRecord } from "../../../../src/directory";
 import { messages, type Locale } from "../../../../src/i18n";
 import { historyMessages } from "../../../../src/history-i18n";
 import { localeText } from "../../../../src/results-i18n";
+import { utcDate } from "../../../../src/zoned-time";
 import { Workspace, organizationName } from "../shell";
 import {
   ErrorState,
@@ -229,7 +230,7 @@ function ComparisonDetail({
         <div>
           <dt>{m.reviewedAt}</dt>
           <dd>
-            <bdi dir="ltr">{view.reviewedAt.slice(0, 10)}</bdi>
+            <bdi dir="ltr">{utcDate(view.reviewedAt)}</bdi>
           </dd>
         </div>
         <div>
@@ -486,7 +487,7 @@ export function History({
                       {m[item.classification as keyof M] ?? item.classification} ·{" "}
                       {/* An ISO date beside Arabic words is reordered to
                           "14-09-2026" unless isolated (CF-004). */}
-                      <bdi dir="ltr">{item.reviewedAt.slice(0, 10)}</bdi>
+                      <bdi dir="ltr">{utcDate(item.reviewedAt)}</bdi>
                     </button>
                   </li>
                 ))}
