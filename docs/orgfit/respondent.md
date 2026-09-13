@@ -251,3 +251,17 @@ pending P-006. Lock ordering is a correctness choice and its throughput is
 unmeasured. No real-device, screen-reader or accessibility audit has been run.
 Backup, restore and key-destruction behaviour is untested. Checkpoint C is the
 blocking review that must run before any of this touches real respondent data.
+
+## Phase 13 refinements
+
+Nothing in this section changes a token, session, draft-key, envelope or single-use rule; each item changes only what the page does and says.
+
+* **Truthful states.** Every request is limited to 20 s. A request with no HTTP answer is reported as not saved (or, for submission, *not confirmed* — resubmitting is safe because acceptance is idempotent). Save conflicts, a draft created first by another browser (`DRAFT_EXISTS`), an ended session, a campaign closed while answering and an already-accepted invitation each have their own sentence. An ended session disables save and submit and tells the respondent to reopen the original link; nothing is retried with a weaker check.
+* **Session keep-alive.** While the respondent is answering, `POST /public/v1/session/refresh` renews the 30-minute idle window at most every five minutes. The 12-hour absolute limit is unchanged.
+* **History.** Section moves push history entries holding a stage name and section index only. Back and Forward move between sections; after acceptance they do nothing. Leaving with unsaved changes shows the browser's prompt.
+* **Focus and dialogs.** Each new screen scrolls to the top and focuses its heading. Confirmation dialogs focus Cancel, trap Tab, close on Escape and restore focus.
+* **Answers.** Per-field rules come from `src/answer-rules.ts`, the same function the server uses. Number questions accept Arabic-Indic and Persian digits and the Arabic decimal separator; finalization sends canonical Latin digits. Hints state ranges before they are broken. Errors are linked with `aria-describedby`.
+* **Language.** The switch is remembered in the survey locale cookie and never touches answers.
+* **Phone layout.** `interactive-widget=resizes-content`; the sticky action bar goes back into the flow on short viewports (the keyboard-up strip); 44px targets under a coarse pointer; the review list wraps and keeps the page's direction.
+
+Tested in Chromium at 320–1280 px with touch emulation (`tests/browser/journey.spec.ts`, `accessibility.spec.ts`). **Not** tested on a real iPhone or Android phone, not in WebKit or Firefox, and not with a screen reader.

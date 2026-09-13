@@ -80,6 +80,45 @@ export const respondentAr = {
   choose: "اختر",
   language: "English",
   skip: "الانتقال إلى المحتوى",
+  // ---- Phase 13: truthful journey states and per-field rules ------------
+  // Every sentence below states what actually happened, including what did
+  // NOT: an unsaved change is never called saved, and an unconfirmed
+  // submission is never called received or failed.
+  offline:
+    "أنت غير متصل بالإنترنت. إجاباتك باقية في هذه الصفحة فقط، ولن تُحفظ حتى يعود الاتصال.",
+  saveFailedOffline: "لم يُحفظ لأن الاتصال مقطوع.",
+  sessionEndedTitle: "انتهت الجلسة",
+  sessionEndedBody:
+    "لم يعد بالإمكان الحفظ أو الإرسال من هذه الصفحة. ما لم تحفظه لم يُرسل إلى أي مكان. افتح الرابط الأصلي مرة أخرى، ثم استأنف إجاباتك المحفوظة.",
+  closedWhileEditing:
+    "أُغلقت هذه الاستبانة أثناء تعبئتك لها، ولم تعد تقبل إجابات. لم تُرسل إجاباتك.",
+  draftExistsBody:
+    "توجد مسودة محفوظة لهذا الرابط، غالبًا من نافذة أو جهاز آخر، ولم تُستبدل. حمّلها أو استخدم رمز الاستئناف أو ابدأ من جديد.",
+  submitUncertain:
+    "تعذر التأكد من وصول إجاباتك بسبب الاتصال. تحقق من الاتصال ثم أرسل مرة أخرى؛ إعادة الإرسال لا تُنشئ إرسالًا ثانيًا أبدًا.",
+  resumeCodeCopyFailed:
+    "تعذر النسخ تلقائيًا. الرمز محدد الآن؛ انسخه يدويًا.",
+  leaveUnsaved: "لديك تغييرات غير محفوظة.",
+  numberHint: "يمكن الكتابة بالأرقام العربية أو اللاتينية.",
+  numberRange: "القيمة بين {min} و{max}.",
+  numberMinOnly: "أصغر قيمة مسموحة {min}.",
+  numberMaxOnly: "أكبر قيمة مسموحة {max}.",
+  wholeNumber: "عدد صحيح بلا كسور.",
+  decimals: "حتى {n} منازل عشرية.",
+  selectionsRange: "اختر من {min} إلى {max}.",
+  dateRange: "تاريخ بين {min} و{max}.",
+  issueInvalid: "هذه الإجابة ليست من الخيارات المتاحة.",
+  issueNumberFormat: "اكتب رقمًا فقط، دون فواصل للآلاف أو رموز.",
+  issueNumberPrecision: "عدد المنازل العشرية أكثر من المسموح.",
+  issueNumberMin: "القيمة أصغر من الحد الأدنى {min}.",
+  issueNumberMax: "القيمة أكبر من الحد الأعلى {max}.",
+  issueDateFormat: "أدخل تاريخًا كاملًا.",
+  issueDateMin: "التاريخ قبل أقرب تاريخ مسموح {min}.",
+  issueDateMax: "التاريخ بعد آخر تاريخ مسموح {max}.",
+  issueTooLong: "الإجابة أطول من {max} حرف.",
+  issueTooFew: "اختر {min} على الأقل.",
+  issueTooMany: "اختر {max} على الأكثر.",
+  invalidSummary: "إجابات تحتاج إلى تصحيح:",
 } as const;
 export type RespondentKey = keyof typeof respondentAr;
 export const respondentEn: Record<RespondentKey, string> = {
@@ -158,6 +197,44 @@ export const respondentEn: Record<RespondentKey, string> = {
   choose: "Choose",
   language: "العربية",
   skip: "Skip to content",
+  offline:
+    "You are offline. Your answers stay on this page only and are not saved until the connection returns.",
+  saveFailedOffline: "Not saved: the connection is down.",
+  sessionEndedTitle: "The session ended",
+  sessionEndedBody:
+    "This page can no longer save or submit. Anything you had not saved was not sent anywhere. Open your original link again, then resume your saved answers.",
+  closedWhileEditing:
+    "This questionnaire closed while you were answering and no longer accepts answers. Your answers were not submitted.",
+  draftExistsBody:
+    "A saved draft already exists for this link, most likely from another tab or device, and it was not replaced. Load it, use your resume code, or start over.",
+  submitUncertain:
+    "We could not confirm that your answers arrived because of the connection. Check the connection and submit again; submitting again never creates a second submission.",
+  resumeCodeCopyFailed:
+    "Copying was not possible. The code is now selected; copy it manually.",
+  leaveUnsaved: "You have unsaved changes.",
+  numberHint: "Arabic or Latin digits are accepted.",
+  numberRange: "A value from {min} to {max}.",
+  numberMinOnly: "The smallest allowed value is {min}.",
+  numberMaxOnly: "The largest allowed value is {max}.",
+  wholeNumber: "A whole number.",
+  decimals: "Up to {n} decimal places.",
+  selectionsRange: "Choose from {min} to {max}.",
+  dateRange: "A date from {min} to {max}.",
+  issueInvalid: "This answer is not one of the available choices.",
+  issueNumberFormat: "Enter digits only, without thousands separators or symbols.",
+  issueNumberPrecision: "This has more decimal places than allowed.",
+  issueNumberMin: "The value is below the minimum of {min}.",
+  issueNumberMax: "The value is above the maximum of {max}.",
+  issueDateFormat: "Enter a complete date.",
+  issueDateMin: "The date is before the earliest allowed date, {min}.",
+  issueDateMax: "The date is after the latest allowed date, {max}.",
+  issueTooLong: "The answer is longer than {max} characters.",
+  issueTooFew: "Choose at least {min}.",
+  issueTooMany: "Choose no more than {max}.",
+  invalidSummary: "Answers that need correcting:",
 };
+/** Fill {name} placeholders. Values are inserted as text, never as markup. */
+export const fill = (template: string, values: Record<string, string | number>) =>
+  template.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k] ?? ""));
 export const respondentMessages = (locale: Locale) =>
   locale === "en" ? respondentEn : respondentAr;

@@ -7,6 +7,7 @@ import {
   type Question,
 } from "./instrument-input";
 import { itemBounds } from "./scoring-bounds";
+import { checkAnswer, isMissing, normalizeNumerals } from "./answer-rules";
 import { N, total, normalize, ScoreNumber } from "./score-number";
 
 export const ENGINE_VERSION = "1.0.0" as const;
@@ -42,14 +43,8 @@ export class ScoringError extends Error {
 const fail = (path: string, code: string): never => {
   throw new ScoringError([{ path, code }]);
 };
-const missing = (v: string | string[] | undefined) =>
-  v === undefined || (typeof v === "string" ? !v.trim() : v.length === 0);
-export const normalizeNumerals = (s: string) =>
-  s
-    .replace(/[٠-٩۰-۹]/g, (c) =>
-      String(c.charCodeAt(0) - (c >= "۰" ? 1776 : 1632)),
-    )
-    .replace(/٫/g, ".");
+const missing = isMissing;
+export { normalizeNumerals };
 
 export function validateAnswers(
   d: Instrument,
@@ -72,58 +67,13 @@ export function validateAnswers(
       if (q.required) required.push(id);
       return;
     }
-    const bad = () => fail(id, "ANSWER_RANGE");
-    if (q.type === "CHECKBOXES") {
-      if (
-        !Array.isArray(v) ||
-        new Set(v).size !== v.length ||
-        v.some((x) => !q.options.some((o) => o.id === x)) ||
-        v.length < (q.validation.minSelections ?? 0) ||
-        v.length > (q.validation.maxSelections ?? q.options.length)
-      )
-        bad();
-      return;
-    }
-    if (typeof v !== "string") return bad();
-    if (["MULTIPLE_CHOICE", "DROPDOWN", "YES_NO", "MATRIX"].includes(q.type)) {
-      if (
-        !(q.type === "MATRIX" ? q.columns : q.options).some((o) => o.id === v)
-      )
-        bad();
-    } else if (["NUMBER", "RATING_5", "RATING_10"].includes(q.type)) {
-      const value = normalizeNumerals(v),
-        precision = q.type === "NUMBER" ? (q.validation.precision ?? 0) : 0;
-      if (
-        !/^-?\d{1,9}(?:\.\d{1,6})?$/.test(value) ||
-        (value.split(".")[1]?.length ?? 0) > precision
-      )
-        return bad();
-      const n = N(value),
-        lower = q.type === "NUMBER" ? q.validation.min : "1",
-        upper =
-          q.type === "NUMBER"
-            ? q.validation.max
-            : q.type === "RATING_5"
-              ? "5"
-              : "10";
-      if (
-        (lower !== undefined && n.compare(N(lower)) < 0) ||
-        (upper !== undefined && n.compare(N(upper)) > 0)
-      )
-        bad();
-      answers[id] = value;
-    } else if (q.type === "DATE") {
-      if (
-        !z.iso.date().safeParse(v).success ||
-        (q.validation.minDate && v < q.validation.minDate) ||
-        (q.validation.maxDate && v > q.validation.maxDate)
-      )
-        bad();
-    } else if (
-      v.length >
-      (q.validation.maxLength ?? (q.type === "LONG_TEXT" ? 5000 : 500))
-    )
-      bad();
+    // Every broken rule is reported as the one public code this function has
+    // always used; the detailed reason exists for the respondent's screen.
+    const checked = checkAnswer(q, v);
+    if (!checked.ok) return fail(id, "ANSWER_RANGE");
+    // Numeric answers are kept in canonical Latin digits whatever was typed.
+    if (["NUMBER", "RATING_5", "RATING_10"].includes(q.type))
+      answers[id] = checked.value;
   };
   for (const q of d.sections.flatMap((s) => s.questions)) {
     if (q.type === "CONTENT") continue;

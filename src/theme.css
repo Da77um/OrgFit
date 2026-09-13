@@ -515,7 +515,9 @@ main {
   display: block;
   padding-inline: var(--space-3);
   padding-block-end: var(--space-1);
-  color: var(--text-faint);
+  /* Muted, not faint: faint on the rail's limestone measured 2.54:1 in the
+     Phase 13 audit, and a 12px group label is text a reader needs. */
+  color: var(--text-muted);
   font-size: var(--text-xs);
 }
 .rail-link {
@@ -544,7 +546,7 @@ main {
 }
 .rail-link .num {
   margin-inline-start: auto;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: var(--text-xs);
 }
 .canvas {
@@ -1573,6 +1575,7 @@ dd {
   border-block: var(--hairline) solid var(--border-soft);
 }
 .result-facts dt {
+  overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: var(--text-sm);
   font-weight: 400;
@@ -1593,6 +1596,11 @@ dd {
 }
 .heatmap td {
   white-space: nowrap;
+}
+/* Secondary text inside a shaded cell reads as soft ink, not muted: muted on
+   the second scale step measured 4.32:1, under AA. */
+.heatmap [class*="heat-"] .muted {
+  color: var(--text-soft);
 }
 .heatmap .heat-1 {
   background: var(--chart-scale-1);
@@ -1967,6 +1975,100 @@ nav a {
   .survey-actions > button,
   .survey-actions > .button {
     flex: 1 1 8rem;
+  }
+}
+
+/* ------------------------------------------- journey refinement (P13) --- */
+/* Additions from Phase 13. No new colour, face or radius: every value below
+   reads an existing semantic token. */
+
+/* A control sitting on the ink bar. The default button is ink on limestone,
+   which on the ink bar was ink on ink. */
+.button-on-dark,
+button.button-on-dark {
+  background: transparent;
+  color: var(--text-inverse);
+  border-color: var(--brand-ink-soft);
+}
+.button-on-dark:hover:not(:disabled) {
+  background: var(--brand-ink-soft);
+  border-color: var(--accent-on-dark);
+}
+.appbar-locale {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+.appbar-locale-error {
+  color: var(--text-inverse);
+  font-size: var(--text-sm);
+}
+
+/* On a touch screen every control is at least the preferred 44px target,
+   including the compact buttons that are 36px under a mouse. */
+@media (pointer: coarse) {
+  .button-small,
+  button.button-small {
+    min-block-size: var(--control-height);
+  }
+}
+
+/* A heading that receives focus because a section changed is a reading
+   position, not a control: it is announced, and it does not wear a ring
+   unless the keyboard put it there. */
+[tabindex="-1"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* The respondent's review lists prompts and answers, not statistics: an
+   answer is prose in the respondent's own language, so it keeps the page's
+   direction and the body face instead of the stat readout's mono LTR, and a
+   long prompt or answer wraps instead of widening a phone screen. */
+.review-answers {
+  grid-template-columns: minmax(0, 1fr);
+}
+.review-answers > div {
+  min-inline-size: 0;
+}
+.review-answers dd {
+  font-family: inherit;
+  direction: inherit;
+  unicode-bidi: normal;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+/* Connection and session facts the survey states about itself. */
+.survey-status {
+  margin-block: var(--space-2);
+}
+.field-hint {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* A focused field is never hidden behind the sticky action bar or the app
+   bar: the browser scrolls it clear of both. */
+.survey :is(input, select, textarea, fieldset) {
+  scroll-margin-block: calc(var(--appbar-height) + var(--space-3)) 7rem;
+}
+/* While the virtual keyboard is up the visible viewport is a strip (the
+   respondent layout declares interactive-widget=resizes-content, so the
+   keyboard shrinks the layout viewport rather than covering it). A sticky bar
+   would take half of that strip and cover the field being typed into, so on a
+   short viewport it returns to the flow.
+
+   This is keyed to the viewport's height, not to focus. A focus-keyed rule was
+   tried first and moved the bar the instant a field lost focus — which is the
+   instant a finger lands on "Save" — so the tap fell on whatever slid under it. */
+@media (max-width: 44rem) and (max-height: 32rem) {
+  .survey-actions {
+    position: static;
+    margin-inline: 0;
+    margin-block-end: 0;
   }
 }
 

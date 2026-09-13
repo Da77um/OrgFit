@@ -1,4 +1,5 @@
 "use client";
+import { jsonOf, staffFetch } from "../staff-fetch";
 /* Full navigation deliberately clears organization context and draft state. */
 import { useEffect, useState, useCallback } from "react";
 import type { Profile } from "../../../../src/db";
@@ -90,7 +91,7 @@ export function InstrumentWorkspace({
       version?.state === "DRAFT";
   const api = useCallback(
     async (url: string, method = "GET", body?: unknown, revision?: string) => {
-      const res = await fetch(url, {
+      const res = await staffFetch(locale)(url, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -100,7 +101,7 @@ export function InstrumentWorkspace({
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
-      const data = await res.json();
+      const data = await jsonOf(res);
       if (!res.ok) {
         if (data.issues) setIssues(data.issues);
         throw Error(

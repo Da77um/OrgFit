@@ -1,6 +1,13 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { jsonOf, staffFetch } from "../staff-fetch";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
 import { messages, type Locale } from "../../../../src/i18n";
@@ -16,6 +23,7 @@ import {
 } from "../../../../src/attachment-types";
 import { Workspace, organizationName } from "../shell";
 import {
+  Alert,
   Badge,
   EmptyState,
   ErrorState,
@@ -24,6 +32,11 @@ import {
   Micro,
   PageHeader,
 } from "../../../../src/ui";
+import {
+  formatInZone,
+  instantToWallClock,
+  wallClockToInstant,
+} from "../../../../src/zoned-time";
 
 // The field-visit screens.
 //
@@ -95,12 +108,10 @@ type Visit = {
 };
 
 const subscribe = () => () => {};
-const instant = (value: string | null) =>
-  value
-    ? new Date(value).toISOString().replace("T", " ").slice(0, 16) + "Z"
-    : "";
-const localInput = (value: string | null) =>
-  value ? new Date(value).toISOString().slice(0, 16) : "";
+// A visit's times are read and written in the VISIT's timezone, never in the
+// viewing browser's. See src/zoned-time.ts for the defect this replaced.
+const zoned = (value: string | null | undefined, timeZone: string) =>
+  value ? `${formatInZone(value, timeZone)} ${timeZone}` : "";
 const kilobytes = (value: number | null) =>
   value === null ? "" : `${Math.max(1, Math.round(Number(value) / 1024))} KB`;
 
@@ -176,6 +187,14 @@ export function Visits({
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
+  const [attachmentError, setAttachmentError] = useState("");
+  // The refusal is brought into view when it appears: a file picker returning
+  // on a phone does not leave the page where the finger was.
+  const attachmentAlert = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (attachmentError)
+      attachmentAlert.current?.scrollIntoView({ block: "nearest" });
+  }, [attachmentError]);
   const hydrated = useSyncExternalStore(
     subscribe,
     () => true,
@@ -184,7 +203,7 @@ export function Visits({
 
   const api = useCallback(
     async (suffix: string, init?: RequestInit) => {
-      const r = await fetch(`/api/v1/organizations/${org}/${suffix}`, {
+      const r = await staffFetch(locale)(`/api/v1/organizations/${org}/${suffix}`, {
         ...init,
         headers: {
           "Accept-Language": locale,
@@ -196,7 +215,7 @@ export function Visits({
         },
       });
       if (r.status === 204) return null;
-      const json = await r.json();
+      const json = await jsonOf(r);
       if (!r.ok) throw new Error(json.message ?? base.unavailable);
       return json.data;
     },
@@ -216,7 +235,7 @@ export function Visits({
           query.set("consultantId", filters.consultantId);
         setVisits((await api(`visits?${query.toString()}`)).items);
         setOverdue(
-          (await api(`follow-ups?status=OPEN&dueBefore=${today()}`)).items,
+          (await api(`follow-ups?status=OPEN&dueBefore=${today(timezone)}`)).items,
         );
       }
     } catch (e) {
@@ -230,15 +249,22 @@ export function Visits({
     void load();
   }, [load]);
 
-  const guarded = async (work: () => Promise<void>) => {
+  // An error is shown where the action was taken. On a phone the page header
+  // is a long scroll away from the attachment control, and a refusal printed
+  // up there would be announced but never seen.
+  const guarded = async (
+    work: () => Promise<void>,
+    report: (message: string) => void = setError,
+  ) => {
     setBusy(true);
     setError("");
+    setAttachmentError("");
     setNote("");
     try {
       await work();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : base.unavailable);
+      report(e instanceof Error ? e.message : base.unavailable);
       setBusy(false);
     }
   };
@@ -248,9 +274,14 @@ export function Visits({
       const body = {
         relatedRoundId: values.relatedRoundId || null,
         assignedConsultantId: values.assignedConsultantId,
-        scheduledStart: new Date(values.scheduledStart).toISOString(),
+        // An unparseable time or zone is sent as-is and refused by the server's
+        // validation, rather than being guessed at here.
+        scheduledStart:
+          wallClockToInstant(values.scheduledStart, values.timezone) ??
+          values.scheduledStart,
         scheduledEnd: values.scheduledEnd
-          ? new Date(values.scheduledEnd).toISOString()
+          ? (wallClockToInstant(values.scheduledEnd, values.timezone) ??
+            values.scheduledEnd)
           : null,
         timezone: values.timezone,
         purpose: values.purpose,
@@ -326,7 +357,7 @@ export function Visits({
         body: JSON.stringify({ filename: file.name, declaredType }),
       })) as { id: string; maxBytes: number };
       if (file.size > started.maxBytes) throw new Error(base.tooLarge);
-      const r = await fetch(
+      const r = await staffFetch(locale)(
         `/api/v1/organizations/${org}/visits/${visit.id}/attachments/${started.id}/content`,
         {
           method: "PUT",
@@ -337,13 +368,17 @@ export function Visits({
           body: await file.arrayBuffer(),
         },
       );
-      if (!r.ok)
+      if (!r.ok) {
+        // A refusal from something in front of the application (a proxy's own
+        // 413 page) is not JSON; its status still says what happened, and a
+        // parser's complaint must never be shown in its place.
+        const body = (await jsonOf(r)) as { message?: string };
         throw new Error(
-          ((await r.json()) as { message?: string }).message ??
-            base.unavailable,
+          body.message ?? (r.status === 413 ? base.tooLarge : base.unavailable),
         );
+      }
       setNote(m.QUARANTINED);
-    });
+    }, setAttachmentError);
 
   const removeAttachment = (id: string) =>
     guarded(async () => {
@@ -461,7 +496,12 @@ export function Visits({
                 <EmptyState title={base.emptyTitle} body={m.none} />
               )}
               {visits.length > 0 && (
-                <div className="table-wrap scroll">
+                <div
+                  className="table-wrap scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label={m.visits}
+                >
                   <table className="result-table">
                     <caption>{m.visits}</caption>
                     <thead>
@@ -479,7 +519,7 @@ export function Visits({
                         <tr key={v.id}>
                           <th scope="row">
                             <a href={`/organizations/${org}/visits/${v.id}`}>
-                              {instant(v.scheduledStart)}
+                              <bdi dir="ltr">{zoned(v.scheduledStart, v.timezone)}</bdi>
                             </a>
                           </th>
                           <td>{v.purpose}</td>
@@ -543,11 +583,11 @@ export function Visits({
                     : ""}
                 </dd>
                 <dt>{m.scheduledStart}</dt>
-                <dd>{instant(visit.scheduledStart)}</dd>
+                <dd><bdi dir="ltr">{zoned(visit.scheduledStart, visit.timezone)}</bdi></dd>
                 <dt>{m.scheduledEnd}</dt>
-                <dd>{instant(visit.scheduledEnd)}</dd>
+                <dd><bdi dir="ltr">{zoned(visit.scheduledEnd, visit.timezone)}</bdi></dd>
                 <dt>{m.timezone}</dt>
-                <dd>{visit.timezone}</dd>
+                <dd><bdi dir="ltr">{visit.timezone}</bdi></dd>
                 <dt>{m.relatedRound}</dt>
                 <dd>{visit.relatedRoundLabel ?? m.noRound}</dd>
                 <dt>{m.followUpDate}</dt>
@@ -561,7 +601,7 @@ export function Visits({
                 {visit.completedAt && (
                   <>
                     <dt>{m.completedAt}</dt>
-                    <dd>{instant(visit.completedAt)}</dd>
+                    <dd><bdi dir="ltr">{zoned(visit.completedAt, visit.timezone)}</bdi></dd>
                     <dt>{m.amendmentCount}</dt>
                     <dd>{visit.amendmentCount}</dd>
                   </>
@@ -580,8 +620,8 @@ export function Visits({
                     setForm({
                       relatedRoundId: visit.relatedRoundId ?? "",
                       assignedConsultantId: visit.assignedConsultantId,
-                      scheduledStart: localInput(visit.scheduledStart),
-                      scheduledEnd: localInput(visit.scheduledEnd),
+                      scheduledStart: instantToWallClock(visit.scheduledStart, visit.timezone),
+                      scheduledEnd: instantToWallClock(visit.scheduledEnd, visit.timezone),
                       timezone: visit.timezone,
                       purpose: visit.purpose,
                       notes: visit.notes ?? "",
@@ -640,7 +680,12 @@ export function Visits({
                 <p className="muted">{m.noFollowUps}</p>
               )}
               {!!visit.followUps?.length && (
-                <div className="table-wrap scroll">
+                <div
+                  className="table-wrap scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label={m.followUps}
+                >
                   <table className="result-table">
                     <caption>{m.followUps}</caption>
                     <thead>
@@ -695,7 +740,7 @@ export function Visits({
                     revision: null,
                     title: "",
                     ownerStaffId: consultants[0]?.id ?? "",
-                    dueDate: today(),
+                    dueDate: today(timezone),
                     status: "OPEN",
                     notes: "",
                     closureReason: "",
@@ -836,11 +881,23 @@ export function Visits({
                   />
                 </label>
               )}
+              {attachmentError && (
+                <div ref={attachmentAlert}>
+                  <Alert tone="danger" role="alert">
+                    {attachmentError}
+                  </Alert>
+                </div>
+              )}
               {!visit.attachments?.length && (
                 <p className="muted">{m.noAttachments}</p>
               )}
               {!!visit.attachments?.length && (
-                <div className="table-wrap scroll">
+                <div
+                  className="table-wrap scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label={m.attachments}
+                >
                   <table className="result-table">
                     <caption>{m.attachments}</caption>
                     <thead>
@@ -966,10 +1023,14 @@ function VisitForm({
           ))}
         </select>
       </label>
+      <p className="muted" id="visitTimesHelp">
+        {m.timesInZone}
+      </p>
       <label>
         {m.scheduledStart}
         <input
           required
+          aria-describedby="visitTimesHelp"
           type="datetime-local"
           value={form.scheduledStart}
           onChange={(e) => set("scheduledStart", e.target.value)}
@@ -978,6 +1039,7 @@ function VisitForm({
       <label>
         {m.scheduledEnd}
         <input
+          aria-describedby="visitTimesHelp"
           type="datetime-local"
           value={form.scheduledEnd}
           onChange={(e) => set("scheduledEnd", e.target.value)}
@@ -1047,7 +1109,11 @@ function VisitForm({
   );
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+// "Today" is the organization's calendar day, not UTC's and not the browser's:
+// a follow-up due today in Riyadh is not overdue at 01:00 Riyadh time.
+const today = (timeZone: string) =>
+  formatInZone(new Date().toISOString(), timeZone).slice(0, 10) ||
+  new Date().toISOString().slice(0, 10);
 // The browser's guess from the extension. It is a hint the server records as
 // `declaredType` and the scanner then contradicts if the bytes disagree.
 function typeFor(filename: string): AllowedType | null {

@@ -1,5 +1,6 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
+import { jsonOf, staffFetch } from "../staff-fetch";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
@@ -151,7 +152,12 @@ function Trends({ trends, m, locale }: { trends: Trend[]; m: M; locale: Locale }
         <section key={trend.metricKey} className="stack result-metric">
           <h3>{localeText(trend.label, locale)}</h3>
           <TrendChart trend={trend} m={m} />
-          <div className="table-wrap scroll">
+          <div
+            className="table-wrap scroll"
+            tabIndex={0}
+            role="region"
+            aria-label={localeText(trend.label, locale)}
+          >
             <table className="result-table">
               <caption>{localeText(trend.label, locale)}</caption>
               <thead>
@@ -234,7 +240,12 @@ function ComparisonDetail({
           </ul>
         </div>
       )}
-      <div className="table-wrap scroll">
+      <div
+        className="table-wrap scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={m.comparison}
+      >
         <table className="result-table">
           <caption>{m.comparison}</caption>
           <thead>
@@ -325,7 +336,7 @@ export function History({
   );
   const api = useCallback(
     async (suffix: string, init?: RequestInit) => {
-      const r = await fetch(`/api/v1/organizations/${org}/${suffix}`, {
+      const r = await staffFetch(locale)(`/api/v1/organizations/${org}/${suffix}`, {
         ...init,
         headers: {
           "Accept-Language": locale,
@@ -335,7 +346,7 @@ export function History({
             : {}),
         },
       });
-      const json = await r.json();
+      const json = await jsonOf(r);
       if (!r.ok) throw new Error(json.message ?? base.unavailable);
       return json.data;
     },
@@ -387,7 +398,12 @@ export function History({
         </p>
 
         {!seriesId && (
-          <div className="table-wrap scroll">
+          <div
+            className="table-wrap scroll"
+            tabIndex={0}
+            role="region"
+            aria-label={m.series}
+          >
             <table className="result-table">
               <caption>{m.series}</caption>
               <thead>

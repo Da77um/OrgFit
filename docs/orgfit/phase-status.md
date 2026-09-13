@@ -4,7 +4,7 @@ Updated: 2026-09-13
 
 ## Current position
 
-**Phase 12 is COMPLETE as development work.** Phases 00–12 are complete and Checkpoints A, B, C, D and E passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
+**Phase 13 is COMPLETE as development work; Checkpoint F has not run.** See the Phase 13 handoff below. Phases 00–13 are complete and Checkpoints A, B, C, D and E passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
 
 **CE-001 is real, accepted and declared — not closed.** An individual contributor's own score is recoverable from two published releases: to within about a point at company level, and **to 0.01 of a point from a single department row of a reviewed comparison**, measured against independently recomputed true scores. The gate returned BLOCKED and escalated it as P-009 rather than choosing a remedy, because every remedy changes what the product may publish. **The owner answered on 2026-09-10: accept and declare.** That made the caveat wording the whole control, so the wording was rewritten to state the consequence instead of reassuring, and a targeted caveat now fires only where two rounds' contributor counts differ by fewer than the threshold (D-086). Nothing else in the gate blocked; CE-002, a chart-label defect found by looking at rendered pages, was repaired.
 
@@ -14,7 +14,7 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
-Next step: **Phase 13 — localization, mobile, accessibility and complete journey refinement**, as development work only, using its prompt and [visits.md](visits.md), [respondent.md](respondent.md) and [foundation.md](foundation.md). Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
+Next step: **Checkpoint F — full functional journey**, in a fresh session, using its prompt and the Phase 13 handoff below. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
 
@@ -38,7 +38,7 @@ Next step: **Phase 13 — localization, mobile, accessibility and complete journ
 | 11 | PDF/XLSX reports/exports | COMPLETE — reports.md and evidence below |
 | E | History/report consistency checkpoint | PASS — checkpoint-e.md (implementation gate only; CE-001 accepted under P-009) |
 | 12 | Field visits/attachments/follow-ups | COMPLETE — visits.md and evidence below |
-| 13 | Localization/mobile/accessibility refinement | NOT STARTED |
+| 13 | Localization/mobile/accessibility refinement | COMPLETE — development evidence below; no real device or screen reader |
 | F | Full functional journey checkpoint | NOT RUN |
 | 14 | Security/retention/backups/resilience | NOT STARTED |
 | 15 | Release candidate/production readiness | NOT STARTED |
@@ -1285,6 +1285,98 @@ Recorded in the commit that adds this entry, on `main`. No remote, nothing pushe
 ### Exact next action
 
 **Phase 13 — localization, mobile, accessibility and complete journey refinement**, unchanged from the design-pass handoff, now also covering the overview, sign-in and activation screens, and adding an invitation-issuing screen for Super Admins if the owner wants one before Phase 14.
+
+## Phase 13 handoff — 2026-09-13
+
+- Step and status: **COMPLETE for the development localization, mobile, accessibility and journey scope.** Not a WCAG conformance claim, not a real-device result and not production readiness. **Checkpoint F has not run.**
+
+### Implemented behavior
+
+**Respondent journey** ([respondent.md](respondent.md#phase-13-refinements), D-109 … D-111):
+
+- Truthful states for every failure the prompt names: offline, a request past the 20 s limit, a stale save (conflict), a draft first created in another browser (`DRAFT_EXISTS`, previously shown as a generic failure), an ended session (save and submit disabled, instruction to reopen the link), a campaign closed while answering, an already-accepted invitation, and a submission whose response never arrived ("not confirmed; submitting again never creates a second submission"). Start-over now deletes locally only after the server confirmed it.
+- Session idle window renewed at most every 5 minutes while answering, through the existing refresh route. Absolute limit unchanged.
+- Browser Back/Forward walk sections (history entries carry only a stage and section index); inert after acceptance; unsaved changes trigger the browser's leave prompt.
+- Focus moves to each new screen's heading; review jump focuses the control; both dialogs focus Cancel, trap Tab, close on Escape and restore focus.
+- Per-field rules shown beside the field with `aria-describedby`, from the same `checkAnswer` the server uses (D-107): number range/precision/format, date bounds, selection counts, length. Constraint hints before errors.
+- Arabic-Indic, Persian, Arabic decimal separator and U+2212 accepted; canonical Latin digits sent. Number fields are `type=text` with a numeric input mode.
+- Language choice persisted in the survey locale cookie; answers untouched by switching.
+- Phone layout: `interactive-widget=resizes-content`; action bar returns to the flow on short (keyboard-up) viewports; 44px targets under a coarse pointer; review list wraps long prompts and keeps page direction; resume code and invitation-link inputs isolated LTR.
+
+**Staff** (D-108, D-112):
+
+- **Timezone defect repaired**: visit and campaign wall-clock times were read in the browser's timezone, and the visit edit form moved a visit by the browser's offset on every save. Now read and shown in the record's zone (`src/zoned-time.ts`); report job times say UTC; overdue follow-ups use the organization's calendar day.
+- Language switch in the app bar on every signed-in screen (`apps/staff/app/locale-switch.tsx`), persisted on the profile.
+- Arabic-Indic digits accepted in every builder and campaign numeric field.
+- Network failures and non-JSON error bodies reported in the reader's language instead of browser/parser text (`apps/staff/app/staff-fetch.ts`, seven screens).
+- Attachment refusals (type, size, dropped upload) stated beside the upload control and scrolled into view.
+- 13 scrolling table regions keyboard-reachable and named by their caption; two contrast failures repaired; English greeting punctuation.
+
+### Changed files and migrations
+
+New: `src/answer-rules.ts`, `src/zoned-time.ts`, `apps/staff/app/locale-switch.tsx`, `apps/staff/app/staff-fetch.ts`, `tests/localization.test.ts`, `tests/browser/journey-fixture.ts`, `tests/browser/journey.spec.ts`, `tests/browser/localization.spec.ts`, `tests/browser/accessibility.spec.ts`.
+
+Modified: `apps/respondent/app/survey-ui.tsx` (rewritten around the same privacy properties), `apps/respondent/app/layout.tsx` (viewport), `src/respondent-i18n.ts`, `src/scoring.ts` (delegates to `answer-rules`), `src/theme.css`, `src/campaign-i18n.ts`, `src/visits-i18n.ts`, `apps/staff/app/shell.tsx`, `apps/staff/app/workspace/page.tsx`, `apps/staff/app/organizations/{campaigns,directory,history,reports,results,visits}-ui.tsx`, `apps/staff/app/questionnaires/{editors,rules-editor,workspace}.tsx`, `package.json` (`test:localization`; dev deps `@axe-core/playwright` 4.13.0 and `axe-core` 4.13.0, exact, approved by the owner), `package-lock.json`, `README.md`, `docs/orgfit/decisions.md` (D-107 … D-112), `docs/orgfit/respondent.md`, this file.
+
+**No migration, no schema change, no API route or contract change.** Migrations 001–016 untouched.
+
+### Tests actually run and exact results
+
+Local PostgreSQL 18.4 loopback cluster, Node 24.13.1, Chromium (Playwright 1.63.0), Windows 11.
+
+| Check | Result |
+|---|---|
+| `npm run test:localization` (L-1 … L-4) | 4 pass |
+| `npm test`, `test:integration`, `test:directory`, `test:instruments`, `test:scoring`, `test:scoring-db`, `test:checkpoint-b`, `test:campaigns`, `test:respondent`, `test:privacy`, `test:checkpoint-c`, `test:disclosure`, `test:publication`, `test:recommendations`, `test:checkpoint-d`, `test:comparison`, `test:history`, `test:reports`, `test:checkpoint-e`, `test:visits`, `test:access` | all pass (5/8/6/8/15/5/3/18/24/17/21/16/13/13/18/13/8/17/11/14/8) |
+| `npx playwright test` — full suite, fresh server, including 10 new specs | **42 passed** (final run) |
+| `npm run typecheck`, `lint`, `build`, `check:boundaries` | clean |
+
+What the new browser specs exercise, all against the real gateway and a published instrument carrying every question type, a content block and an unbroken 66-character Arabic prompt: welcome → keyboard-only answer → Arabic-Indic numerals with a range error → language switch both ways → save → reload → same-device resume → Back/Forward → matrix rows as named groups → review → dialog focus/trap/Escape → one submission with canonical digits → Back inert → reopened link locked (320px, touch); multi-tab conflict, draft existing from another browser, private-code resume in English on a second context (375/360px); offline, delayed past the limit, lost finalize response then retry with exactly one envelope and zero drafts; expired session cookie; campaign closed by staff mid-answer; 320×280 keyboard strip including type-then-tap-Save; 640px and 320px (200%/400% zoom widths). axe WCAG 2.0/2.1/2.2 A+AA on respondent screens (blocked, welcome with resume panel, three sections with an error shown, review with missing answers, dialog, accepted) in Arabic at 320px and English at 1280px, and on 15 staff screens plus all five results tabs and the new-visit form in both configurations. Staff: app-bar switch; New York browser scheduling a Riyadh visit; Arabic 320px attachment refusals.
+
+### Defects found during the phase and repaired
+
+1. **Visit times drifted and campaign times used the browser's zone** (D-108). Reproduced before repair: the same browser test against the previous screen stored 13:00Z for a 09:00 Riyadh visit.
+2. **Review screen overflowed a 320px page by 55px** on a long Arabic prompt, and rendered answers in mono LTR.
+3. **`DRAFT_EXISTS` was shown as a generic "not saved, try again"**, which retrying could never fix.
+4. **A lost submission response was reported as "service unavailable"** although the submission may have been accepted.
+5. **An ended session and a mid-answer closure on save were reported as "not saved, try again".**
+6. **"Copied" was shown even when the clipboard refused.**
+7. **Start-over cleared the local draft even when the server refused to delete it.**
+8. **Scroll regions unreachable by keyboard** (axe `scrollable-region-focusable`), **rail labels at 2.54:1**, **heat-map secondary text at 4.32:1**.
+9. **Staff screens could print "Failed to fetch" or a JSON parser error** in an Arabic interface.
+10. **Attachment refusals printed at the top of a long phone page**, out of sight of the control.
+11. The respondent language toggle was an ink button on the ink bar; the English greeting used an Arabic comma.
+12. **Introduced and caught in this phase:** a focus-keyed rule that un-stuck the action bar moved Save out from under the tap (withdrawn, D-111); new visit tests collided with `visits.spec.ts`'s empty-list assertion in the shared database (moved to organization B; the existing assertion was not weakened).
+
+### Required checks not run, and device limitations
+
+- **No real iOS Safari or Android Chrome device.** Every mobile result is Chromium with viewport, touch and `isMobile` emulation. **WebKit was not installed** (offered; the owner approved axe only), and Firefox was not run. Safari-specific behaviour — `interactive-widget` (unsupported in Safari), date input rendering, visual-viewport keyboard handling, VoiceOver — is unverified.
+- **No screen reader** (NVDA, JAWS, VoiceOver, TalkBack) was used. Announcements are inferred from roles, names and live regions, not heard.
+- **No manual keyboard pass by a person.** Keyboard coverage is scripted: tab order to the rating scale, focus ring, dialog trap/Escape/return, heading focus.
+- **Real browser zoom** was not used; 200% and 400% were checked as equivalent CSS widths.
+- axe covers the listed screens only; the questionnaire builder interior (question editor, rules editor, scoring sandbox) was audited only as the library page.
+- Not run: `test:production`, `npm audit` (npm reported 0 vulnerabilities while installing axe), remote CI.
+
+### Open defects, assumptions and production prerequisites
+
+1. **Report PDF typography** still embeds Cairo/Noto Sans rather than the identity's Zain/IBM Plex. Deferred deliberately: this phase is functional refinement, and the swap needs its own ToUnicode/searchability evidence (D-078). RTL/LTR of reports and XLSX is unchanged and still asserted by `test:reports` and `test:checkpoint-e`.
+2. The native file input's "Choose File / No file chosen" text follows the browser's language, not the page's.
+3. Switching staff language reloads the page; an unsaved staff form on screen is lost (the questionnaire builder autosaves).
+4. A slow save that completes after the 20 s limit leaves the server one revision ahead; the next save then reports a conflict and offers the newer version — truthful, but a respondent on a very slow link will see it.
+5. The organization list option text `name (CODE)` inside a `<select>` cannot be bidi-isolated.
+6. CE-001 unchanged, accepted and declared, still awaiting the independent review P-008 requires. P-001 … P-008 and P-010 remain open.
+
+### Confirmation that unrelated modules were preserved
+
+No migration, schema, API contract, capability, lifecycle, disclosure, publication, recommendation, report-renderer, key-custody, intake or gateway routine changed. The scoring engine's public behaviour is unchanged except the documented numeral relaxation (D-107), and every scoring, privacy and checkpoint suite passes. No existing assertion was weakened or removed.
+
+### Commit
+
+**None yet** — the Phase 13 changes are uncommitted in the working tree on `main`, on top of `28ca5fa`. No remote, nothing pushed or deployed. A stale staff dev server from the previous session was stopped with the owner's approval so the harness could bind port 3000.
+
+### Exact next action
+
+**Checkpoint F — full functional journey**, in a fresh session, with its prompt, this handoff, [respondent.md](respondent.md) and [visits.md](visits.md). Checkpoint F should record plainly which real devices, browsers and assistive technologies are genuinely unavailable rather than treat the emulated runs above as device evidence.
 
 ## Handoff format for subsequent steps (template)
 

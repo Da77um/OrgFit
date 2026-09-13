@@ -59,6 +59,7 @@ const ar = {
   archive: "أرشفة",
   reason: "السبب",
   endDate: "تعديل تاريخ النهاية",
+  timesInZone: "تُقرأ أوقات البدء والانتهاء بالمنطقة الزمنية للحملة.",
   endDateHelp:
     "يمكن التمديد أو الإزالة قبل الإغلاق فقط، ولا يمكن اختيار وقت ماضٍ. بعد انقضاء النهاية لا يمكن إعادة الفتح.",
   noReopen: "لا يمكن إعادة فتح حملة مغلقة أو ملغاة. ابدأ جولة جديدة.",
@@ -167,6 +168,7 @@ const en: Record<CampaignMessageKey, string> = {
   archive: "Archive",
   reason: "Reason",
   endDate: "Change end date",
+  timesInZone: "Start and end times are read in the campaign's time zone.",
   endDateHelp:
     "The end date may be extended or removed only before closure, and never set in the past. Once the end has passed, collection cannot reopen.",
   noReopen:

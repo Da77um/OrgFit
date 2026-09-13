@@ -1,5 +1,6 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
+import { jsonOf, staffFetch } from "../staff-fetch";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
@@ -246,7 +247,12 @@ function ScoreTable({
   locale: Locale;
 }) {
   return (
-    <div className="table-wrap scroll">
+    <div
+      className="table-wrap scroll"
+      tabIndex={0}
+      role="region"
+      aria-label={m.table}
+    >
       <table className="result-table">
         <caption>{m.table}</caption>
         <thead>
@@ -393,7 +399,12 @@ function Departments({ data, m, locale }: { data: ViewData; m: M; locale: Locale
       <Alert tone="info" role="note">
         {m.descriptive}
       </Alert>
-      <div className="table-wrap scroll">
+      <div
+        className="table-wrap scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={m.heatmap}
+      >
       <table className="result-table heatmap table-sticky">
         <caption>{m.heatmap}</caption>
         <thead>
@@ -478,7 +489,12 @@ function Questions({ data, m, locale }: { data: ViewData; m: M; locale: Locale }
           <section key={metric.key} className="stack result-metric">
             <h3>{localeText(metric.label, locale)}</h3>
             {cell?.status === "AVAILABLE" && cell.distribution ? (
-              <div className="table-wrap scroll">
+              <div
+                className="table-wrap scroll"
+                tabIndex={0}
+                role="region"
+                aria-label={`${m.respondents}: ${cell.contributorCount}`}
+              >
                 <table className="result-table">
                   <caption>
                     {m.respondents}: {cell.contributorCount}
@@ -578,7 +594,7 @@ function RecommendationCard({
           }),
         },
       );
-      const json = await r.json();
+      const json = await jsonOf(r);
       if (!r.ok) throw new Error(json.message ?? "");
       setNote(m.saved);
       onSaved();
@@ -607,7 +623,12 @@ function RecommendationCard({
           {localeText(item.text.rationale, locale)}
         </p>
       )}
-      <div className="table-wrap scroll">
+      <div
+        className="table-wrap scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={m.evidence}
+      >
         <table className="result-table">
           <caption>{m.evidence}</caption>
           <thead>
@@ -730,7 +751,7 @@ function Recommendations({
       try {
         const r = await fetch("/api/v1/staff");
         if (!r.ok) return;
-        const json = await r.json();
+        const json = await jsonOf(r);
         if (live) setStaff(json.data.items ?? []);
       } catch {
         /* The owner select degrades to "unassigned" only. */
@@ -807,11 +828,11 @@ export function Results({
           return;
         }
         const suffix = next === "overview" ? "" : `/${next}`;
-        const r = await fetch(
+        const r = await staffFetch(locale)(
           `/api/v1/organizations/${org}/assessments/${roundId}/results${suffix}`,
           { headers: { "Accept-Language": locale } },
         );
-        const json = await r.json();
+        const json = await jsonOf(r);
         if (!r.ok)
           throw new Error(
             json.code === "RESULTS_NOT_READY"

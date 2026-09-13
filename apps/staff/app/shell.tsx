@@ -21,6 +21,7 @@
 import type { ReactNode } from "react";
 import { Label, Lockup, Micro } from "../../../src/ui";
 import { messages, type Locale } from "../../../src/i18n";
+import { LocaleSwitch } from "./locale-switch";
 
 export type Section =
   | "overview"
@@ -197,7 +198,11 @@ export function AppBar({
             </>
           )}
         </div>
-        {meta && <div className="appbar-meta">{meta}</div>}
+        <div className="appbar-meta">
+          {meta}
+          {/* Reachable from every signed-in screen, not only the home page. */}
+          <LocaleSwitch locale={locale} />
+        </div>
       </div>
     </header>
   );

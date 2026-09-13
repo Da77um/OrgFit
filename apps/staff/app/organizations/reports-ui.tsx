@@ -1,4 +1,5 @@
 "use client";
+import { jsonOf, staffFetch } from "../staff-fetch";
 import { useCallback, useEffect, useState } from "react";
 import { messages, type Locale } from "../../../../src/i18n";
 import { resultsMessages } from "../../../../src/results-i18n";
@@ -9,6 +10,7 @@ import {
   ErrorState,
   Micro,
 } from "../../../../src/ui";
+import { formatUtc } from "../../../../src/zoned-time";
 
 // The staff report panel.
 //
@@ -41,10 +43,8 @@ type Comparison = {
   reviewedAt: string;
 };
 
-const instant = (value: string | null) =>
-  value
-    ? new Date(value).toISOString().replace("T", " ").slice(0, 16) + "Z"
-    : "";
+// A report job has no timezone of its own, so its times are UTC and say so.
+const instant = (value: string | null) => formatUtc(value);
 const kilobytes = (value: number | null) =>
   value === null ? "" : `${Math.max(1, Math.round(value / 1024))} KB`;
 
@@ -70,7 +70,7 @@ export function ReportsPanel({
 
   const api = useCallback(
     async (suffix: string, init?: RequestInit) => {
-      const r = await fetch(`/api/v1/organizations/${org}/${suffix}`, {
+      const r = await staffFetch(locale)(`/api/v1/organizations/${org}/${suffix}`, {
         ...init,
         headers: {
           "Accept-Language": locale,
@@ -80,7 +80,7 @@ export function ReportsPanel({
             : {}),
         },
       });
-      const json = await r.json();
+      const json = await jsonOf(r);
       if (!r.ok) throw new Error(json.message ?? base.unavailable);
       return json.data;
     },
@@ -189,7 +189,12 @@ export function ReportsPanel({
       {jobs.length ? (
         // Nine columns do not fit a 320px viewport, so the table scrolls inside
         // its own box rather than making the page scroll sideways.
-        <div className="table-wrap scroll">
+        <div
+          className="table-wrap scroll"
+          tabIndex={0}
+          role="region"
+          aria-label={m.reports}
+        >
           <table className="result-table">
             <caption>{m.reports}</caption>
             <thead>
@@ -218,8 +223,8 @@ export function ReportsPanel({
                   <td>{kilobytes(job.byteCount)}</td>
                   <td>{job.pageCount ?? ""}</td>
                   <td>{job.requestedBy ?? ""}</td>
-                  <td>{instant(job.createdAt)}</td>
-                  <td>{instant(job.expiresAt)}</td>
+                  <td><bdi dir="ltr">{instant(job.createdAt)}</bdi></td>
+                  <td><bdi dir="ltr">{instant(job.expiresAt)}</bdi></td>
                   <td>
                     {/* A link exists only for a rendering that exists. The
                         endpoint re-authorizes on click; the link's presence is

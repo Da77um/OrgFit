@@ -9,6 +9,7 @@ import {
   moveItem,
   duplicateItem,
 } from "../../../../src/instrument-input";
+import { normalizeNumerals as latin } from "../../../../src/answer-rules";
 type T = (ar: string, en: string) => string;
 export function Translated({
   label,
@@ -122,7 +123,7 @@ export function QuestionEditor({
                 onChange={(e) =>
                   set({
                     rows: q.rows.map((x) =>
-                      x.id === o.id ? { ...x, weight: e.target.value } : x,
+                      x.id === o.id ? { ...x, weight: latin(e.target.value) } : x,
                     ),
                   })
                 }
@@ -141,7 +142,7 @@ export function QuestionEditor({
                   set({
                     [kind]: (q[kind] as Question["options"]).map((x) =>
                       x.id === o.id
-                        ? { ...x, score: e.target.value || null }
+                        ? { ...x, score: latin(e.target.value) || null }
                         : x,
                     ),
                   })
@@ -229,14 +230,12 @@ export function QuestionEditor({
         <label>
           {t("الحد الأقصى للأحرف", "Maximum characters")}
           <input
-            type="number"
-            min={1}
-            max={10000}
+            inputMode="numeric"
             value={q.validation.maxLength ?? ""}
             onChange={(e) =>
               config(
                 "maxLength",
-                e.target.value ? Number(e.target.value) : undefined,
+                latin(e.target.value) ? Number(latin(e.target.value)) : undefined,
               )
             }
           />
@@ -250,11 +249,10 @@ export function QuestionEditor({
                 ? t("أقصى عدد اختيارات", "Maximum selections")
                 : t("أقل عدد اختيارات", "Minimum selections")}
               <input
-                type="number"
-                min={0}
+                inputMode="numeric"
                 value={q.validation[k as "minSelections"] ?? ""}
                 onChange={(e) =>
-                  config(k, e.target.value ? Number(e.target.value) : undefined)
+                  config(k, latin(e.target.value) ? Number(latin(e.target.value)) : undefined)
                 }
               />
             </label>
@@ -279,10 +277,10 @@ export function QuestionEditor({
                   config(
                     k,
                     k === "precision"
-                      ? e.target.value
-                        ? Number(e.target.value)
+                      ? latin(e.target.value)
+                        ? Number(latin(e.target.value))
                         : undefined
-                      : e.target.value,
+                      : latin(e.target.value),
                   )
                 }
               />
@@ -367,7 +365,7 @@ export function QuestionEditor({
                   inputMode="decimal"
                   value={q.scoring.weight}
                   onChange={(e) =>
-                    set({ scoring: { ...q.scoring, weight: e.target.value } })
+                    set({ scoring: { ...q.scoring, weight: latin(e.target.value) } })
                   }
                 />
               </label>
@@ -447,7 +445,7 @@ export function Bands({
                   onChange={(e) =>
                     change(
                       items.map((x) =>
-                        x.id === b.id ? { ...x, [k]: e.target.value } : x,
+                        x.id === b.id ? { ...x, [k]: latin(e.target.value) } : x,
                       ),
                     )
                   }
@@ -632,7 +630,7 @@ export function DimensionsEditor({
               <input
                 inputMode="decimal"
                 value={dim.coverage}
-                onChange={(e) => update(dim.id, { coverage: e.target.value })}
+                onChange={(e) => update(dim.id, { coverage: latin(e.target.value) })}
               />
             </label>
             <label>
@@ -663,7 +661,7 @@ export function DimensionsEditor({
                   inputMode="decimal"
                   value={dim.denominator ?? ""}
                   onChange={(e) =>
-                    update(dim.id, { denominator: e.target.value })
+                    update(dim.id, { denominator: latin(e.target.value) })
                   }
                 />
               </label>
@@ -832,7 +830,7 @@ export function DimensionsEditor({
                                 ...d.overall,
                                 inputs: d.overall.inputs.map((x) =>
                                   x.dimensionId === dim.id
-                                    ? { ...x, weight: e.target.value }
+                                    ? { ...x, weight: latin(e.target.value) }
                                     : x,
                                 ),
                               },

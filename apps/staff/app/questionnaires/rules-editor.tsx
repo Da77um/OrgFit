@@ -9,6 +9,7 @@ import {
   moveItem,
 } from "../../../../src/instrument-input";
 import { Translated } from "./editors";
+import { normalizeNumerals as latin } from "../../../../src/answer-rules";
 type T = (ar: string, en: string) => string;
 
 // The versioned rule editor. Everything it can express is a bounded set of
@@ -106,7 +107,7 @@ function Comparisons({
             <input
               inputMode="decimal"
               value={c.value}
-              onChange={(e) => update(i, { value: e.target.value })}
+              onChange={(e) => update(i, { value: latin(e.target.value) })}
             />
           </label>
           {c.operator === "BETWEEN" && (
@@ -115,7 +116,7 @@ function Comparisons({
               <input
                 inputMode="decimal"
                 value={c.upper ?? ""}
-                onChange={(e) => update(i, { upper: e.target.value })}
+                onChange={(e) => update(i, { upper: latin(e.target.value) })}
               />
             </label>
           )}
@@ -209,7 +210,7 @@ export function RulesEditor({
                 inputMode="numeric"
                 value={rule.priority}
                 onChange={(e) =>
-                  update(rule.id, { priority: Number(e.target.value) || 0 })
+                  update(rule.id, { priority: Number(latin(e.target.value)) || 0 })
                 }
               />
             </label>

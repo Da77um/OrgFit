@@ -1,5 +1,6 @@
 /* Full document navigation intentionally clears organization-scoped client state. */
 "use client";
+import { jsonOf, staffFetch } from "../staff-fetch";
 import {
   useEffect,
   useState,
@@ -35,7 +36,7 @@ async function api(
   revision?: string,
   key?: string,
 ) {
-  const r = await fetch("/api/v1/" + path, {
+  const r = await staffFetch(locale)("/api/v1/" + path, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -47,7 +48,7 @@ async function api(
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const json = await r.json();
+  const json = await jsonOf(r);
   if (!r.ok) {
     const m = directoryMessages(locale);
     throw new Error(

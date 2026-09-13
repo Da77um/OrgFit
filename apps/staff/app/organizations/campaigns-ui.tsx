@@ -1,5 +1,6 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
+import { jsonOf, staffFetch } from "../staff-fetch";
 import {
   useCallback,
   useEffect,
@@ -23,6 +24,11 @@ import {
   Micro,
   PageHeader,
 } from "../../../../src/ui";
+import { normalizeNumerals as latin } from "../../../../src/answer-rules";
+import { wallClockToInstant } from "../../../../src/zoned-time";
+
+const inZone = (local: string, timeZone: string) =>
+  wallClockToInstant(local, timeZone) ?? local;
 
 type M = ReturnType<typeof campaignMessages>;
 const subscribe = () => () => {};
@@ -33,7 +39,7 @@ async function api(
   body?: unknown,
   revision?: string,
 ) {
-  const r = await fetch("/api/v1/" + path, {
+  const r = await staffFetch(locale)("/api/v1/" + path, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -43,7 +49,7 @@ async function api(
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const json = await r.json();
+  const json = await jsonOf(r);
   if (!r.ok)
     throw new Error(
       json.code === "TOKEN_ALREADY_ISSUED"
@@ -264,12 +270,15 @@ export function Campaigns({
         roundId: String(form.get("roundId")),
         questionnaireVersionId: String(form.get("versionId")),
         target,
-        startsAt: new Date(String(form.get("startsAt"))).toISOString(),
+        // The wall-clock times are read in the campaign's own timezone, not in
+        // the browser's; an unparseable value is sent as-is for the server to
+        // refuse.
+        startsAt: inZone(String(form.get("startsAt")), String(form.get("timezone"))),
         endsAt: form.get("endsAt")
-          ? new Date(String(form.get("endsAt"))).toISOString()
+          ? inZone(String(form.get("endsAt")), String(form.get("timezone")))
           : null,
         timezone: String(form.get("timezone")),
-        threshold: Number(form.get("threshold")),
+        threshold: Number(latin(String(form.get("threshold") ?? ""))),
       })) as Campaign;
       location.assign(`/${base}/campaigns/${created.id}`);
     });
@@ -360,7 +369,12 @@ export function Campaigns({
           )}
           <h2>{m.rounds}</h2>
           {rounds.length === 0 && <p>{m.empty}</p>}
-          <div className="scroll">
+          <div
+            className="scroll"
+            tabIndex={0}
+            role="region"
+            aria-label={m.rounds}
+          >
             <table>
               <caption>{m.rounds}</caption>
               <thead>
@@ -451,15 +465,24 @@ export function Campaigns({
                 <input id="participantId" name="participantId" />
                 <label htmlFor="participantIds">{m.participantIds}</label>
                 <textarea id="participantIds" name="participantIds" rows={3} />
+                <p className="muted" id="campaignTimesHelp">
+                  {m.timesInZone}
+                </p>
                 <label htmlFor="startsAt">{m.startsAt}</label>
                 <input
                   id="startsAt"
                   name="startsAt"
                   type="datetime-local"
                   required
+                  aria-describedby="campaignTimesHelp"
                 />
                 <label htmlFor="endsAt">{m.endsAt}</label>
-                <input id="endsAt" name="endsAt" type="datetime-local" />
+                <input
+                  id="endsAt"
+                  name="endsAt"
+                  type="datetime-local"
+                  aria-describedby="campaignTimesHelp"
+                />
                 <label htmlFor="timezone">{m.timezone}</label>
                 <input
                   id="timezone"
@@ -471,8 +494,7 @@ export function Campaigns({
                 <input
                   id="threshold"
                   name="threshold"
-                  type="number"
-                  min={5}
+                  inputMode="numeric"
                   defaultValue={5}
                   required
                 />
@@ -604,12 +626,20 @@ export function Campaigns({
                       new FormData(e.currentTarget).get("endsAt") ?? "",
                     );
                     void act("end-date", "PUT", {
-                      endsAt: value ? new Date(value).toISOString() : null,
+                      endsAt: value ? inZone(value, campaign.timezone) : null,
                     });
                   }}
                 >
                   <label htmlFor="endsAt">{m.endDate}</label>
-                  <input id="endsAt" name="endsAt" type="datetime-local" />
+                  <input
+                    id="endsAt"
+                    name="endsAt"
+                    type="datetime-local"
+                    aria-describedby="endDateZone"
+                  />
+                  <p className="muted" id="endDateZone">
+                    {m.timesInZone} (<bdi dir="ltr">{campaign.timezone}</bdi>)
+                  </p>
                   <button disabled={busy}>{m.save}</button>
                 </form>
                 <form
@@ -659,7 +689,12 @@ export function Campaigns({
             </p>
             <p>{m.linkOnce}</p>
             <p>{m.linkPrivacy}</p>
-            <div className="scroll">
+            <div
+              className="scroll"
+              tabIndex={0}
+              role="region"
+              aria-label={m.invitations}
+            >
               <table>
                 <caption>{m.invitations}</caption>
                 <thead>
@@ -731,8 +766,14 @@ export function Campaigns({
                             </button>
                           )}
                           {links[i.invitationId] && (
+                            // A link is a left-to-right string on any page:
+                            // under RTL an input would reorder its separators.
                             <input
                               readOnly
+                              dir="ltr"
+                              translate="no"
+                              spellCheck={false}
+                              className="code"
                               aria-label={m.copy}
                               value={links[i.invitationId]}
                             />

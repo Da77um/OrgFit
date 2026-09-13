@@ -127,3 +127,14 @@ Run `npm run test:visits` and `npx playwright test tests/browser/visits.spec.ts`
 See [landing-and-access.md](docs/orgfit/landing-and-access.md). Apply migration 016. `/` is now the public overview page and the workspace home is `/workspace`. `/login` offers the identity provider whenever OIDC is configured, and an email/password form **only** where the database's local access switch is on; `/activate#<token>` activates an account from a Super Admin's invitation, whose role and access the invitee cannot change. There is no public registration.
 
 The password path is **development-only**: a password session satisfies no second factor, migration 016 leaves the switch off, and only `scripts/bootstrap-dev-admin.ts` — which refuses production and non-loopback databases — turns it on while creating the local Super Admin from the ignored `.env.bootstrap` (template: `.env.bootstrap.example`). `scripts/provision-dev.ts` creates a persistent local `orgfit_dev` database. Run `npm run test:access` and `npx playwright test tests/browser/access.spec.ts`.
+
+## Localization, mobile and accessibility refinement (Phase 13)
+
+No migration and no API change. The respondent screen now states server facts truthfully (offline, not saved, save conflict, a draft saved from another browser, session ended, campaign closed while answering, submission not confirmed), keeps Back inside the questionnaire, moves focus to each new screen's heading, validates numbers, dates and selections beside the field, and accepts Arabic-Indic digits while sending canonical Latin ones. Staff screens carry a language switch in the app bar, read and show visit and campaign times in the record's own timezone, and report network failures in the reader's language. See D-107 … D-112 in [decisions.md](docs/orgfit/decisions.md).
+
+```bash
+npm run test:localization
+npx playwright test tests/browser/journey.spec.ts tests/browser/localization.spec.ts tests/browser/accessibility.spec.ts
+```
+
+The accessibility spec uses axe-core (dev dependency only). A clean run is not a WCAG conformance claim; no real iOS or Android device and no screen reader have been used. **Checkpoint F has not run.**

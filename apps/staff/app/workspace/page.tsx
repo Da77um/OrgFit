@@ -53,7 +53,7 @@ export default async function Home() {
     >
       <PageHeader
         eyebrow={<Label accent>{m.home}</Label>}
-        title={`${m.welcome}، ${profile.displayName}`}
+        title={`${m.welcome}${profile.locale === "en" ? "," : "،"} ${profile.displayName}`}
         sub={m.scope}
         actions={
           <a className="button button-secondary" href="/questionnaires">
