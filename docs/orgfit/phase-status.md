@@ -1409,7 +1409,7 @@ No real iOS or Android device, no WebKit or Firefox, no screen reader, no real b
 
 ### Commit
 
-**None yet** — the Checkpoint F changes are uncommitted on `main`, on top of `2fcbbc0`. No remote, nothing pushed.
+`59c99e3` — **Checkpoint F: full functional journey — PASS, with five repairs**, on `main`, parent `2fcbbc0`. No remote, nothing pushed.
 
 ### Exact next action
 
@@ -1468,7 +1468,7 @@ Implementation or operational work: SEC-M1 staff-side rate limiting at the edge;
 
 ### Commit
 
-**None yet** — Checkpoint F and Phase 14 changes are uncommitted on `main`, on top of `2fcbbc0`. No remote, nothing pushed or deployed, no external message sent.
+`b8d1bab` — **Phase 14: security, retention, backups and resilience**, on `main`, parent `59c99e3`. The ignore rules kept `work/` (drill clusters, load output, ledgers) and every environment file out of it. No remote, nothing pushed or deployed, no external message sent.
 
 ### Exact next action
 
