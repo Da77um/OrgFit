@@ -150,3 +150,17 @@ npx tsx tests/ops/load.ts            # 100k directory, 10k campaign, 200 concurr
 ```
 
 Evidence and residual issues: [security-review.md](docs/orgfit/security-review.md), [privacy-verification.md](docs/orgfit/privacy-verification.md), [performance-results.md](docs/orgfit/performance-results.md). **Retention durations are unapproved defaults; recovery figures are from one developer machine; this is not production readiness.**
+
+## Release candidate (Phase 15)
+
+**`orgfit-0.3.0-rc.1` — NO-GO for production.** Start with [final-handoff.md](docs/orgfit/final-handoff.md), then [release-checklist.md](docs/orgfit/release-checklist.md), [deployment-runbook.md](docs/orgfit/deployment-runbook.md) and the [staff operations guide](docs/orgfit/staff-operations-guide.md). No migration. [`deploy/processes.json`](deploy/processes.json) names every process, its database identity and what it must never hold.
+
+```bash
+npm run release:preflight -- --process staff --env-file /secure/staff.env --production --check-database
+npm run release:manifest -- --id orgfit-0.3.0-rc.1
+npm run test:release
+npx tsx tests/ops/rollback-drill.ts    # physical restores: no reopened link, no duplicate, no silent loss, no revived expiry
+npx tsx tests/release/rehearsal.ts     # after npm run build: production builds behind TLS, TLS-only database
+```
+
+The drill and the rehearsal use the embedded Windows PostgreSQL package and Git's OpenSSL (`PG_BIN`, `OPENSSL` override the paths). The rehearsal is a local rehearsal with an S3 test double, **not staging**; no authorized non-production environment exists. **Checkpoint G has not run.**

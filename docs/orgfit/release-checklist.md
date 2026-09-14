@@ -8,9 +8,9 @@
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| A1 | Candidate is one commit with a manifest | DONE | `npm run release:manifest -- --id orgfit-0.3.0-rc.1`; commit and source digest in final-handoff §1 |
+| A1 | Candidate is one commit with a manifest | DONE | `ef914d8`, source digest `5582a0ed…`; `npm run release:manifest -- --id orgfit-0.3.0-rc.1` (final-handoff §1) |
 | A2 | Manifest verification refuses a differing checkout | DONE | `--verify` compares source digest, lockfile, process manifest, roles, migrations, uncommitted changes |
-| A3 | Clean installation from the commit | see final-handoff §3 | fresh `git clone` → `npm ci` → typecheck, lint, build, boundaries, production smoke, `--verify` |
+| A3 | Clean installation from the commit | DONE | fresh clone of `ef914d8`: `npm ci` (0 vulnerabilities), typecheck, lint, build, boundaries, production smoke, `--verify` matches; release suite, rollback drill and rehearsal pass inside the clone (final-handoff §3) |
 | A4 | Dependency lock and audit | DONE | `npm ci` from lockfile; `npm audit`: 0 vulnerabilities. Four caret ranges remain in `package.json` (RC-005, pinned by the lockfile) |
 | A5 | Web builds exclude other processes' code | DONE | `check:boundaries` (now also excludes the preflight module) |
 | A6 | CI covers every suite | DONE in file / NOT DONE remotely | `.github/workflows/ci.yml` updated (RC-002); **remote CI has never run** — no remote exists |
@@ -59,7 +59,7 @@
 | # | Item | Status | Evidence |
 |---|---|---|---|
 | E1 | Full automated node suites | DONE | 24 suites, 279 tests, 0 failures (final-handoff §2) |
-| E2 | Full browser suite | see final-handoff §2 | `npx playwright test` |
+| E2 | Full browser suite | DONE | `npx playwright test`: 52 passed (development servers, Chromium only) |
 | E3 | Final synthetic end-to-end smoke on production builds | DONE | rehearsal 13/13 |
 | E4 | Rollback/restore cannot reopen consumed invitations | DONE | rollback drill checks 4, 7; R-3 |
 | E5 | … duplicate accepted submissions | DONE | rollback drill checks 5, 8 (`MARKER_MISMATCH`, no duplicate rows) |

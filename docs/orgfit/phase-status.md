@@ -4,7 +4,7 @@ Updated: 2026-09-14
 
 ## Current position
 
-**Phase 14 is COMPLETE as development work** — see the Phase 14 handoff below and its five documents. Phases 00–14 are complete and Checkpoints A–F passed. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
+**Phase 15 is COMPLETE: release candidate `orgfit-0.3.0-rc.1` (commit `ef914d8`) is assembled and verified on one development machine, with a NO-GO for production** — see the Phase 15 handoff below and [final-handoff.md](final-handoff.md). Phases 00–15 are complete and Checkpoints A–F passed; Checkpoint G has not run. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
 
 **CE-001 is real, accepted and declared — not closed.** An individual contributor's own score is recoverable from two published releases: to within about a point at company level, and **to 0.01 of a point from a single department row of a reviewed comparison**, measured against independently recomputed true scores. The gate returned BLOCKED and escalated it as P-009 rather than choosing a remedy, because every remedy changes what the product may publish. **The owner answered on 2026-09-10: accept and declare.** That made the caveat wording the whole control, so the wording was rewritten to state the consequence instead of reassuring, and a targeted caveat now fires only where two rounds' contributor counts differ by fewer than the threshold (D-086). Nothing else in the gate blocked; CE-002, a chart-label defect found by looking at rendered pages, was repaired.
 
@@ -14,7 +14,7 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
-Next step: **Phase 15 — final release candidate and production readiness**, in a fresh session, starting from the release-readiness gap list in the Phase 14 handoff. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
+Next step: **Checkpoint G — final go/no-go inspection**, in a fresh session, against commit `ef914d8` and its release manifest. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
 
@@ -41,7 +41,7 @@ Next step: **Phase 15 — final release candidate and production readiness**, in
 | 13 | Localization/mobile/accessibility refinement | COMPLETE — development evidence below; no real device or screen reader |
 | F | Full functional journey checkpoint | PASS — checkpoint-f.md (implementation gate; emulated devices only) |
 | 14 | Security/retention/backups/resilience | COMPLETE — security-review.md, privacy-verification.md, retention-backup-runbook.md, incident-runbook.md, performance-results.md |
-| 15 | Release candidate/production readiness | NOT STARTED |
+| 15 | Release candidate/production readiness | COMPLETE — release candidate `orgfit-0.3.0-rc.1` (`ef914d8`); NO-GO for production; final-handoff.md, release-checklist.md, deployment-runbook.md, staff-operations-guide.md |
 | G | Final go/no-go checkpoint | NOT RUN |
 
 ## Phase 00 handoff — 2026-09-08
@@ -1473,6 +1473,44 @@ Implementation or operational work: SEC-M1 staff-side rate limiting at the edge;
 ### Exact next action
 
 **Phase 15 — final release candidate and production readiness**, in a fresh session, starting from the gap list above. Deployment requires explicit authorization.
+
+## Phase 15 handoff — 2026-09-14
+
+- Step and status: **COMPLETE.** Release candidate **`orgfit-0.3.0-rc.1`**, commit **`ef914d8e22fb136096231cf25506d5493672e813`**, source digest `5582a0ed4aa953286a3eb93ec1b3e938b8347f221a6ed39999b9ce28acaf2b66`. **Decision: NO-GO for production** — no authorized environment to stage in, no independent review, every production input open. Full record: [final-handoff.md](final-handoff.md); go/no-go items: [release-checklist.md](release-checklist.md).
+
+### Implemented
+
+- **Release tooling** (D-124, D-125): `deploy/processes.json` (six processes, database identities, required/forbidden variables, storage, job cadences); `npm run release:preflight` (environment and database checks per process, never prints a value; now checks the server logging settings, SEC-M4); `npm run release:manifest` with `--verify`.
+- **Repair RC-001** (D-123): restore replay and `ops:check` reconcile the core batch record with the anonymous marker; stores restored to different points are an incident, not a silent loss.
+- **Verification harnesses**: `tests/release.test.ts` (R-1, R-1b, R-2, R-4), `tests/release-upgrade.test.ts` (R-3, upgrade from state written by the Checkpoint F commit's own code), `tests/ops/rollback-drill.ts` (physical restores with assertions), `tests/release/rehearsal.ts` (production builds behind TLS against a TLS-only database, D-126).
+- **CI** now runs `test:localization`, `test:access`, `test:operations`, `test:release` with full history (RC-002).
+- **Documents**: release-checklist.md, deployment-runbook.md, staff-operations-guide.md, final-handoff.md; decisions D-123 … D-126; security-review.md §6.
+
+### Changed files and migrations
+
+New: `deploy/processes.json`, `src/preflight.ts`, `scripts/release-preflight.ts`, `scripts/release-manifest.ts`, `tests/release.test.ts`, `tests/release-upgrade.test.ts`, `tests/release/baseline-state.ts`, `tests/release/rehearsal.ts`, `tests/ops/rollback-drill.ts`, the four documents. Modified: `src/operations.ts`, `scripts/ops-check.ts`, `scripts/check-boundaries.ts`, `tests/oidc-provider.ts` (optional public issuer), `package.json` and `package-lock.json` (version `0.3.0-rc.1`, three scripts), `.github/workflows/ci.yml`, `decisions.md`, `security-review.md`, this file, `README.md`. **No migration**; 001–018 and anonymous 001–002 untouched.
+
+### Tests actually run
+
+See [final-handoff.md §2–3](final-handoff.md#2-tests-actually-run). In short: typecheck and lint clean; 24 node suites **279 passed, 0 failed**; `check:boundaries`, `test:production` pass; `npm audit` 0 vulnerabilities; Playwright **52 passed**; rollback drill **8/8**; rehearsal **13/13**; and inside a genuine clean clone of `ef914d8`: `npm ci`, typecheck, lint, build, boundaries, production smoke, release suite 5/5, rollback drill 8/8, rehearsal 13/13, manifest `--verify` matches.
+
+**Not run:** staging (none exists), real IdP/MFA, real TLS/domains/proxy/WAF, real bucket policies and lifecycle (S3 test double only), managed KMS, antivirus engine, network segmentation, paging, production-hardware load and restore, real devices/WebKit/Firefox/screen readers, remote CI, penetration test, independent review.
+
+### Defects found and repaired
+
+RC-001 (High, product) and RC-002 (Medium, CI) as above. RC-006 (Low, release tooling): manifest hashes depended on line endings, spawned npm through a shell, and `--verify` refused every freshly built checkout (clipped first path; generated `next-env.d.ts` counted as a source change) — fixed in `2f05b56`, `e010e1b`, `ef914d8`. Harness defects of my own: a report request asserted 201 instead of the API's 202; a blocking spawn deadlocked against the in-process storage double. **Process defect, recorded:** two "clean clone" attempts silently failed (Git "dubious ownership") and ran in the main checkout; their results are not used as clone evidence, and one of them detached the main checkout's HEAD at the same commit, which was fast-forwarded back onto `main`. No global Git configuration was changed.
+
+### Open defects and production prerequisites
+
+RC-003 (no provider packaging, P-002), RC-004 (operator/processor scripts rely on preflight for TLS), RC-005 (four caret ranges, lockfile-pinned). Unchanged: SEC-H1, SEC-H2, SEC-M1, SEC-M3, SEC-M5, SEC-M6, SEC-L1–L4, CE-001. P-001 … P-008 and P-010 open — itemized in final-handoff §5.
+
+### Commit
+
+`fadffb1`, `2f05b56`, `e010e1b`, `ef914d8` on `main`, plus the documentation commit that adds this entry. A git worktree of `59c99e3` remains at `work/release-baseline-59c99e3` (ignored) for R-3. No remote, nothing pushed, nothing deployed, no message sent.
+
+### Exact next action
+
+**Checkpoint G — final go/no-go inspection**, in a fresh session, against `ef914d8` and `work/release/orgfit-0.3.0-rc.1/manifest.json` (regenerate if absent). Stop there.
 
 ## Handoff format for subsequent steps (template)
 
