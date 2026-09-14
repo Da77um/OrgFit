@@ -187,7 +187,7 @@ const ar: LandingCopy = {
     },
   ],
   privacyLimit:
-    "هذا نموذج فصل وحدّ أدنى للإفصاح، وليس ضمان إخفاء هوية مطلقًا. يظل أثر المقارنة بين جولتين منشورتين قابلًا للاستنتاج في حالات معيّنة، وهو أمر موثَّق صراحةً في وثائق المنصة وتحت مراجعة خصوصية مستقلة قبل أي جمع بيانات حقيقي.",
+    "هذا نموذج فصل وحدّ أدنى للإفصاح، وليس ضمان إخفاء هوية مطلقًا. يظل أثر المقارنة بين جولتين منشورتين قابلًا للاستنتاج في حالات معيّنة، وهو أمر موثَّق صراحةً في وثائق المنصة، ويشترط مراجعة خصوصية مستقلة لم تُجرَ بعد قبل أي جمع بيانات حقيقي.",
 
   productTitle: "لمحة من داخل مساحة العمل",
   productLead:
@@ -352,7 +352,7 @@ const en: LandingCopy = {
     },
   ],
   privacyLimit:
-    "This is a separation model with a disclosure threshold, not a guarantee of anonymity. Comparing two published rounds can still permit inference in specific cases; that is documented explicitly in the platform's own records and is under independent privacy review before any real data collection.",
+    "This is a separation model with a disclosure threshold, not a guarantee of anonymity. Comparing two published rounds can still permit inference in specific cases; that is documented explicitly in the platform's own records, and an independent privacy review, not yet carried out, is required before any real data collection.",
 
   productTitle: "A look inside the workspace",
   productLead:

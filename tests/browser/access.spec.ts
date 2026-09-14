@@ -69,6 +69,10 @@ test("overview page: Arabic RTL, every section, working anchors and CTAs, synthe
 
   await expect(page.getByText("بيانات توضيحية").first()).toBeVisible();
   await expect(page.getByText("ليس ضمان إخفاء هوية مطلقًا", { exact: false })).toBeVisible();
+  // Checkpoint G (CG-001): the independent privacy review is required and has
+  // not happened; the page must never say it is under way.
+  await expect(page.getByText("مراجعة خصوصية مستقلة لم تُجرَ بعد", { exact: false })).toBeVisible();
+  await expect(page.getByText("وتحت مراجعة خصوصية مستقلة", { exact: false })).toHaveCount(0);
   for (const banned of ["pricing", "trial", "اشتراك", "تجربة مجانية"])
     await expect(page.getByText(banned, { exact: false })).toHaveCount(0);
 
@@ -95,6 +99,8 @@ test("overview page: English LTR persists into sign-in; 320px has no sideways sc
   await page.getByRole("button", { name: "English" }).first().click();
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("A clearer view");
+  await expect(page.getByText("independent privacy review, not yet carried out, is required", { exact: false })).toBeVisible();
+  await expect(page.getByText("under independent privacy review", { exact: false })).toHaveCount(0);
   await page.goto("/login");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { name: "Staff sign in" })).toBeVisible();
