@@ -44,7 +44,7 @@ The blueprint defines the precise privacy trust model and production review gate
 
 ## Repository status
 
-Local Git repository on `main`. The stack remains Node 24, Next.js 16, PostgreSQL 18 and OIDC. No remote hosting, public publication or deployment is configured. Phase 13 and later modules remain separate requests.
+Local Git repository on `main`. The stack remains Node 24, Next.js 16, PostgreSQL 18 and OIDC. No remote hosting, public publication or deployment is configured. Phases 00–15 and Checkpoints A–G are recorded in [phase status](docs/orgfit/phase-status.md).
 
 ## Directory (Phase 03)
 
@@ -94,7 +94,7 @@ Open **السجل التاريخي / History** from an organization's assessment
 
 Two released rounds can be compared, but only through a recorded review: reading a history needs `results.read`, while declaring that two versions measure the same thing additionally needs `instruments.manage`. The reviewer is shown which metrics still match before deciding; a metric whose scoring changed cannot be accepted as equivalent, and a comparison can always be documented as not comparable instead. Deltas are re-verified against the pinned questionnaire definitions every time they are read, so a stored review can never produce a number the definitions do not support. Withheld values stay gaps, improvement is direction-aware, departments pair by lineage so renames keep their historic labels, and no participant is ever linked across rounds.
 
-Run `npm run test:comparison` and `npm run test:history`. **Checkpoint E has not run**, and it must attack cross-round differencing — comparing releases of populations that changed between rounds is a new surface this phase creates.
+Run `npm run test:comparison` and `npm run test:history`. **[Checkpoint E](docs/orgfit/checkpoint-e.md) passed**; it attacked cross-round differencing — comparing releases of populations that changed between rounds is a new surface this phase creates.
 
 ## Report artifacts and participation exports (Phase 11)
 
@@ -120,7 +120,7 @@ Attachments are private, bounded and quarantined. An upload mints a **generated*
 
 The bundled scanner is a **content verifier, not an antivirus engine** — magic-byte typing, OOXML part inspection and the EICAR marker. Supplying a maintained engine is production input P-010; attachment types and size limits remain P-007 and the retention window P-004.
 
-Run `npm run test:visits` and `npx playwright test tests/browser/visits.spec.ts`. **Checkpoint F has not run.**
+Run `npm run test:visits` and `npx playwright test tests/browser/visits.spec.ts`. **[Checkpoint F](docs/orgfit/checkpoint-f.md) passed.**
 
 ## Overview page, staff sign-in and invitation activation
 
@@ -137,7 +137,7 @@ npm run test:localization
 npx playwright test tests/browser/journey.spec.ts tests/browser/localization.spec.ts tests/browser/accessibility.spec.ts
 ```
 
-The accessibility spec uses axe-core (dev dependency only). A clean run is not a WCAG conformance claim; no real iOS or Android device and no screen reader have been used. **Checkpoint F has not run.**
+The accessibility spec uses axe-core (dev dependency only). A clean run is not a WCAG conformance claim; no real iOS or Android device and no screen reader have been used. **[Checkpoint F](docs/orgfit/checkpoint-f.md) passed** on emulated devices only.
 
 ## Security, retention, backups and resilience (Phase 14)
 
@@ -153,7 +153,7 @@ Evidence and residual issues: [security-review.md](docs/orgfit/security-review.m
 
 ## Release candidate (Phase 15)
 
-**`orgfit-0.3.0-rc.1` — NO-GO for production.** Start with [final-handoff.md](docs/orgfit/final-handoff.md), then [release-checklist.md](docs/orgfit/release-checklist.md), [deployment-runbook.md](docs/orgfit/deployment-runbook.md) and the [staff operations guide](docs/orgfit/staff-operations-guide.md). No migration. [`deploy/processes.json`](deploy/processes.json) names every process, its database identity and what it must never hold.
+**`orgfit-0.3.0-rc.2` — NO-GO for production.** Start with [final-handoff.md](docs/orgfit/final-handoff.md), then [release-checklist.md](docs/orgfit/release-checklist.md), [deployment-runbook.md](docs/orgfit/deployment-runbook.md) and the [staff operations guide](docs/orgfit/staff-operations-guide.md). No migration. [`deploy/processes.json`](deploy/processes.json) names every process, its database identity and what it must never hold.
 
 ```bash
 npm run release:preflight -- --process staff --env-file /secure/staff.env --production --check-database
@@ -163,4 +163,4 @@ npx tsx tests/ops/rollback-drill.ts    # physical restores: no reopened link, no
 npx tsx tests/release/rehearsal.ts     # after npm run build: production builds behind TLS, TLS-only database
 ```
 
-The drill and the rehearsal use the embedded Windows PostgreSQL package and Git's OpenSSL (`PG_BIN`, `OPENSSL` override the paths). The rehearsal is a local rehearsal with an S3 test double, **not staging**; no authorized non-production environment exists. **Checkpoint G has not run.**
+The drill and the rehearsal use the embedded Windows PostgreSQL package and Git's OpenSSL (`PG_BIN`, `OPENSSL` override the paths). The rehearsal is a local rehearsal with an S3 test double, **not staging**; no authorized non-production environment exists. **[Checkpoint G](docs/orgfit/checkpoint-g.md) ran:** technical GO as an implementation gate, production NO-GO; the candidate is now `orgfit-0.3.0-rc.2` (`e801b9a`).

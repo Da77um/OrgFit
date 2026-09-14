@@ -1,6 +1,6 @@
 # Release checklist — orgfit-0.3.0-rc.1 (Phase 15)
 
-2026-09-14. Each line is **DONE** (with the evidence actually produced in this phase), **NOT DONE** (with what is missing) or **OWNER INPUT** (a decision or resource only the owner or a named role can supply). Nothing is marked done because a document describes it. Checkpoint G re-inspects this list against the exact candidate.
+2026-09-14. Each line is **DONE** (with the evidence actually produced in this phase), **NOT DONE** (with what is missing) or **OWNER INPUT** (a decision or resource only the owner or a named role can supply). Nothing is marked done because a document describes it. Checkpoint G re-inspected this list: [checkpoint-g.md](checkpoint-g.md). After CG-001 the candidate is `orgfit-0.3.0-rc.2` (`e801b9a`); every status below still holds for it.
 
 **Decision: NO-GO for production.** The technical candidate is assembled and verified on one machine; every owner input below is still open, and no authorized environment exists to stage it in. See [final-handoff.md](final-handoff.md).
 

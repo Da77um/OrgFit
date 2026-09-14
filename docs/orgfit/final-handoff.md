@@ -2,6 +2,8 @@
 
 2026-09-14.
 
+> **Superseded identifier.** Checkpoint G corrected one release-blocking mislabel (CG-001) and the candidate is now **`orgfit-0.3.0-rc.2`, commit `e801b9a`** — see [checkpoint-g.md](checkpoint-g.md) §4a. Everything below describes rc.1 as handed to Checkpoint G.
+
 ## Decision
 
 **NO-GO for production.** The release candidate is assembled, reproducible and verified on one development machine, including a production-mode rehearsal behind TLS and physical restore drills. It is **not** deployable to real respondents: no authorized environment exists to stage it in, an independent privacy and security review has not happened, and every production input (P-001 … P-008, P-010) is open. A technical GO at Checkpoint G would still not authorize deployment.
@@ -129,4 +131,4 @@ Full procedure: [deployment-runbook.md](deployment-runbook.md) §5 and §7.
 
 ## 8. Next step
 
-**Checkpoint G — final go/no-go inspection**, in a fresh session, against commit `ef914d8` and its manifest. Stop there. Deployment requires explicit authorization.
+Checkpoint G has run — [checkpoint-g.md](checkpoint-g.md): technical GO as an implementation gate, production NO-GO. Deployment requires explicit authorization.

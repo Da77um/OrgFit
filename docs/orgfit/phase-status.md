@@ -4,7 +4,7 @@ Updated: 2026-09-14
 
 ## Current position
 
-**Phase 15 is COMPLETE: release candidate `orgfit-0.3.0-rc.1` (commit `ef914d8`) is assembled and verified on one development machine, with a NO-GO for production** — see the Phase 15 handoff below and [final-handoff.md](final-handoff.md). Phases 00–15 are complete and Checkpoints A–F passed; Checkpoint G has not run. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
+**Checkpoint G has run: technical GO as an implementation gate, NO-GO for production.** The candidate is now **`orgfit-0.3.0-rc.2` (commit `e801b9a`)** after one correction (CG-001: the overview page no longer claims an independent privacy review is under way). See [checkpoint-g.md](checkpoint-g.md). Phases 00–15 are complete and Checkpoints A–G have run. Field visits, follow-up actions and quarantined private attachments are implemented and tested; see [visits.md](visits.md). Checkpoint E's record remains [checkpoint-e.md](checkpoint-e.md).
 
 **CE-001 is real, accepted and declared — not closed.** An individual contributor's own score is recoverable from two published releases: to within about a point at company level, and **to 0.01 of a point from a single department row of a reviewed comparison**, measured against independently recomputed true scores. The gate returned BLOCKED and escalated it as P-009 rather than choosing a remedy, because every remedy changes what the product may publish. **The owner answered on 2026-09-10: accept and declare.** That made the caveat wording the whole control, so the wording was rewritten to state the consequence instead of reassuring, and a targeted caveat now fires only where two rounds' contributor counts differ by fewer than the threshold (D-086). Nothing else in the gate blocked; CE-002, a chart-label defect found by looking at rendered pages, was repaired.
 
@@ -14,7 +14,7 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
-Next step: **Checkpoint G — final go/no-go inspection**, in a fresh session, against commit `ef914d8` and its release manifest. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
+Next step: **none in the phase sequence.** What remains is owner input (P-001 … P-008, P-010, itemized in checkpoint-g.md §6) and, only with explicit authorization, staging and deployment. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
 
@@ -42,7 +42,7 @@ Next step: **Checkpoint G — final go/no-go inspection**, in a fresh session, a
 | F | Full functional journey checkpoint | PASS — checkpoint-f.md (implementation gate; emulated devices only) |
 | 14 | Security/retention/backups/resilience | COMPLETE — security-review.md, privacy-verification.md, retention-backup-runbook.md, incident-runbook.md, performance-results.md |
 | 15 | Release candidate/production readiness | COMPLETE — release candidate `orgfit-0.3.0-rc.1` (`ef914d8`); NO-GO for production; final-handoff.md, release-checklist.md, deployment-runbook.md, staff-operations-guide.md |
-| G | Final go/no-go checkpoint | NOT RUN |
+| G | Final go/no-go checkpoint | RUN — technical GO (implementation gate), production NO-GO; candidate `orgfit-0.3.0-rc.2` (`e801b9a`); checkpoint-g.md |
 
 ## Phase 00 handoff — 2026-09-08
 
@@ -1511,6 +1511,19 @@ RC-003 (no provider packaging, P-002), RC-004 (operator/processor scripts rely o
 ### Exact next action
 
 **Checkpoint G — final go/no-go inspection**, in a fresh session, against `ef914d8` and `work/release/orgfit-0.3.0-rc.1/manifest.json` (regenerate if absent). Stop there.
+
+## Checkpoint G handoff — 2026-09-14
+
+- Step and status: **RUN. Technical GO as an implementation gate; production NO-GO.** Full record and acceptance matrix: [checkpoint-g.md](checkpoint-g.md). A technical GO is not authorization to deploy.
+- **Inspected**: clean tree at `917c3fe`; `release:manifest --verify` matched the Phase 15 candidate `ef914d8`; migrations 001–018 / anonymous 001–002 unchanged; `deploy/processes.json`; every checkpoint, security and privacy artifact.
+- **Re-run on the candidate**: typecheck, lint, build, boundaries, production smoke, `npm audit` (0); 24 node suites **279 passed**; Playwright **52 passed**; rollback drill **8/8**; TLS rehearsal **13/13**.
+- **Prohibited scope**: none of subscriptions/billing, client accounts/dashboards, cross-company benchmarks, skip logic, raw respondent exports or AI-dependent recommendations — 158 files, dependencies and route inventory scanned; every hit explained in checkpoint-g.md §3.
+- **Defects**: **CG-001** (release-blocking mislabel) — the public overview page said CE-001 "is under independent privacy review"; no reviewer has been engaged. Corrected in Arabic and English with regression assertions (D-127) → candidate **`orgfit-0.3.0-rc.2`**, commit `e801b9a`, source digest `19dce1d82642d443976af59642b15bcff4c8a55dee936dff332d1d234f345fba`. **CG-002** — README said Checkpoints E and F had not run; corrected. **CG-003** (low, open) — browser harness needs `work/` in a fresh clone; CI already creates it.
+- **After the correction**: on `e801b9a` typecheck, lint, build, boundaries, production smoke, `access.spec` 4 passed; genuine clean clone of `e801b9a`: `npm ci` (0 vulnerabilities), typecheck, lint, build, boundaries, production smoke, manifest `--verify` matches, `access.spec` 4 passed, rehearsal 13/13.
+- **Acceptance matrix**: every binding ID and blueprint §16 module is VERIFIED for implementation; NOT VERIFIED lines: production IdP/MFA, real key custody and crypto-erasure (SEC-H1), independent privacy/security review including CE-001, antivirus (SEC-H2), real devices/screen readers, visual chart inspection in G, provider-hardware restore/load. **No line BLOCKED.**
+- **Remaining owner inputs**: P-001 … P-008 and P-010 (checkpoint-g.md §6), including explicit deployment authorization.
+- **Commits**: `e801b9a` (CG-001 fix and version), and the documentation commit that adds this entry. No remote, nothing pushed, deployed or sent.
+- **Next**: no further phase or checkpoint. Stop.
 
 ## Handoff format for subsequent steps (template)
 
