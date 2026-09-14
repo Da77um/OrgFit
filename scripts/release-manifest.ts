@@ -44,7 +44,8 @@ export function computeManifest(id: string) {
     uncommittedSourceChanges: dirty,
     packageVersion: JSON.parse(readFileSync("package.json", "utf8")).version as string,
     node: process.version,
-    npm: execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["--version"], { encoding: "utf8", shell: process.platform === "win32" }).trim(),
+    // Informational; set by npm itself when run through `npm run`.
+    npm: process.env.npm_config_user_agent?.match(/npm\/(\S+)/)?.[1] ?? null,
     lockfileSha256: textSha("package-lock.json"),
     processManifestSha256: textSha("deploy/processes.json"),
     rolesSha256: textSha("db/roles.sql"),
