@@ -712,9 +712,13 @@ test("Checkpoint C: privacy and submission reliability gate", async (t) => {
         // respondent side, none may have a column shaped like a respondent body,
         // and nothing any of them actually holds may be a value from the
         // anonymous store.
+        // Post-Audit Repair Pass 3 added two more, deliberately and recorded in
+        // phase-status.md: ops.job_status (one row per scheduled job: times, a
+        // failure code and named numeric counts) and ops.report_job_dependency
+        // (job id → snapshot id). Both are held to every check below.
         assert.deepEqual(
           rows.map((r) => r.full),
-          ["ops.report_job"],
+          ["ops.job_status", "ops.report_job", "ops.report_job_dependency"],
           "an unexpected queue table appeared; prove it cannot carry a payload",
         );
 

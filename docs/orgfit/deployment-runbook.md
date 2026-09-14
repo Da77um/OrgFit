@@ -89,7 +89,7 @@ Preflight prints names and outcomes only, never a value, and exits 1 on any fail
 
 4. Do **not** run `db:seed`, `db:provision-dev`, `db:bootstrap-dev-admin` or `showcase` in any shared environment. `instruments:seed` installs illustrative templates only (P-006).
 5. **Key custody**: generate the custodian key pair once per environment (`.env.example` shows the command). The public half goes to staff; the secret half only to the processor. The file-directory custody adapter is a development stand-in (P-003, SEC-H1) — a managed key service must replace it before real data.
-6. **Preflight** all six processes (§3), then start respondent and staff, then register the jobs with their cadences from `deploy/processes.json`.
+6. **Preflight** all six processes (§3), then start respondent and staff, then start the job supervisor (§9) or the provider's scheduler with the cadences from `deploy/processes.json` → `schedule`.
 7. **Health**: `GET /health/live` (process up) and `GET /health/ready` on both hosts must return 200 before traffic is routed. Readiness fails closed on a missing configuration, a misgranted database role or a pending restore.
 8. **Smoke** (§6).
 
@@ -99,7 +99,7 @@ Migrations are forward-only and checksum-pinned: an edited migration file stops 
 
 1. Verify the candidate: `npm run release:manifest -- --verify <manifest>`.
 2. **Take a backup** of both databases and confirm WAL archiving is current; ship tombstones (`npm run tombstones:ship`).
-3. Stop the jobs (processor, renderer, scanner, operator schedules). Web processes may stay up for additive migrations; if the release notes say otherwise, drain them.
+3. Stop the jobs (`npm run jobs:supervise -- --stop --state-dir <dir>`, or the provider's scheduler). Web processes may stay up for additive migrations; if the release notes say otherwise, drain them.
 4. Run `db:migrate` and `db:migrate-anonymous`.
 5. Preflight the operator process with `--check-database` — the ledgers must equal the release's migrations.
 6. Deploy the new web builds, then restart the jobs.
@@ -140,3 +140,28 @@ The limit that remains: a deletion made **after the last tombstone ship** is not
 ## 8. After a failed deployment
 
 If a readiness endpoint stays 503: run preflight for that process with `--check-database` — it names the failing check without printing a value. A web process refuses to start its data paths when it finds a foreign credential; remove the variable rather than widening the manifest.
+## 9. Scheduled jobs under supervision (Post-Audit Repair Pass 3)
+
+**Rehearsed locally only** (`tests/supervisor.test.ts`, one Windows machine, loopback PostgreSQL 18, local directories instead of buckets, no TLS). Nothing below has run on a provider, and no operating-system service was installed.
+
+The jobs of `deploy/processes.json` → `schedule` run under a supervisor that holds **no database credential and no key**:
+
+```bash
+npm run jobs:supervise -- --env-dir /secure/orgfit-jobs --state-dir /var/lib/orgfit-supervisor
+```
+
+- `/secure/orgfit-jobs` holds exactly `processor.env`, `report.env`, `scanner.env` and `operator.env` — the same files release preflight validates (§3). The supervisor validates each with the preflight rules and refuses to start on any FAIL, printing check names only. Each job starts as `node --env-file=<that file> --import tsx <script>`; no job receives another process's file.
+- The supervisor's own environment may hold only alert settings (`ALERT_SINK`, `ALERT_FILE`, `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_TOKEN`, `ALERT_DELIVERY_ENABLED`, `ALERT_REPEAT_SECONDS`). It refuses to start if it finds a database URL, an encryption or digest key, the custody secret or the OIDC client secret.
+- Order: `campaigns:normalize → privacy:process → publication:release` every 5 minutes as one group; reports and attachment scans every minute; expiries hourly; retention daily; tombstone shipping every 5 minutes; `ops:check` every 2 minutes.
+- Safety: no job overlaps itself; one supervisor per state directory (lock file); failed jobs retry after 15 s, 30 s, 60 s, then return to their cadence and are reported `FAILING`; a job past its timeout is terminated; the routines underneath are overlap-safe even if two supervisors were started by mistake.
+- Status: `npm run jobs:supervise -- --status --state-dir <dir>` prints `status.json` (last start/success/failure, reason, exit code, duration, consecutive failures, next run). The database view — last success per job and the backlog each drains — is on the Super Admin **Settings** screen and in `ops:check`.
+- Stop: Ctrl+C (SIGINT), SIGTERM, or `npm run jobs:supervise -- --stop --state-dir <dir>`. Running jobs get 30 s, then are interrupted and recorded `INTERRUPTED`.
+- Output: job stdout (identifiers, counts, codes) is forwarded; job stderr is counted and suppressed. Use `--show-stderr` only interactively on a machine whose terminal output is not collected.
+
+**Provider wiring still required (P-002, RC-003):** run exactly one supervisor per environment under the platform's process manager with automatic restart; place the four environment files in the platform's secret manager (mounted read-only, owner-only) instead of a directory; persist the state directory; send the supervisor's stdout to the log pipeline; alternatively replace the supervisor with the platform's own scheduler reading the same `schedule` section, preserving per-process secrets, the group order and single-instance execution. On Linux, a killed supervisor's jobs keep running and the next supervisor waits for them; on Windows they end with it — both were exercised.
+
+**Alert delivery (SEC-L3, D11):** `ALERT_SINK=none` is the default. `file` writes JSON lines for a local agent; `webhook` requires `ALERT_DELIVERY_ENABLED=true` and an https URL. No destination, credential or paging rota has been provided; nothing has been sent to an external service. Before production: choose the destination, store its token in the supervisor's secret, and drill a critical alert end to end.
+
+## 10. Runtime guards that no longer depend on preflight
+
+The processor, publication, operator, migration, restore and revocation entry points now refuse, before connecting: a production database URL without `sslmode=verify-full` (or with TLS verification disabled), a wrong login, a placeholder password, and any variable the manifest forbids for their process (RC-004 closed in code; D-151). Preflight is still required: it checks cluster privileges, logging settings, ledgers, storage and more than a single process can see.

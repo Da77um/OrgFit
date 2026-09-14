@@ -16,6 +16,8 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-14, after Checkpoint G:** Post-Audit Repair Pass 1 added the staff, audit, settings and profile screens and real pagination (migration 019) — see its entry near the end of this file. The production NO-GO is unchanged.
 
+**2026-09-15:** Post-Audit Repair Pass 3 added release withdrawal, a local job supervisor with job health, runtime TLS guards and repaired a report-queue crash-recovery defect (PR3-001), migrations 022–023 — see its entry near the end of this file. Still development only; the production NO-GO is unchanged.
+
 Next step: **none in the phase sequence.** What remains is owner input (P-001 … P-008, P-010, itemized in checkpoint-g.md §6) and, only with explicit authorization, staging and deployment. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
@@ -46,6 +48,7 @@ Next step: **none in the phase sequence.** What remains is owner input (P-001 �
 | 15 | Release candidate/production readiness | COMPLETE — release candidate `orgfit-0.3.0-rc.1` (`ef914d8`); NO-GO for production; final-handoff.md, release-checklist.md, deployment-runbook.md, staff-operations-guide.md |
 | G | Final go/no-go checkpoint | RUN — technical GO (implementation gate), production NO-GO; candidate `orgfit-0.3.0-rc.2` (`e801b9a`); checkpoint-g.md |
 | PR1 | Post-Audit Repair Pass 1: administration screens and pagination | COMPLETE (development) — entry below; D-128 … D-135 |
+| PR3 | Post-Audit Repair Pass 3: release revocation, supervised jobs, runtime safeguards | COMPLETE (development, local only) — entry below; D-145 … D-154 |
 
 ## Phase 00 handoff — 2026-09-08
 
@@ -1625,6 +1628,74 @@ Changed: `db/migrations/021_campaign_questionnaire_target.sql` (new: campaign mo
 
 **Not run:** `tests/browser/campaigns.spec.ts` and other specs that hard-code port 3000 (held by another session), remaining node suites, release manifest regeneration (migrations 020–021 are new).
 
+## Post-Audit Repair Pass 3 — release revocation, background-job operation and runtime safeguards — 2026-09-15
+
+- Step and status: **COMPLETE (development, local only)** for audit finding 8 (SEC-M5), the local/portable part of finding 6 (D5; D11 prepared), RC-004 and CG-003. **Not production readiness; the Checkpoint G production NO-GO is unchanged.** Decisions D-145 … D-154.
+- Starting point: `6e1aae5` (the owner committed targeting and Pass 2 at 23:38 on 2026-09-14, while this pass was reading). **Unrelated concurrent work, not part of this pass and left untouched:** `scripts/role-password.ts` (new), `scripts/provision-dev.ts`, `tests/database.ts`, `tests/release-upgrade.test.ts` were changed by another session at 23:42–23:43 (a stable cluster role password) and committed by it as `9d85c88`. This pass's test runs used that harness as it was on disk.
+
+### Implemented
+
+- **Release revocation** (migration 022): Super Admin panel on the round's Results page (reason category, written reason, incident reference, typed 8-character fingerprint, acknowledgement that downloaded copies cannot be recalled); `GET/POST /api/v1/organizations/:org/assessments/:round/release[/revocation]`; operator fallback `npm run release:revoke` with an active Super Admin approver. One immutable record per release; same decision → same record; different decision → `RELEASE_ALREADY_REVOKED`; one `RELEASE_REVOKED` audit row. `ops.report_job_dependency` (own release, comparison sides, whole-series trend rounds; back-filled); all dependent jobs revoked in any state; downloads, results, recommendations/follow-ups, comparisons, trends and new reports refused; processor cannot republish; purge queue drained by `reports:expire`; `downloads_before` counted and shown; restore replay via tombstone class `RELEASE_REVOCATION`. Every reader sees withdrawn/when/category/download count; only a Super Admin sees reason, reference and actor. Comparison list marks withdrawn reviews.
+- **Supervised jobs**: `npm run jobs:supervise` (`src/supervisor.ts`) reads the new `schedule` section of `deploy/processes.json`; per-process environment files started with `node --env-file`; supervisor refuses credentials in its own environment; group order normalize → process → publish; no overlap; single-instance lock; orphan wait; bounded retries (15 s doubling, 3); timeouts; graceful stop (signals, STOP file, `--stop`); atomic `status.json`; `--status`; stderr suppressed by default; `--interval-scale` nonproduction only. Jobs record their own outcome (migration 023 `ops.job_status`, `ops.record_job_run`, `ops.job_health`); `access.system_status` includes it; Settings screen shows a job table and backlog; `ops:check` raises `JOB_STALE`/`JOB_FAILING`/`JOB_NEVER_RUN`. Alert adapter `src/alert-delivery.ts` (none/console/file/webhook; webhook gated and https-only in production).
+- **Runtime safeguards**: `src/runtime-guard.ts` applied to processor, publication, operator, migration, bootstrap, restore, retention, tombstone, ops-check and revocation entry points (verified TLS in production before connecting; forbidden variables refused by name). Nonproduction loopback unchanged.
+- **Harness**: `tests/serve.ts` creates `work/` and its store directories before anything writes (CG-003).
+
+### Defects found during this pass and repaired
+
+| ID | Found how | Repair |
+|---|---|---|
+| PR3-001 (High, availability, released code 014) | The supervised end-to-end run: `reports:generate` failed every minute with `UNAVAILABLE`. `claim_report_jobs` reclaimed an expired lease RUNNING→RUNNING, which the 014 trigger refuses, so one crashed renderer blocked **every** later claim | `claim_report_jobs` restated in 023 (requeue or `LEASE_EXPIRED` after max attempts); RV-11; SV-9 then drew the abandoned job on attempt 2 (D-152) |
+| PR3-002 (Low) | Reading `src/http.ts` while wiring revocation: `RESULTS_UNAVAILABLE` from a routine answered 503 | Mapped to 409 (D-153) |
+| PR3-003 (my code) | SV-6 hung: a second supervisor in the same process treated a lock holding its own pid as stale | Any live holder keeps the lock |
+| PR3-004 (presentation) | Screenshot: the withdrawal date reordered inside Arabic text | Date rendered as its own LTR run (D-135 pattern) |
+| Test expectations (mine) | RV-1/RV-5/RV-7 assumed a report depends only on earlier rounds; the trend is the whole series. SV-7 assumed orphans survive on Windows (Node job objects end them). Browser spec assumed sign-in keeps the chosen language | Tests corrected to the observed, correct behaviour; SV-7 now covers both platforms |
+
+**Checkpoint C assertion changed deliberately:** `checkpoint-c.test.ts` "no job, queue or outbox table…" now expects `ops.job_status` and `ops.report_job_dependency` beside `ops.report_job`; both pass every payload check it applies (no runtime grants, no body-shaped columns, no anonymous values).
+
+### Changed files and migrations
+
+New: `db/migrations/022_release_revocation.sql`, `db/migrations/023_job_health.sql`; `src/revocation.ts`, `src/runtime-guard.ts`, `src/job-run.ts`, `src/supervisor.ts`, `src/alert-delivery.ts`; `scripts/revoke-release.ts`, `scripts/supervise.ts`; `apps/staff/app/organizations/release-ui.tsx`; `tests/revocation.test.ts`, `tests/supervisor.test.ts`, `tests/safeguards.test.ts`, `tests/supervisor/fake-job.ts`, `tests/supervisor/run-supervisor.ts`, `tests/browser/revocation.spec.ts`.
+
+Modified: `apps/staff/app/api/v1/[...path]/route.ts`, `organizations/results-ui.tsx`, `history-ui.tsx`, `settings/settings-ui.tsx`, `audit/audit-ui.tsx`; `src/http.ts`, `src/operations.ts`, `src/processor.ts`, `src/report-worker.ts`, `src/administration.ts`, `src/results-i18n.ts`, `src/history-i18n.ts`, `src/admin-i18n.ts`; `scripts/migrate.ts`, `migrate-anonymous.ts`, `bootstrap.ts`, `close-campaigns.ts`, `expire-drafts.ts`, `retention.ts`, `ship-tombstones.ts`, `ops-check.ts`, `restore-reapply.ts`, `process-campaigns.ts`, `publish-campaigns.ts`, `generate-reports.ts`, `expire-reports.ts`, `scan-attachments.ts`, `expire-attachments.ts`, `check-boundaries.ts`; `tests/serve.ts`, `tests/checkpoint-c.test.ts`; `deploy/processes.json` (`schedule`, `supervisor`; the six processes unchanged), `package.json` (`release:revoke`, `jobs:supervise`, `test:safeguards`, `test:revocation`, `test:supervisor`), `.github/workflows/ci.yml`, `.env.operator.example`, `README.md`; docs `decisions.md`, `deployment-runbook.md` (§9–10), `incident-runbook.md` (§8–9, alert codes), `security-review.md` (§7), `staff-operations-guide.md`, `publication.md`, `reports.md`, `release-checklist.md` (D5, D11), `api-contracts.md`, this file. **Migrations 001–021 and anonymous 001–002 untouched** (R-2 confirms none edited).
+
+### Tests actually run
+
+Windows 11, Node 24.13.1, PostgreSQL 18.4 loopback cluster 127.0.0.1:55432 (fresh synthetic databases per suite; nothing reset or dropped), Chromium. Logs `work/pass3-*.log`.
+
+| Check | Result |
+|---|---|
+| `npm run test:safeguards` | **9 passed** — RG-1 URL guard matrix; RG-2 helpers refuse before a pool; RG-3 **13 entry points** in production mode against a counting TCP listener: all exit 1, **0 connections**, no value printed; RG-4 foreign credential refused by name; CI-1/CI-2 supervisor refuses credentials, mixed files refused, a child started the supervisor's way holds only its own file's variables; AL-1 sanitize/dedupe/job alerts; AL-2 webhook gating, loopback delivery with one retry, failure codes without URL; RG-5 |
+| `npm run test:revocation` | **12 passed** — RV-1 dependencies; RV-2 authorization, organization boundary, fingerprint, operator approver; RV-3 staff withdrawal (4 reports revoked, 1 prior download counted, one audit row); RV-4 retry-safety; RV-5 refusal on every surface, later series report works, no republication, reason visible to Super Admin only; RV-6 evidence kept and immutable, purge 3 then 0, renderer still 0 table privileges; **RV-7** download authorized first completes while three concurrent revocations wait → exactly one record, later download 409; **RV-8** request during uncommitted revocation refused with no job row, completion after revocation → `REVOKED`, worker deletes its bytes, purge; **RV-9** download during uncommitted revocation refused, rolled-back revocation leaves nothing; **RV-10** logical restore simulation re-applied by `restore:reapply`, idempotent; **RV-11** abandoned lease requeued without blocking another job, `LEASE_EXPIRED` after 3 attempts |
+| `npm run test:supervisor` | **9 passed** — SV-1 order and no overlap; SV-2 exactly 3 attempts with growing backoff, recovering job resets, alert to sink; SV-3 timeout; SV-4 STOP → INTERRUPTED, lock released; SV-5 per-process isolation and refusals; SV-6 lock (separate process and same process); SV-7 real supervisor kill + orphan wait; SV-8 schedule = manifest text = npm scripts; **SV-9 real**: `scripts/supervise.ts` with four environment files → closed campaign processed and **published**, attachment **CLEAN**, supervisor stopped via `--stop`; a report job claimed by a "crashed" worker with a 1 s lease plus a new Arabic PDF → both **READY** under a restarted supervisor (abandoned job on attempt 2), downloads 200, every job in `ops.job_status` `SUCCESS`, database cadences equal the manifest, no configured secret in supervisor output |
+| All other node suites with 022–023 applied (`test`, localization, requests, integration, directory, instruments, scoring, scoring-db, checkpoint-b, campaigns, respondent, privacy, disclosure, publication, recommendations, checkpoint-d, comparison, history, reports, checkpoint-e, visits, access, operations, administration, targets) | 5, 4, 8, 8, 6, 8, 15, 5, 3, 18, 24, 17, 16, 13, 13, 18, 13, 8, 17, 11, 14, 8, 9, 8, 16 passed, **0 failed** |
+| `test:checkpoint-c` | first run 19 passed / 2 failed (the deliberate queue-table assertion above); after the change **21 passed** |
+| `test:release` | first run 4 passed / 1 failed: R-3's **baseline child process** (Checkpoint F code in its worktree) crashed natively (exit 3221226505) before any upgrade step; rerun alone **R-3 passed**; R-1, R-1b, R-2, R-4 passed. Recorded as a transient environment failure, not reproduced |
+| Clean clone (`git clone` of `6e1aae5` at `%TEMP%\oft-p3` + exactly this pass's files; the other session's two harness files copied in so the shared cluster's role passwords were not randomized; **no `work/` directory**) | `npm ci` ok; `typecheck`, `lint`, `build`, `check:boundaries`, `test:production` **all exit 0**; Playwright on 3100/3101 with `E2E_NEXT_DIST_DIR=.next-e2e`: harness created `work/` itself and wrote the fixture; `access.spec` **4 passed**; `revocation.spec` **1 passed** after correcting my spec (language after sign-in, an ambiguous locator) and the date direction fix — Super Admin withdraws through the UI in Arabic, results/download 409 over HTTP, ordinary staff (English, 375 px, no overflow) sees the notice without reason or reference and gets 403, Settings job section; axe (WCAG A/AA) on the form, the page and the job section with no violations. Screenshots `work/pass3-*.png` |
+| `npm run typecheck`, eslint on all changed files (main checkout) | clean |
+
+### Not run / unverified on real infrastructure
+
+- No provider: the supervisor was **not** installed as a service, run under a process manager, given secrets from a secret manager, or run on Linux. No remote deployment. No staging.
+- No alert was sent to any external destination; no monitoring destination, credential or paging drill exists (D11, SEC-L3).
+- Production-mode TLS was exercised only as refusal (RG-3); the TLS rehearsal (`tests/release/rehearsal.ts`) and the physical rollback/restore drills were **not re-run**, so a real `verify-full` connection through the new guards and the revocation replay on a physical restore are unverified. RV-10 is a logical simulation.
+- Not run: the other 17 browser specs (only access and revocation), `npm audit`, release manifest regeneration (migrations 019–023 are new; the `rc.2` identifier no longer describes the tree), remote CI, real devices/WebKit/Firefox/screen readers.
+- Report bucket deletion of revoked artifacts is exercised on local storage only.
+
+### Open defects, assumptions and production prerequisites
+
+- A withdrawal cannot recall downloaded files (by nature); there is no correction/superseding-release workflow.
+- Because trends span the series, withdrawing one round revokes every existing report of that series; this is deliberate (they quote its values) and documented.
+- The supervisor host can read all four job environment files; restrict them to the supervisor's service identity. Exactly one supervisor per environment is a deployment rule.
+- Tombstone ledger durability (SEC-M3) now also protects revocations across restores.
+- Unchanged: SEC-H1, SEC-H2, SEC-M1–M4, SEC-M6, SEC-M7, SEC-L1, SEC-L2, SEC-L4, RC-003, RC-005, CE-001; P-001 … P-008, P-010 open.
+
+### Commit
+
+Committed as "Post-Audit Repair Pass 3: release revocation, supervised jobs and runtime safeguards" on `main`, on top of `9d85c88`. No remote, nothing pushed, deployed or sent; no service installed.
+
+### Exact next action
+
+Owner review of this pass. Then, with explicit authorization only: choose the hosting provider and monitoring destination (P-002), wire the supervisor (deployment-runbook §9), re-run the TLS rehearsal and physical rollback drill with migrations 019–023, run the full Playwright suite, and regenerate the release manifest.
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

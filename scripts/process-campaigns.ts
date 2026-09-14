@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { corePool, anonymousPool, processCampaign, reconcile } from "../src/processor";
 import { loadCustodianSecretFromEnvironment } from "../src/key-custody";
+import { runJob } from "../src/job-run";
 
 // Operator entry point for the privacy processor. It runs under the processor's
 // own credentials, which no staff or gateway process holds.
@@ -49,18 +50,21 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  try {
-    const results = await processDueCampaigns();
-    for (const r of results)
-      console.log(
-        `campaign=${r.campaignId} batch=${r.batchId ?? "-"} state=${r.state} accepted=${r.acceptedCount ?? "-"} processed=${r.processedCount ?? "-"} blocked=${r.blocked ?? "-"}`,
-      );
-    if (results.some((r) => r.state === "ERROR" || r.blocked === true))
-      process.exitCode = 1;
-  } catch {
-    console.error(
-      "Privacy processing failed. Inspect batch state through the restricted processor channel.",
-    );
-    process.exitCode = 1;
-  }
+  await runJob(
+    "privacy:process",
+    "Privacy processing failed. Inspect batch state through the restricted processor channel.",
+    async () => {
+      const results = await processDueCampaigns();
+      for (const r of results)
+        console.log(
+          `campaign=${r.campaignId} batch=${r.batchId ?? "-"} state=${r.state} accepted=${r.acceptedCount ?? "-"} processed=${r.processedCount ?? "-"} blocked=${r.blocked ?? "-"}`,
+        );
+      const failed = results.filter((r) => r.state === "ERROR" || r.blocked === true).length;
+      return {
+        outcome: failed ? "FAILURE" : "SUCCESS",
+        failureCode: "CAMPAIGN_FAILED",
+        counts: { campaigns: results.length, failed },
+      };
+    },
+  );
 }

@@ -10,6 +10,7 @@ import {
   cleanLocalAttachments,
   ATTACHMENT_ORPHAN_HOURS,
 } from "../src/attachment-storage";
+import { runJob } from "../src/job-run";
 
 // Attachment retention. The row is the authority: core.expire_attachments
 // retires every clean attachment past its retention date, plus rejected, failed
@@ -44,18 +45,18 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  try {
-    const expired = await expireAttachments();
-    const orphans = process.env.ATTACHMENT_S3_BUCKET
-      ? 0
-      : await cleanLocalAttachments();
-    console.log(
-      `Expired attachments removed: ${expired}; orphans removed: ${orphans}`,
-    );
-  } catch {
-    console.error(
-      "Attachment cleanup unavailable. Check the scanner credential and attachment storage configuration.",
-    );
-    process.exitCode = 1;
-  }
+  await runJob(
+    "attachments:expire",
+    "Attachment cleanup unavailable. Check the scanner credential and attachment storage configuration.",
+    async () => {
+      const expired = await expireAttachments();
+      const orphans = process.env.ATTACHMENT_S3_BUCKET
+        ? 0
+        : await cleanLocalAttachments();
+      console.log(
+        `Expired attachments removed: ${expired}; orphans removed: ${orphans}`,
+      );
+      return { outcome: "SUCCESS", counts: { expired, orphans } };
+    },
+  );
 }

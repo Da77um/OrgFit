@@ -1,15 +1,16 @@
 import pg from "pg";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { databaseUrl } from "../src/runtime-guard";
+import { runJob } from "../src/job-run";
 
 // Durable schedule normalization. This job makes stored state catch up with the
 // clock; it is NOT what enforces the boundary. Every request already evaluates
 // the boundary itself, so a late or stopped scheduler can only delay bookkeeping,
 // never keep a campaign open past its end or open one before its start.
 export async function normalizeCampaigns(url: string, maxRows = 200) {
-  if (new URL(url).username !== "orgfit_migrator")
-    throw new Error("Operator credential required");
-  const db = new pg.Client({ connectionString: url });
+  // Login, password and production TLS are checked before connecting (RC-004).
+  const db = new pg.Client({ connectionString: databaseUrl(url, "orgfit_migrator") });
   await db.connect();
   try {
     await db.query("BEGIN");
@@ -36,15 +37,13 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  try {
-    if (!process.env.MIGRATION_DATABASE_URL) throw new Error();
-    console.log(
-      `Campaigns normalized: ${await normalizeCampaigns(process.env.MIGRATION_DATABASE_URL)}`,
-    );
-  } catch {
-    console.error(
-      "Campaign scheduling unavailable. Inspect the restricted operator channel.",
-    );
-    process.exitCode = 1;
-  }
+  await runJob(
+    "campaigns:normalize",
+    "Campaign scheduling unavailable. Inspect the restricted operator channel.",
+    async () => {
+      const normalized = await normalizeCampaigns(process.env.MIGRATION_DATABASE_URL ?? "");
+      console.log(`Campaigns normalized: ${normalized}`);
+      return { outcome: "SUCCESS", counts: { normalized } };
+    },
+  );
 }

@@ -128,6 +128,43 @@ const ar = {
   statusCheckedAt: "آخر تحقق من الحالة: {time} UTC",
   descriptive:
     "الفروق وصفية فقط ولا تعني دلالة إحصائية أو سببية أو تشخيصًا أو مقارنة معيارية.",
+  // Post-Audit Repair Pass 3: withdrawing a published release.
+  withdrawnTitle: "سُحب هذا الإصدار",
+  withdrawnBody:
+    "سُحبت نتائج هذه الجولة في {date}. لم تعد أرقامها وتوصياتها تُعرض، ولا تدخل في المقارنات أو الاتجاهات أو التقارير الجديدة، ولا يمكن تنزيل تقاريرها.",
+  withdrawnReason: "فئة السبب",
+  withdrawnReports: "تقارير سُحبت معه: {count}",
+  withdrawnDownloads:
+    "نُزّلت تقارير هذا الإصدار {count} مرة قبل سحبه. لا يمكن استرجاع النسخ المنزّلة ولا محوها من الأجهزة التي حُفظت عليها.",
+  withdrawnNoDownloads: "لم يُنزَّل أي تقرير لهذا الإصدار قبل سحبه.",
+  withdrawnReasonText: "السبب المسجّل",
+  withdrawnIncident: "مرجع الحادثة أو القرار",
+  withdrawnBy: "سحبه",
+  withdrawnChannel: "طريقة السحب",
+  channel_STAFF: "من شاشة المسؤول العام",
+  channel_OPERATOR: "بأمر تشغيلي باعتماد مسؤول عام",
+  channel_RESTORE_REPLAY: "أُعيد تطبيقه بعد استعادة نسخة احتياطية",
+  PRIVACY_INCIDENT: "حادثة خصوصية",
+  CORRECTNESS_ERROR: "خطأ في صحة النتائج",
+  DATA_INTEGRITY: "مشكلة في سلامة البيانات",
+  OWNER_DECISION: "قرار مالك المنصة",
+  RESTORE_REPLAY: "إعادة تطبيق بعد استعادة",
+  revokeTitle: "سحب هذا الإصدار",
+  revokeLead:
+    "للمسؤول العام فقط، عند حادثة خصوصية أو خطأ في النتائج. يوقف السحب فورًا عرض نتائج هذا الإصدار وتوصياته ومقارناته وتنزيل تقاريره، ويلغي تقاريره قيد الانتظار. لا يُحذف الإصدار الأصلي بل يبقى سجلًا مقيّدًا للتدقيق، ولا يمكن التراجع عن السحب.",
+  revokeRecall:
+    "لا يمكن استرجاع الملفات التي نُزّلت قبل السحب. إن كانت قد شوركت، فتواصل مع من استلمها وفق خطة الاستجابة للحوادث.",
+  revokeReasonCode: "فئة السبب",
+  revokeReason: "السبب (عشرة أحرف على الأقل، ويُحفظ في سجل السحب)",
+  revokeIncident: "مرجع الحادثة أو القرار",
+  revokeConfirm: "للتأكيد، اكتب أول ثمانية أحرف من بصمة الإصدار: {prefix}",
+  revokeAcknowledge: "أفهم أن النسخ المنزّلة لا يمكن استرجاعها وأن السحب نهائي.",
+  revokeSubmit: "سحب الإصدار",
+  revokeDone: "سُحب الإصدار، وسُحب معه {count} تقرير.",
+  revokeReplayed: "كان هذا الإصدار قد سُحب بهذا القرار نفسه، ولم يتغير شيء.",
+  CONFIRMATION_MISMATCH: "البصمة المكتوبة لا تطابق الإصدار الحالي. أعد تحميل الصفحة وتحقق منها.",
+  RELEASE_ALREADY_REVOKED: "سُحب هذا الإصدار بقرار آخر. أعد تحميل الصفحة لعرض سجل السحب.",
+  revokeForbidden: "سحب الإصدار متاح للمسؤول العام فقط.",
 } as const;
 export type ResultsKey = keyof typeof ar;
 const en: Record<ResultsKey, string> = {
@@ -253,6 +290,42 @@ const en: Record<ResultsKey, string> = {
   statusCheckedAt: "Status last checked: {time} UTC",
   descriptive:
     "Differences are descriptive only. No statistical significance, causation, diagnosis or benchmark is implied.",
+  withdrawnTitle: "This release was withdrawn",
+  withdrawnBody:
+    "The results of this round were withdrawn on {date}. Their numbers and recommendations are no longer shown, they are excluded from comparisons, trends and new reports, and their reports can no longer be downloaded.",
+  withdrawnReason: "Reason category",
+  withdrawnReports: "Reports withdrawn with it: {count}",
+  withdrawnDownloads:
+    "Reports of this release had been downloaded {count} time(s) before it was withdrawn. Downloaded copies cannot be recalled or erased from wherever they were saved.",
+  withdrawnNoDownloads: "No report of this release had been downloaded before it was withdrawn.",
+  withdrawnReasonText: "Recorded reason",
+  withdrawnIncident: "Incident or decision reference",
+  withdrawnBy: "Withdrawn by",
+  withdrawnChannel: "How it was withdrawn",
+  channel_STAFF: "From the Super Admin screen",
+  channel_OPERATOR: "By operator command, approved by a Super Admin",
+  channel_RESTORE_REPLAY: "Re-applied after a backup restore",
+  PRIVACY_INCIDENT: "Privacy incident",
+  CORRECTNESS_ERROR: "Correctness error",
+  DATA_INTEGRITY: "Data integrity problem",
+  OWNER_DECISION: "Owner decision",
+  RESTORE_REPLAY: "Re-applied after a restore",
+  revokeTitle: "Withdraw this release",
+  revokeLead:
+    "Super Admin only, for a privacy incident or a correctness error. Withdrawing immediately stops this release's results, recommendations, comparisons and report downloads, and cancels its queued reports. The original release is not deleted; it stays as a restricted audit record. A withdrawal cannot be undone.",
+  revokeRecall:
+    "Files downloaded before the withdrawal cannot be recalled. If they were shared, contact their recipients under the incident response plan.",
+  revokeReasonCode: "Reason category",
+  revokeReason: "Reason (at least ten characters; kept in the withdrawal record)",
+  revokeIncident: "Incident or decision reference",
+  revokeConfirm: "To confirm, type the first eight characters of the release fingerprint: {prefix}",
+  revokeAcknowledge: "I understand that downloaded copies cannot be recalled and that the withdrawal is final.",
+  revokeSubmit: "Withdraw release",
+  revokeDone: "The release was withdrawn, together with {count} report(s).",
+  revokeReplayed: "This release had already been withdrawn with this same decision; nothing changed.",
+  CONFIRMATION_MISMATCH: "The fingerprint you typed does not match the current release. Reload the page and check it.",
+  RELEASE_ALREADY_REVOKED: "This release was already withdrawn with a different decision. Reload to see the withdrawal record.",
+  revokeForbidden: "Only a Super Admin can withdraw a release.",
 };
 export const resultsMessages = (locale: Locale) => (locale === "en" ? en : ar);
 export const localeText = (

@@ -34,6 +34,14 @@ const codes: Record<string, number> = {
   CANCELLATION_REASON_REQUIRED: 422,
   CLOSURE_REASON_REQUIRED: 422,
   ATTACHMENT_TOO_LARGE: 413,
+  // Post-Audit Repair Pass 3 (022). A withdrawn release is a conflict with the
+  // record, not a server failure: before this, RESULTS_UNAVAILABLE raised by a
+  // routine (a revoked report download) fell through to 503.
+  RESULTS_UNAVAILABLE: 409,
+  RESULTS_NOT_READY: 409,
+  RELEASE_REVOKED: 409,
+  RELEASE_ALREADY_REVOKED: 409,
+  CONFIRMATION_MISMATCH: 422,
 };
 export function safeError(error: unknown, locale: Locale = "ar") {
   const m = messages(locale);

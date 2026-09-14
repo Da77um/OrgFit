@@ -3,14 +3,14 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { assertProcessEnvironment, databaseUrl, guardMessage } from "../src/runtime-guard";
 
 // The anonymous answer database has its own migrator credential and its own
 // ledger. It is deliberately not reachable from scripts/migrate.ts, so a core
 // migration can never create a staff-visible path into finalized answers.
 export async function migrateAnonymous(url: string, through?: string) {
-  if (new URL(url).username !== "orgfit_anon_migrator")
-    throw new Error("Anonymous migration credential required");
-  const db = new pg.Client({ connectionString: url });
+  // Refuses a production URL without verified TLS before connecting (RC-004).
+  const db = new pg.Client({ connectionString: databaseUrl(url, "orgfit_anon_migrator") });
   await db.connect();
   try {
     await db.query("BEGIN");
@@ -53,12 +53,13 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
+    assertProcessEnvironment("operator");
     if (!process.env.ANONYMOUS_MIGRATION_DATABASE_URL) throw new Error();
     await migrateAnonymous(process.env.ANONYMOUS_MIGRATION_DATABASE_URL);
     console.log("Anonymous migrations applied.");
-  } catch {
+  } catch (e) {
     console.error(
-      "Anonymous migration failed. Inspect configuration through the restricted operator channel.",
+      guardMessage(e) ?? "Anonymous migration failed. Inspect configuration through the restricted operator channel.",
     );
     process.exitCode = 1;
   }

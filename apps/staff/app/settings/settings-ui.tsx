@@ -43,7 +43,21 @@ type StatusData = {
       approvedAt: string | null;
       approvedBy: string | null;
     }[];
-  };
+    // Post-Audit Repair Pass 3 (migration 023).
+    jobs: {
+      jobs: {
+        job: string;
+        process: string;
+        expectedIntervalSeconds: number;
+        lastSuccessAt: string | null;
+        lastFailureAt: string | null;
+        lastFailureCode: string | null;
+        consecutiveFailures: number;
+        health: "OK" | "FAILING" | "STALE" | "NEVER_RUN";
+      }[];
+      backlog: Record<string, number>;
+      readAt: string;
+    };  };
   authentication: { identityProvider: string; passwordPathEnabled: boolean; production: boolean };
 };
 
@@ -283,6 +297,7 @@ export function SettingsScreen({ profile }: { profile: Profile }) {
 
       <StatusSection a={a} locale={locale} status={status} />
 
+      <JobsSection a={a} locale={locale} jobs={status.jobs} />
       <section className="stack" aria-labelledby="retention-heading">
         <h2 id="retention-heading">{a.retentionTitle}</h2>
         <p className="page-sub">{a.retentionLead}</p>
@@ -349,6 +364,77 @@ export function SettingsScreen({ profile }: { profile: Profile }) {
         <p className="field-hint">{a.timesUtc}</p>
       </section>
     </>
+  );
+}
+
+function JobsSection({
+  a,
+  locale,
+  jobs,
+}: {
+  a: AdminMessages;
+  locale: Locale;
+  jobs: StatusData["status"]["jobs"];
+}) {
+  const attention = jobs.jobs.filter((j) => j.health !== "OK").length;
+  const tone = (h: string) => (h === "OK" ? "positive" : h === "NEVER_RUN" ? "neutral" : "caution");
+  return (
+    <section className="stack" aria-labelledby="jobs-heading">
+      <div className="card-head">
+        <h2 id="jobs-heading">{a.jobsTitle}</h2>
+        <Num>{utc(jobs.readAt, locale)} UTC</Num>
+      </div>
+      <p className="page-sub">{a.jobsLead}</p>
+      {attention > 0 && (
+        <Alert tone="warning" role="note">
+          {fill(a.jobsAttention, { n: attention })}
+        </Alert>
+      )}
+      <div className="table-wrap" tabIndex={0} role="region" aria-labelledby="jobs-heading">
+        <table className="result-table admin-table">
+          <thead>
+            <tr>
+              <th scope="col">{a.jobName}</th>
+              <th scope="col">{a.jobProcess}</th>
+              <th scope="col">{a.jobCadence}</th>
+              <th scope="col">{a.jobLastSuccess}</th>
+              <th scope="col">{a.jobLastFailure}</th>
+              <th scope="col">{a.jobHealth}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {jobs.jobs.map((j) => (
+              <tr key={j.job}>
+                <th scope="row"><bdi dir="ltr">{j.job}</bdi></th>
+                <td><bdi dir="ltr">{j.process}</bdi></td>
+                <td><Num>{fill(a.everySeconds, { n: j.expectedIntervalSeconds })}</Num></td>
+                <td><Num>{j.lastSuccessAt ? utc(j.lastSuccessAt, locale) : a.never}</Num></td>
+                <td><Num>{j.lastFailureAt ? utc(j.lastFailureAt, locale) : a.never}</Num></td>
+                <td>
+                  <Badge tone={tone(j.health)}>
+                    {j.health === "FAILING"
+                      ? fill(a.job_FAILING, { n: j.consecutiveFailures, code: j.lastFailureCode ?? "" })
+                      : a[`job_${j.health}` as "job_OK"]}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h3>{a.backlogTitle}</h3>
+      <div className="tiles">
+        {Object.entries(jobs.backlog).map(([key, n]) => (
+          <Tile
+            key={key}
+            label={(a as Record<string, string>)[`backlog_${key}`] ?? key}
+            value={n}
+            accent={n > 0 && key !== "revokedReleases"}
+          />
+        ))}
+      </div>
+      <p className="field-hint">{a.timesUtc}</p>
+    </section>
   );
 }
 

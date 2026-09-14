@@ -2,6 +2,7 @@ import pg from "pg";
 import { z } from "zod";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { assertProcessEnvironment, databaseUrl } from "../src/runtime-guard";
 const input = z
   .object({
     issuer: z.url().max(500),
@@ -12,9 +13,8 @@ const input = z
   .strict();
 export async function bootstrap(url: string, data: z.infer<typeof input>) {
   const d = input.parse(data);
-  if (new URL(url).username !== "orgfit_migrator")
-    throw new Error("Migration credential required");
-  const db = new pg.Client({ connectionString: url });
+  // Login, password and production TLS are checked before connecting (RC-004).
+  const db = new pg.Client({ connectionString: databaseUrl(url, "orgfit_migrator") });
   await db.connect();
   try {
     await db.query("BEGIN");
@@ -43,6 +43,7 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
+    assertProcessEnvironment("operator");
     await bootstrap(process.env.MIGRATION_DATABASE_URL ?? "", {
       issuer: process.env.BOOTSTRAP_ISSUER ?? "",
       subject: process.env.BOOTSTRAP_SUBJECT ?? "",

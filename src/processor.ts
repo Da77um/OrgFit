@@ -10,6 +10,7 @@ import {
 import type { Instrument, Question } from "./instrument-input";
 import { scoreInstrument, ENGINE_VERSION } from "./scoring";
 import { OVERALL_DEFINITION_KEY } from "./disclosure";
+import { databaseUrl } from "./runtime-guard";
 
 // ---------------------------------------------------------------------------
 // The trusted privacy processor.
@@ -63,16 +64,18 @@ export type ProcessorOptions = {
   now?: () => Date;
 };
 
+// Login, password and — in production — verified TLS are checked here, before
+// a pool exists, rather than only by release preflight (RC-004).
 export function corePool(url = process.env.PROCESSOR_DATABASE_URL) {
-  if (!url || new URL(url).username !== "orgfit_processor")
-    throw new Error("Processor core credential required");
-  return new pg.Pool({ connectionString: url, max: 4, application_name: "orgfit_processor" });
+  return new pg.Pool({
+    connectionString: databaseUrl(url, "orgfit_processor"),
+    max: 4,
+    application_name: "orgfit_processor",
+  });
 }
 export function anonymousPool(url = process.env.ANONYMOUS_DATABASE_URL) {
-  if (!url || new URL(url).username !== "orgfit_processor")
-    throw new Error("Processor anonymous credential required");
   return new pg.Pool({
-    connectionString: url,
+    connectionString: databaseUrl(url, "orgfit_processor"),
     max: 4,
     application_name: "orgfit_processor_anon",
   });

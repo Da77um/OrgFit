@@ -70,6 +70,8 @@ const ar = {
   noComparisons: "لا توجد مقارنات معتمدة لهذه السلسلة.",
   loading: "جارٍ التحميل…",
   saved: "تم الحفظ.",
+  // Post-Audit Repair Pass 3: a comparison that cites a withdrawn release.
+  comparisonWithdrawn: "غير متاحة: سُحب إصدار إحدى الجولتين",
 } as const;
 export type HistoryKey = keyof typeof ar;
 const en: Record<HistoryKey, string> = {
@@ -143,5 +145,6 @@ const en: Record<HistoryKey, string> = {
   noComparisons: "No reviewed comparisons for this series.",
   loading: "Loading…",
   saved: "Saved.",
+  comparisonWithdrawn: "Unavailable: the release of one of the two rounds was withdrawn",
 };
 export const historyMessages = (locale: Locale) => (locale === "en" ? en : ar);

@@ -68,7 +68,12 @@
     "test:release": "tsx --test --test-concurrency=1 tests/release.test.ts tests/release-upgrade.test.ts",
     "test:administration": "tsx --test --test-concurrency=1 tests/administration.test.ts",
     "test:requests": "tsx --test tests/staff-request.test.ts",
-    "test:targets": "tsx --test --test-concurrency=1 tests/questionnaire-targets.test.ts tests/campaign-targets.test.ts"
+    "test:targets": "tsx --test --test-concurrency=1 tests/questionnaire-targets.test.ts tests/campaign-targets.test.ts",
+    "release:revoke": "tsx scripts/revoke-release.ts",
+    "jobs:supervise": "tsx scripts/supervise.ts",
+    "test:revocation": "tsx --test --test-concurrency=1 tests/revocation.test.ts",
+    "test:supervisor": "tsx --test --test-concurrency=1 tests/supervisor.test.ts",
+    "test:safeguards": "tsx --test tests/safeguards.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1128.0",

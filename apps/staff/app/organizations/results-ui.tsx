@@ -9,6 +9,7 @@ import type { DirectoryRecord } from "../../../../src/directory";
 import { messages, type Locale } from "../../../../src/i18n";
 import { resultsMessages, localeText } from "../../../../src/results-i18n";
 import { ReportsPanel } from "./reports-ui";
+import { ReleasePanel } from "./release-ui";
 import { utcDate } from "../../../../src/zoned-time";
 import { Workspace, organizationName } from "../shell";
 import {
@@ -908,6 +909,12 @@ export function Results({
         meta={
           data?.contentHash ? <Micro>SNAPSHOT {data.contentHash.slice(0, 8)}</Micro> : undefined
         }
+      />
+      <ReleasePanel
+        org={org}
+        roundId={roundId}
+        locale={locale}
+        onChanged={() => void load(view)}
       />
       <nav aria-label={m.results}>
         <ul className="tabs">

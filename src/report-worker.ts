@@ -34,7 +34,7 @@ export type RenderOutcome = {
   jobId: string;
   format: "PDF" | "XLSX";
   locale: "ar" | "en";
-  state: "READY" | "REUSED" | "QUEUED" | "FAILED";
+  state: "READY" | "REUSED" | "QUEUED" | "FAILED" | "REVOKED";
   byteCount: number | null;
   pageCount: number | null;
   networkAttempts: number | null;
@@ -112,6 +112,13 @@ export async function renderClaimedJob(
       await deleteReport(job.organizationId, job.id).catch(() => {});
       return { ...base, state: "REUSED", networkAttempts };
     }
+    if (done[0].state === "REVOKED") {
+      // The release was withdrawn while this job rendered. No row points at
+      // these bytes and none ever will; they are removed now, and the purge
+      // queue the revocation wrote removes them again if this delete failed.
+      await deleteReport(job.organizationId, job.id).catch(() => {});
+      return { ...base, state: "REVOKED", networkAttempts };
+    }
     return {
       ...base,
       state: "READY",
@@ -127,6 +134,9 @@ export async function renderClaimedJob(
       "SELECT publication.fail_report_job($1,$2) AS state",
       [job.id, code],
     );
+    // A job revoked mid-render cannot read its source any more; that is the
+    // revocation working, not a render failure.
+    if (rows[0].state === "REVOKED") return { ...base, state: "REVOKED" };
     return {
       ...base,
       state: rows[0].state === "FAILED" ? "FAILED" : "QUEUED",
@@ -134,6 +144,23 @@ export async function renderClaimedJob(
       note: error instanceof Error ? error.message : undefined,
     };
   }
+}
+
+// Bytes of reports whose release was revoked. The row already refuses every
+// download; this removes the object and confirms, one job at a time, so a
+// crash between the two only repeats an idempotent delete.
+export async function purgeRevokedReports(db: pg.Pool, limit = 100) {
+  const { rows } = await db.query<{ data: { organizationId: string; id: string }[] }>(
+    "SELECT publication.pending_report_purges($1) AS data",
+    [limit],
+  );
+  let purged = 0;
+  for (const item of rows[0].data) {
+    await deleteReport(item.organizationId, item.id);
+    await db.query("SELECT publication.confirm_report_purge($1,$2)", [item.organizationId, item.id]);
+    purged++;
+  }
+  return purged;
 }
 
 export async function renderDueReports(

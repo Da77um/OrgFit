@@ -143,8 +143,11 @@ campaign does not merge the two.
 3. **No correction workflow exists.** The schema supports a superseding
    revision; nothing issues one, and a changed plan for a released campaign is
    refused rather than reconciled.
-4. **`REVOKED` is a state the schema and the read path handle; no endpoint
-   produces it yet.**
+4. **`REVOKED` is produced by the audited withdrawal operation of Post-Audit
+   Repair Pass 3 (D-145 … D-147).** A withdrawn release is kept as restricted
+   evidence and refused on every staff surface; already downloaded report files
+   cannot be recalled; there is still no correction (superseding revision)
+   workflow.
 5. **Values are published at one decimal place.** That is a product precision
    choice, not a disclosure-limitation technique.
 6. **Everything upstream still rests on the Phase 07 trust boundary.** The

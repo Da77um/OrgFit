@@ -46,13 +46,13 @@
 | D2 | OIDC sign-in issues `__Host-` Secure HttpOnly cookies | DONE with synthetic IdP | rehearsal stage 5. OWNER INPUT: real IdP + MFA (P-005) |
 | D3 | Private bucket storage code path in production mode | DONE against a test double | rehearsal: reports and attachments stored encrypted, retrieved, deleted. NOT DONE: real bucket policy, lifecycle, versioning, IAM (P-002) |
 | D4 | Processor, publication, renderer, scanner, operator jobs run as separate processes | DONE locally | rehearsal stages 9–12 |
-| D5 | Job scheduler with cadences | NOT DONE | cadences in `deploy/processes.json`; no scheduler exists (P-002) |
+| D5 | Job scheduler with cadences | DONE locally / NOT DONE on infrastructure | Post-Audit Repair Pass 3: `npm run jobs:supervise` runs `deploy/processes.json` → `schedule` with per-process environment files, order, no overlap, bounded retries, timeouts, shutdown and status (`tests/supervisor.test.ts` SV-1 … SV-9). NOT DONE: running it under a provider's process manager with secrets from a secret manager (P-002, deployment-runbook §9) |
 | D6 | Report rendering (Arabic PDF, English XLSX) | DONE | rehearsal stage 10; `test:reports`, `test:checkpoint-e` |
 | D7 | Readiness closes on a pending restore | DONE | rehearsal stage 12 (both https endpoints 503, then 200) |
 | D8 | TLS certificates and domains | OWNER INPUT | P-002 — rehearsal used a local CA |
 | D9 | Proxy overwrites client address; per-IP limit on | DONE locally | rehearsal: `exchange_ip` bucket counted. Real proxy: P-002 (SEC-M2) |
 | D10 | Staff-side rate limiting at the edge | NOT DONE | SEC-M1 |
-| D11 | Alerts wired to paging | NOT DONE | `ops:check` exit codes only (SEC-L3) |
+| D11 | Alerts wired to paging | NOT DONE (adapter prepared) | `ops:check` now also judges job health; `src/alert-delivery.ts` can write a file or post to a webhook when explicitly enabled. No destination or credentials exist and nothing has been sent (SEC-L3) |
 
 ## E. Verification of the candidate
 

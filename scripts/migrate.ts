@@ -3,10 +3,10 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { assertProcessEnvironment, databaseUrl, guardMessage } from "../src/runtime-guard";
 export async function migrate(url: string, through?: string) {
-  if (new URL(url).username !== "orgfit_migrator")
-    throw new Error("Migration credential required");
-  const db = new pg.Client({ connectionString: url });
+  // Refuses a production URL without verified TLS before connecting (RC-004).
+  const db = new pg.Client({ connectionString: databaseUrl(url, "orgfit_migrator") });
   await db.connect();
   try {
     await db.query("BEGIN");
@@ -49,12 +49,14 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
+    assertProcessEnvironment("operator");
     if (!process.env.MIGRATION_DATABASE_URL) throw new Error();
     await migrate(process.env.MIGRATION_DATABASE_URL);
     console.log("Migrations applied.");
-  } catch {
+  } catch (e) {
     console.error(
-      "Migration failed. Inspect configuration and migration state through the restricted operator channel.",
+      guardMessage(e) ??
+        "Migration failed. Inspect configuration and migration state through the restricted operator channel.",
     );
     process.exitCode = 1;
   }

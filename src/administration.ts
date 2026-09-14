@@ -75,6 +75,7 @@ export const AUDIT_ACTIONS = [
   "PASSWORD_SET",
   "SETTINGS_CHANGED",
   "AUDIT_EXPORTED",
+  "RELEASE_REVOKED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

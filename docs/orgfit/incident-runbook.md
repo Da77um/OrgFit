@@ -26,6 +26,10 @@
 | `TOKEN_ABUSE_SUSPECTED` | warning | A rate-limit bucket exceeded its limit in the last 10 min | §5 |
 | `RETENTION_NOT_RUNNING` | warning | No retention pass in 26 h | Run `retention:run`; check the scheduler |
 | `RETENTION_POLICY_UNAPPROVED` | warning | Retention durations still defaults | Owner decision (P-004); expected until production approval |
+| `JOB_STALE` | critical for `privacy:process`, `publication:release`, `tombstones:ship`; warning otherwise | The named job has not succeeded within three of its intervals | Check the supervisor (`jobs:supervise -- --status`) and the job's own environment file; §9 |
+| `JOB_FAILING` | critical for the same jobs after 3 consecutive failures; warning otherwise | The named job's last run failed (failure code on the Settings screen) | Read the code; run preflight for that process; §9 |
+| `JOB_NEVER_RUN` | warning | The named job has no recorded run | Expected on a new environment for hourly/daily jobs; otherwise the supervisor is not running it |
+| `SUPERVISED_JOB_FAILING` | critical for processor jobs; warning otherwise | Supervisor-side: the job exhausted its bounded retries | §9 |
 
 Alert inputs contain counts, ages and states only (asserted by `tests/operations.test.ts` O-6). Every alert was drilled by inducing its condition (O-6); none is wired to a paging system in this repository.
 
@@ -33,7 +37,7 @@ Alert inputs contain counts, ages and states only (asserted by `tests/operations
 
 Examples: a staff screen or export shows a respondent's free text, a result is visible below threshold, a raw answer or token appears in a log.
 
-1. **Contain:** revoke the affected staff sessions (`PATCH /api/v1/staff/:id` or the operator revocation routine); if a release is involved, it must be withdrawn. **Gap:** the schema permits `PUBLISHED → REVOKED` (and the results screens then show "not available"), but no routine or operator tool performs that transition yet; until one exists, withdrawal is a reviewed operator transaction on `publication.result_snapshot` and `core.campaign.release_state`, never a row deletion (SEC-M5 in security-review.md).
+1. **Contain:** revoke the affected staff sessions (`PATCH /api/v1/staff/:id` or the operator revocation routine); if a release is involved, withdraw it (§8). Since Post-Audit Repair Pass 3 withdrawal is a supported, audited operation; never delete or edit publication rows.
 2. **Stop the source:** disable the offending route or job by deployment rollback, not by data edits.
 3. **Assess without copying:** identify the campaign(s), the release identifier and the time window. Do not re-read the leaked content more than needed to confirm scope.
 4. **Check logs for bridges:** confirm server logging settings (`retention-backup-runbook.md` §2); grep proxy/access logs for 43-character token patterns and `/s#`; confirm no request body capture is enabled anywhere.
@@ -84,3 +88,27 @@ The ledger says the campaign's intake was erased after processing, but the resto
 ## 7. After any incident
 
 Record in `docs/orgfit/phase-status.md` (development) or the operator's incident log (production): timeline, detection source, scope in counts, controls that held, controls that failed, repair and its test, and follow-up owner. Re-run `npm run test:operations`, `test:privacy` and `test:checkpoint-c` after any repair that touches intake, processing or retention.
+
+## 8. Withdrawing a published release (Post-Audit Repair Pass 3)
+
+Use when a released result must not be read any more: a privacy incident (a small group is identifiable), a correctness error (wrong scoring configuration), a data integrity problem, or an owner decision.
+
+1. **Decide and record** the reason category, a written reason and an incident or decision reference. The decision is a Super Admin's.
+2. **Withdraw** from the round's **Results** page → **Withdraw this release** (Super Admin only): choose the category, write the reason, enter the reference, type the first eight characters of the release fingerprint shown there, acknowledge that downloaded copies cannot be recalled, and submit. If no Super Admin can sign in, an operator runs, under the operator credential:
+
+   ```bash
+   npm run release:revoke -- --organization <uuid> --campaign <uuid> --approver <active super admin email> --reason-code PRIVACY_INCIDENT --reason "<reason>" --incident <reference> --confirm <fingerprint prefix>
+   ```
+
+   Repeating the same decision is safe (it returns the same revocation). A different decision about an already withdrawn release is refused.
+3. **What happens at once:** results, recommendations and follow-ups, comparisons that cite the release, trend values, new report requests and every download of every report that quotes the release are refused; queued and running report jobs are cancelled; the report worker deletes the stored files on its next hourly expiry run (sooner: run `reports:expire`). The release itself, its cells, the frozen report sources and the audit trail are kept as restricted evidence.
+4. **What it cannot do:** it cannot recall a file that was already downloaded. The withdrawal notice and the command report how many downloads of affected reports had happened (`downloadsBefore`). Identify who downloaded them from the audit screen (action `REPORT_DOWNLOADED`, filtered by organization and time) and follow up with those people directly under the incident plan. The product sends no message.
+5. **After a restore:** ship tombstones as usual. A restore to a backup older than the withdrawal re-applies it during `restore:reapply` (tombstone class `RELEASE_REVOCATION`); confirm the round shows as withdrawn before routing traffic.
+6. **Correction:** a corrected release is not implemented. A withdrawn campaign cannot be published again; re-collect in a new round if needed.
+
+## 9. Scheduled job failures
+
+1. `npm run jobs:supervise -- --status --state-dir <dir>` shows each job's last success, last failure, reason (`EXIT`, `TIMEOUT`, `INTERRUPTED`, `SKIPPED_ORPHAN`) and consecutive failures. The Settings screen shows the database view and the backlog.
+2. Run `npm run release:preflight -- --process <process> --env-file <that process's file> --check-database`. A job refuses a foreign credential or a non-TLS production URL by name (`Refused by runtime guard: …`).
+3. Re-run the job once in the foreground with its own file (`node --env-file=<file> --import tsx <script>`) to read its safe output. Do not merge environment files to "make it work".
+4. Waiting work is kept: quarantined attachments stay undownloadable, queued reports wait, closed campaigns wait for processing. Nothing is lost by a stopped job except time; retention and tombstone shipping, however, protect deletions — treat `tombstones:ship` failures as urgent (SEC-M3).

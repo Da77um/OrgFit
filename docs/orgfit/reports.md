@@ -46,7 +46,9 @@ QUEUED ──claim──▶ RUNNING ──complete──▶ READY ──expiry�
 - **Retries are idempotent** because the source is immutable and `complete_report_job` returns `REUSED` for a job that is already `READY` — a duplicated delivery keeps the bytes staff may already hold, and the worker deletes the losing copy.
 - **A `READY` artifact is frozen.** There is no `READY → READY` transition, so nothing can silently replace the bytes behind a link.
 
-A `RUNNING` job whose lease has elapsed returns to the queue on the next claim. That is the whole crash-recovery story.
+A `RUNNING` job whose lease has elapsed returns to the queue on the next claim, or fails with `LEASE_EXPIRED` once its attempts are used. That is the whole crash-recovery story. (Until Post-Audit Repair Pass 3 the claim tried RUNNING→RUNNING, which the lifecycle trigger refuses, so one crashed renderer blocked every later claim — PR3-001, repaired in migration 023.)
+
+**Withdrawn releases (Post-Audit Repair Pass 3).** Each job records every release it quotes — its own, both sides of a cited comparison, and every round in its trend (`ops.report_job_dependency`). Withdrawing any of them revokes the job whatever state it is in; a render that finishes afterwards gets `REVOKED`, deletes its bytes and publishes nothing; stored bytes are purged by `reports:expire`; downloads answer `409 RESULTS_UNAVAILABLE`. Files downloaded earlier cannot be recalled, and the revocation record counts them.
 
 ## 4. The PDF
 

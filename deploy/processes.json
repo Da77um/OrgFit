@@ -136,5 +136,32 @@
   },
   "localStorageSweeps": { "npm run imports:expire": "staff environment, local storage only; a bucket uses a 1-day lifecycle rule", "npm run links:expire": "staff environment, local storage only; a bucket uses a 1-day lifecycle rule" },
   "illustrativeOnly": ["instruments:seed"],
-  "neverInProduction": ["db:provision-dev", "db:bootstrap-dev-admin", "db:seed", "showcase"]
+  "neverInProduction": ["db:provision-dev", "db:bootstrap-dev-admin", "db:seed", "showcase"],
+  "schedule": {
+    "$comment": "Machine-readable form of the job cadences above (Post-Audit Repair Pass 3). scripts/supervise.ts runs it; ops.job_status (migration 023) holds the same intervals and tests/supervisor.test.ts asserts they agree. A group runs its jobs one after another in the listed order and never overlaps itself; every job of a group keeps its own process credential. Retries after a failure back off from retryBaseSeconds, doubling, for at most maxRetries attempts, then fall back to the normal cadence while the job is reported FAILING.",
+    "retry": { "maxRetries": 3, "retryBaseSeconds": 15 },
+    "shutdownGraceSeconds": 30,
+    "groups": {
+      "collection": { "everySeconds": 300, "jobs": ["campaigns:normalize", "privacy:process", "publication:release"] }
+    },
+    "jobs": {
+      "campaigns:normalize": { "process": "operator", "script": "scripts/close-campaigns.ts", "everySeconds": 300, "timeoutSeconds": 120, "group": "collection" },
+      "privacy:process": { "process": "processor", "script": "scripts/process-campaigns.ts", "everySeconds": 300, "timeoutSeconds": 1800, "group": "collection" },
+      "publication:release": { "process": "processor", "script": "scripts/publish-campaigns.ts", "everySeconds": 300, "timeoutSeconds": 900, "group": "collection" },
+      "reports:generate": { "process": "report", "script": "scripts/generate-reports.ts", "everySeconds": 60, "timeoutSeconds": 900 },
+      "reports:expire": { "process": "report", "script": "scripts/expire-reports.ts", "everySeconds": 3600, "timeoutSeconds": 600 },
+      "attachments:scan": { "process": "scanner", "script": "scripts/scan-attachments.ts", "everySeconds": 60, "timeoutSeconds": 600 },
+      "attachments:expire": { "process": "scanner", "script": "scripts/expire-attachments.ts", "everySeconds": 3600, "timeoutSeconds": 600 },
+      "drafts:expire": { "process": "operator", "script": "scripts/expire-drafts.ts", "everySeconds": 3600, "timeoutSeconds": 300 },
+      "retention:run": { "process": "operator", "script": "scripts/retention.ts", "everySeconds": 86400, "timeoutSeconds": 3600 },
+      "tombstones:ship": { "process": "operator", "script": "scripts/ship-tombstones.ts", "everySeconds": 300, "timeoutSeconds": 300 },
+      "ops:check": { "process": "operator", "script": "scripts/ops-check.ts", "everySeconds": 120, "timeoutSeconds": 120, "alerts": true }
+    }
+  },
+  "supervisor": {
+    "$comment": "The supervisor process (scripts/supervise.ts). It holds NO database credential and NO key: it reads one environment file per job process, validates it with the preflight rules, and starts each job with only that file (node --env-file). Its own environment may carry alert-delivery settings only.",
+    "command": "npm run jobs:supervise -- --env-dir <directory holding processor.env, report.env, scanner.env, operator.env> --state-dir <private directory>",
+    "optional": ["ALERT_SINK", "ALERT_FILE", "ALERT_WEBHOOK_URL", "ALERT_WEBHOOK_TOKEN", "ALERT_DELIVERY_ENABLED", "ALERT_REPEAT_SECONDS"],
+    "forbiddenPatterns": ["_DATABASE_URL$", "^DATABASE_URL$", "_ENCRYPTION_KEY$", "^INVITATION_DIGEST_KEY", "^CAMPAIGN_KEY_CUSTODY_SECRET_KEY$", "^OIDC_CLIENT_SECRET$", "^BOOTSTRAP_ADMIN_PASSWORD$"]
+  }
 }

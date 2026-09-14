@@ -66,6 +66,8 @@ type ComparisonSummary = {
   rationale: string;
   reviewedBy: string | null;
   reviewedAt: string;
+  /** False when either release was withdrawn (022); the review stays listed. */
+  available?: boolean;
 };
 type ComparisonCell = {
   metricKey: string;
@@ -515,6 +517,7 @@ export function History({
                       {/* An ISO date beside Arabic words is reordered to
                           "14-09-2026" unless isolated (CF-004). */}
                       <bdi dir="ltr">{utcDate(item.reviewedAt)}</bdi>
+                      {item.available === false && <> · {m.comparisonWithdrawn}</>}
                     </button>
                   </li>
                 ))}

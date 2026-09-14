@@ -182,3 +182,14 @@ No migration and no server change. Every staff-screen request now has a deadline
 npm run test:requests
 npx playwright test tests/browser/reliability.spec.ts
 ```
+
+## Post-Audit Repair Pass 3 — release revocation, supervised jobs and runtime safeguards
+
+Apply migrations **022** and **023**. A Super Admin can withdraw a published release from the round's Results page (reason, incident reference, typed fingerprint); `npm run release:revoke` is the operator fallback with a named Super Admin approver. The withdrawal is one immutable, audited record; results, recommendations, comparisons, trends, new reports and every download of every report that quotes the release are refused; running report jobs cannot publish; stored files are purged; a restore re-applies it. **Downloaded copies cannot be recalled**, and the product says how many downloads had happened. `npm run jobs:supervise` runs the scheduled jobs of `deploy/processes.json` → `schedule` locally with one environment file per job process, order, no overlap, bounded retries, timeouts, shutdown and a status file; jobs record their own health, shown on Settings and judged by `ops:check`; an alert adapter is prepared but sends nothing unless configured. Job, operator and migration entry points refuse a production database URL without verified TLS. A crashed renderer no longer blocks the report queue (PR3-001). Nothing is installed as a service and nothing is deployed. See D-145 … D-154, [deployment runbook §9–10](docs/orgfit/deployment-runbook.md) and the pass entry in [phase status](docs/orgfit/phase-status.md).
+
+```bash
+npm run test:safeguards
+npm run test:revocation
+npm run test:supervisor
+npx playwright test tests/browser/revocation.spec.ts
+```

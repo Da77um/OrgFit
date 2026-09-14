@@ -32,6 +32,7 @@ import {
   invitationRoute,
 } from "../../../../../../src/campaigns";
 import { resultsRoute } from "../../../../../../src/results";
+import { revocationRoute } from "../../../../../../src/revocation";
 import { recommendationActionRoute } from "../../../../../../src/recommendations";
 import { historyRoute } from "../../../../../../src/history";
 import { reportRoute } from "../../../../../../src/reports";
@@ -197,6 +198,7 @@ async function handle(req: Request, ctx: Context) {
         }
         const directoryResponse =
           (await resultsRoute(req, path, tx)) ??
+          (await revocationRoute(req, path, tx)) ??
           (await recommendationActionRoute(req, path, tx)) ??
           (await historyRoute(req, path, tx)) ??
           (await reportRoute(req, path, tx)) ??

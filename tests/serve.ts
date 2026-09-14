@@ -1,10 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setupDatabase } from "./database";
 import { testProvider } from "./oidc-provider";
 import { generateCustodianKeypair } from "../src/key-custody";
+// CG-003 (Post-Audit Repair Pass 3): a fresh clone has no work/ directory, and
+// the fixture file, the local stores and every spec's screenshots live there.
+// Created here, before anything writes, with owner-only permissions where the
+// platform honours them; recursive mkdir leaves an existing directory as it is.
+const SCRATCH = resolve("work");
+for (const dir of ["", "imports", "link-exports", "reports", "participation-exports", "attachments", "key-custody"])
+  await mkdir(resolve(SCRATCH, dir), { recursive: true, mode: 0o700 });
 const fixture = await setupDatabase();
 // Overridable so the harness can run beside another local server (defaults unchanged).
 const STAFF_PORT = Number(process.env.E2E_STAFF_PORT ?? 3000);
@@ -53,7 +60,7 @@ const env: NodeJS.ProcessEnv = {
 };
 delete (env as NodeJS.ProcessEnv).MIGRATION_DATABASE_URL;
 await writeFile(
-  "work/e2e-fixture.json",
+  resolve(SCRATCH, "e2e-fixture.json"),
   JSON.stringify({
     migration: fixture.url("orgfit_migrator"),
     invitationDigestKey: env.INVITATION_DIGEST_KEY,
@@ -71,6 +78,8 @@ await writeFile(
     attachmentEncryptionKey: env.ATTACHMENT_ENCRYPTION_KEY,
     attachmentDirectory: env.ATTACHMENT_LOCAL_DIRECTORY,
   }),
+  // Synthetic credentials for this run only; readable by the owner alone.
+  { mode: 0o600 },
 );
 const next = resolve("node_modules/next/dist/bin/next");
 const children = ["staff", "respondent"].map((app, i) =>

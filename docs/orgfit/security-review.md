@@ -90,3 +90,30 @@ Still a self-review, not an independent assessment.
 ### Status of Phase 14 residuals
 
 SEC-M2 exercised in the rehearsal (proxy overwrites `X-Forwarded-For`; the per-IP bucket counted it) — still requires the real proxy. SEC-M4 is **checked** by release preflight, not continuously enforced. SEC-M7 **rehearsed locally** (TLS proxy, TLS-only database, `verify-full`) — not on real infrastructure. SEC-H1, SEC-H2, SEC-M1, SEC-M3, SEC-M5, SEC-M6, SEC-L1–L4 unchanged. **No critical implementation defect is known to remain open.**
+
+## 7. Post-Audit Repair Pass 3 addendum (2026-09-15)
+
+Still a self-review by the implementer, not an independent assessment. Decisions D-145 … D-154.
+
+### Closed in code, development evidence only
+
+| ID | Was | Now | Evidence |
+|---|---|---|---|
+| SEC-M5 | No routine or tool to revoke a published release | Super Admin screen and route, operator command with a named Super Admin approver; one immutable revocation record; dependent reports (own release, comparison sides, whole-series trends) revoked; row-lock ordering for concurrent download, request and render; purge of stored bytes; restore replay; downloaded copies counted and stated as unrecallable | `tests/revocation.test.ts` RV-1 … RV-11, `tests/browser/revocation.spec.ts` |
+| RC-004 | Processor, publication, operator and migration scripts relied on preflight for TLS | Entry points refuse a production URL without `verify-full` (or with verification disabled) before connecting, and refuse forbidden variables by name | `tests/safeguards.test.ts` RG-1 … RG-4 (13 entry points, 0 connections) |
+| CG-003 | Browser harness needed `work/` in a fresh clone | The harness creates its scratch directories | RG-5; clean-clone browser start (phase-status.md) |
+
+### Found and fixed in this pass
+
+| ID | Severity | Defect | Repair | Evidence |
+|---|---|---|---|---|
+| PR3-001 | High (availability) | **One crashed renderer blocked every report thereafter.** `claim_report_jobs` reclaimed an expired lease with a RUNNING→RUNNING update the lifecycle trigger forbids, so every later claim raised and nothing was drawn | Restated in 023: requeue elapsed leases (or fail with `LEASE_EXPIRED` after `max_attempts`), then claim | Found by the supervised end-to-end run SV-9; RV-11 |
+| PR3-002 | Low | A revoked report download answered 503 instead of 409 (`RESULTS_UNAVAILABLE` unmapped) | Code mapping in `src/http.ts` | browser revocation spec |
+
+### Changed residuals
+
+- **SEC-L3 / D11**: an alert-delivery adapter exists (none/console/file/webhook, webhook gated and https-only in production, codes only). Still NOT wired to a real destination; no alert has been sent externally; the monitoring destination, credentials and a paging drill are operator inputs.
+- **D5 / RC-003**: a portable supervisor runs the schedule with per-process environment files, order, overlap protection, bounded retries, timeouts, shutdown and status. Still NOT deployed on any provider; process-manager restart, secret-manager mounting and log shipping are provider wiring (P-002).
+- New trust note: the supervisor host can read the four job environment files (it validates them). It never merges them or places their values in its own environment, but anyone who controls that host controls every job credential — the same as any scheduler of these jobs. Keep the files in a secret manager readable by the supervisor's service identity only.
+
+SEC-H1, SEC-H2, SEC-M1, SEC-M2, SEC-M3, SEC-M4, SEC-M6, SEC-M7, SEC-L1, SEC-L2, SEC-L4, RC-005 and CE-001 are unchanged.

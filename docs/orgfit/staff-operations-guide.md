@@ -71,7 +71,7 @@ It shows **who has completed, never what anyone answered**. There is no staff vi
    - **Below the threshold** (fewer than five valid contributors) nothing is decrypted: the intake is purged and the round shows that **no results will ever be published** for it.
 3. The **publication job** then builds one immutable release after its disclosure checks. Results appear under **Results** for that round.
 
-Results are never edited in place. There is currently **no product workflow to revoke or correct a published release** (SEC-M5); if a release must be withdrawn, escalate to the release owner — do not attempt it in the database.
+Results are never edited in place. **A Super Admin can withdraw a published release** from the round's Results page (reason, incident reference, typed fingerprint). Everyone reading that round then sees that it was withdrawn and when; its results, recommendations, comparisons and report downloads stop. **Files already downloaded cannot be recalled** — the notice says how many downloads had happened. There is no correction workflow; if you believe a release must be withdrawn, escalate to a Super Admin — do not attempt it in the database.
 
 ## 7. Reading results and suppression
 

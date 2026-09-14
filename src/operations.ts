@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import pg from "pg";
 import { deleteAttachment } from "./attachment-storage";
 import { destroyCampaignKey } from "./key-custody";
+import { databaseUrl } from "./runtime-guard";
 
 // ---------------------------------------------------------------------------
 // Operations (Phase 14): retention, tombstone shipping, the restore replay and
@@ -23,21 +24,21 @@ type Tombstone = {
     | "PRIVATE_EXPORT"
     | "CAMPAIGN_INTAKE"
     | "CAMPAIGN_KEY"
-    | "ANONYMOUS_CAMPAIGN";
+    | "ANONYMOUS_CAMPAIGN"
+    // Post-Audit Repair Pass 3 (022): a withdrawn release, subject = snapshot.
+    | "RELEASE_REVOCATION";
   organizationId: string;
   subjectId: string;
   recordedAt: string;
 };
 
+// Login, password and — in production — verified TLS, checked before any
+// connection (RC-004; src/runtime-guard.ts).
 export function operatorUrl(url = process.env.MIGRATION_DATABASE_URL) {
-  if (!url || new URL(url).username !== "orgfit_migrator")
-    throw new Error("Operator credential required");
-  return url;
+  return databaseUrl(url, "orgfit_migrator");
 }
 export function anonymousOperatorUrl(url = process.env.ANONYMOUS_MIGRATION_DATABASE_URL) {
-  if (!url || new URL(url).username !== "orgfit_anon_migrator")
-    throw new Error("Anonymous operator credential required");
-  return url;
+  return databaseUrl(url, "orgfit_anon_migrator");
 }
 
 async function as<T>(url: string, role: string, work: (c: pg.Client) => Promise<T>) {
@@ -155,6 +156,7 @@ export async function reapplyTombstones(
     CAMPAIGN_INTAKE: 0,
     CAMPAIGN_KEY: 0,
     ANONYMOUS_CAMPAIGN: 0,
+    RELEASE_REVOCATION: 0,
   };
   const incidents: ReapplyReport["incidents"] = [];
 
@@ -231,6 +233,15 @@ export async function reapplyTombstones(
       // again. That is the local stand-in's whole erasure story (P-003).
       for (const ref of refs) await destroyCampaignKey(ref).catch(() => undefined);
       if (refs.length) applied.CAMPAIGN_KEY++;
+    } else if (t.class === "RELEASE_REVOCATION") {
+      // A release withdrawn after the backup was taken is published again in
+      // the restored database. It is withdrawn again, with its dependent report
+      // jobs, before either readiness opens.
+      const changed = await core(coreUrl, async (c) =>
+        (await c.query("SELECT publication.reapply_revocation($1,$2) AS changed", [t.organizationId, t.subjectId]))
+          .rows[0].changed as boolean,
+      );
+      if (changed) applied.RELEASE_REVOCATION++;
     }
   }
 
@@ -311,6 +322,18 @@ export type AlertInputs = {
   unapprovedRetentionClasses: number;
   /** Cross-store disagreements; present only when the check can reach both stores. */
   storeInconsistencies?: number;
+  /** Per-job health from ops.job_health() (023); present when it was read. */
+  jobs?: JobHealth[];
+};
+export type JobHealth = {
+  job: string;
+  process: string;
+  expectedIntervalSeconds: number;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureCode: string | null;
+  consecutiveFailures: number;
+  health: "OK" | "FAILING" | "STALE" | "NEVER_RUN";
 };
 export type Alert = { code: string; severity: "critical" | "warning"; value: number | string };
 
@@ -348,8 +371,31 @@ export function evaluateAlerts(
     add("BACKUP_STALE_OR_MISSING", "critical", host.backupAgeHours ?? "none");
   if (host.freeDiskFraction !== null && host.freeDiskFraction < ALERT_THRESHOLDS.freeDiskFraction)
     add("LOW_DISK", "critical", Number(host.freeDiskFraction.toFixed(3)));
+  // Job health (Post-Audit Repair Pass 3). A job that stopped succeeding is
+  // critical for the privacy processor and publication — accepted answers wait
+  // and results never appear — and a warning elsewhere. The value is the job
+  // name, never an identifier of anything the job touched. ops:check itself is
+  // not judged here: if it is not running, nothing evaluates this.
+  for (const job of input.jobs ?? []) {
+    if (job.job === "ops:check" || job.health === "OK") continue;
+    const important = job.process === "processor" || job.job === "tombstones:ship";
+    if (job.health === "FAILING")
+      add("JOB_FAILING", important && job.consecutiveFailures >= JOB_FAILURES_CRITICAL ? "critical" : "warning", job.job);
+    else if (job.health === "STALE") add("JOB_STALE", important ? "critical" : "warning", job.job);
+    else add("JOB_NEVER_RUN", "warning", job.job);
+  }
   return alerts;
 }
+/** Consecutive failures after which a processor job's failure is critical. */
+export const JOB_FAILURES_CRITICAL = 3;
 
 export const alertInputs = (coreUrl: string) =>
   core(coreUrl, async (c) => (await c.query("SELECT ops.alert_inputs() AS data")).rows[0].data as AlertInputs);
+
+export const jobHealth = (coreUrl: string) =>
+  core(coreUrl, async (c) =>
+    (await c.query("SELECT ops.job_health() AS data")).rows[0].data as {
+      jobs: JobHealth[];
+      backlog: Record<string, number>;
+    },
+  );
