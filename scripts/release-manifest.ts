@@ -28,11 +28,14 @@ export function computeManifest(id: string) {
     .split("\n")
     .filter((line) => !isDocumentation(line.split("\t")[1] ?? ""))
     .join("\n");
-  const dirty = git("status", "--porcelain")
+  // Not trimmed: each porcelain line starts with a two-column status that may
+  // begin with a space. `next build` rewrites apps/*/next-env.d.ts, so those
+  // generated files do not count as a source change.
+  const dirty = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" })
     .split("\n")
     .filter(Boolean)
     .map((l) => l.slice(3))
-    .filter((p) => !isDocumentation(p));
+    .filter((p) => !isDocumentation(p) && !/^apps\/[^/]+\/next-env\.d\.ts$/.test(p));
   const buildId = (app: string) => {
     const f = resolve("apps", app, ".next", "BUILD_ID");
     return existsSync(f) ? readFileSync(f, "utf8").trim() : null;
