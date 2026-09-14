@@ -13,7 +13,7 @@ This records what was built for the owner's request of 2026-09-11/13: a public o
 | `POST /api/v1/auth/password` | none | Sign-in. Same-origin + JSON checks. 401 one generic reply, 429 locked, 503 unavailable. |
 | `POST /api/v1/auth/invitation` | none | Inspect a token: `VALID` (with address and role), `EXPIRED`, `CONSUMED`, `REVOKED`, `INVALID`. |
 | `POST /api/v1/auth/activate` | none | `{token, displayName, password}` only. Policy re-checked on the server. |
-| `GET/POST /api/v1/staff/invitations`, `POST …/:id/revoke` | Super Admin | Issue (returns the activation URL **once**), list, withdraw. Nothing is sent anywhere. |
+| `GET/POST /api/v1/staff/invitations`, `POST …/:id/revoke` | Super Admin | Issue (returns the activation URL **once**; an idempotent retry returns `url: null`, D-132), keyset-paginated list, withdraw. Nothing is sent anywhere. Screen: `/staff` (Post-Audit Repair Pass 1). |
 
 Protected pages and every other API keep their own authorization (`withStaff` → `access.actor()`); the public page takes part in none of it. Respondent routes on the survey origin are untouched.
 

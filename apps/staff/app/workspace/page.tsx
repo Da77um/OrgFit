@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { sessionCookie } from "../../../../src/auth";
 import { withStaff } from "../../../../src/db";
 import { localeOf, messages } from "../../../../src/i18n";
+import { adminMessages } from "../../../../src/admin-i18n";
 import {
   Badge,
   EmptyState,
@@ -45,7 +46,8 @@ export default async function Home() {
     );
   }
   const { profile, organizations } = data,
-    m = messages(profile.locale);
+    m = messages(profile.locale),
+    a = adminMessages(profile.locale);
   return (
     <Frame
       locale={profile.locale}
@@ -102,6 +104,18 @@ export default async function Home() {
             </Badge>
           </p>
           <AccountControls locale={profile.locale} />
+          {/* Administration links are shown to a Super Admin only. Each page
+              and every API routine behind them checks the role again. */}
+          <nav className="stack stack-tight" aria-label={a.adminNav}>
+            <a href="/profile">{a.navProfile}</a>
+            {profile.role === "SUPER_ADMIN" && (
+              <>
+                <a href="/staff">{a.navStaff}</a>
+                <a href="/audit">{a.navAudit}</a>
+                <a href="/settings">{a.navSettings}</a>
+              </>
+            )}
+          </nav>
         </aside>
       </div>
     </Frame>

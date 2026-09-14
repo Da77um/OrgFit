@@ -21,6 +21,7 @@
 import type { ReactNode } from "react";
 import { Label, Lockup, Micro } from "../../../src/ui";
 import { messages, type Locale } from "../../../src/i18n";
+import { adminMessages } from "../../../src/admin-i18n";
 import { LocaleSwitch } from "./locale-switch";
 
 export type Section =
@@ -165,6 +166,82 @@ export function Workspace({
             </a>
             <a className="rail-link" href="/workspace">
               {m.home}
+            </a>
+            <a className="rail-link" href="/profile">
+              {adminMessages(locale).navProfile}
+            </a>
+          </div>
+        </nav>
+        <main id="main" className="canvas stack">
+          {children}
+        </main>
+      </div>
+    </>
+  );
+}
+
+// The administration and account shell: the same bar and rail as an
+// organization workspace, with no organization in context. The administration
+// group is rendered only for a Super Admin — a convenience, never the boundary:
+// each page and every API routine refuses a non-administrator on its own.
+export type AdminSection = "staff" | "audit" | "settings" | "profile";
+export function AdminFrame({
+  locale,
+  role,
+  section,
+  children,
+}: {
+  locale: Locale;
+  role: "SUPER_ADMIN" | "STAFF";
+  section: AdminSection;
+  children: ReactNode;
+}) {
+  const a = adminMessages(locale);
+  const admin: { key: AdminSection; href: string; text: string }[] = [
+    { key: "staff", href: "/staff", text: a.navStaff },
+    { key: "audit", href: "/audit", text: a.navAudit },
+    { key: "settings", href: "/settings", text: a.navSettings },
+  ];
+  return (
+    <>
+      <AppBar
+        locale={locale}
+        context={section === "profile" ? a.navProfile : a.administration}
+        meta={<Micro>{role === "SUPER_ADMIN" ? "SUPER ADMIN" : "STAFF"}</Micro>}
+      />
+      <div className="shell">
+        <nav className="rail" aria-label={a.adminNav}>
+          {role === "SUPER_ADMIN" && (
+            <div className="rail-group">
+              <Label className="rail-label">{a.administration}</Label>
+              {admin.map((item) => (
+                <a
+                  key={item.key}
+                  className="rail-link"
+                  href={item.href}
+                  aria-current={item.key === section ? "page" : undefined}
+                >
+                  {item.text}
+                </a>
+              ))}
+            </div>
+          )}
+          <div className="rail-group">
+            <a
+              className="rail-link"
+              href="/profile"
+              aria-current={section === "profile" ? "page" : undefined}
+            >
+              {a.navProfile}
+            </a>
+            <a className="rail-link" href="/workspace">
+              {a.navWorkspace}
+            </a>
+            <a className="rail-link" href="/organizations">
+              {a.navOrganizations}
+            </a>
+            <a className="rail-link" href="/questionnaires">
+              {a.navQuestionnaires}
             </a>
           </div>
         </nav>

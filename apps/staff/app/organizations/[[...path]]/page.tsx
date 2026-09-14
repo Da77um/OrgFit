@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { sessionCookie } from "../../../../../src/auth";
 import { withStaff, requireAccess } from "../../../../../src/db";
 import { uuid } from "../../../../../src/security";
+import { sql } from "kysely";
 import { directoryGet } from "../../../../../src/directory";
 import { localeOf, messages } from "../../../../../src/i18n";
 import { Directory } from "../directory-ui";
@@ -55,8 +56,17 @@ export default async function DirectoryPage({
               ? "directory.manage"
               : undefined,
           );
+        // Global defaults (migration 019) prefill the campaign form only; the
+        // server still validates every submitted value and freezes it on the
+        // campaign, so a later change to a default never reaches this campaign.
+        const defaults = (
+          await sql<{
+            data: { defaultTimezone: string; defaultCampaignThreshold: number };
+          }>`select access.settings() as data`.execute(tx)
+        ).rows[0].data;
         return {
           profile,
+          defaults,
           organization: path[0]
             ? await directoryGet(tx, "organization", path[0], path[0])
             : null,

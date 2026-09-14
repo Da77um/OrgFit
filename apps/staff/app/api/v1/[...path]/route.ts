@@ -19,13 +19,8 @@ import { readConfig } from "../../../../../../src/config";
 import { withStaff, requireAccess } from "../../../../../../src/db";
 import {
   AppError,
-  accessInput,
-  createStaffInput,
-  invitationInput,
   checkMutation,
-  digest,
   jsonInput,
-  secret,
   uuid,
 } from "../../../../../../src/security";
 import { response, safeError, requestLocale } from "../../../../../../src/http";
@@ -41,6 +36,7 @@ import { recommendationActionRoute } from "../../../../../../src/recommendations
 import { historyRoute } from "../../../../../../src/history";
 import { reportRoute } from "../../../../../../src/reports";
 import { visitRoute } from "../../../../../../src/visits";
+import { administrationRoute } from "../../../../../../src/administration";
 type Context = { params: Promise<{ path: string[] }> };
 // The one route that carries bytes rather than JSON.
 const attachmentContent =
@@ -219,104 +215,15 @@ async function handle(req: Request, ctx: Context) {
           await requireAccess(tx, org, "directory.manage");
           return response({ allowed: true });
         }
-        if (req.method === "GET" && path === "staff")
-          return response({
-            items: (
-              await sql<{
-                data: unknown;
-              }>`select access.list_staff() as data`.execute(tx)
-            ).rows[0].data,
-            nextCursor: null,
-          });
-        if (req.method === "GET" && path === "audit")
-          return response({
-            items: (
-              await sql<{
-                data: unknown;
-              }>`select access.audit() as data`.execute(tx)
-            ).rows[0].data,
-            nextCursor: null,
-          });
-        // --- staff invitations ------------------------------------------
-        // The only way a new staff account comes into existence on the local
-        // path. The role, the capabilities and the organizations are the
-        // administrator's choice and are frozen onto the invitation row; the
-        // person activating it supplies a name and a password and nothing else.
-        if (req.method === "GET" && path === "staff/invitations") {
-          if (profile.role !== "SUPER_ADMIN")
-            throw new AppError("FORBIDDEN", 403);
-          return response({
-            items: (
-              await sql<{
-                data: unknown;
-              }>`select access.list_invitations() as data`.execute(tx)
-            ).rows[0].data,
-            nextCursor: null,
-          });
-        }
-        if (req.method === "POST" && path === "staff/invitations") {
-          if (profile.role !== "SUPER_ADMIN")
-            throw new AppError("FORBIDDEN", 403);
-          const body = await jsonInput(req, invitationInput);
-          const idem = uuid.safeParse(req.headers.get("idempotency-key"));
-          if (!idem.success) throw new AppError("PRECONDITION_REQUIRED", 400);
-          // The secret is generated here, stored only as a digest, and returned
-          // exactly once — the same shape the respondent invitation uses. It is
-          // not sent anywhere: the administrator delivers it out of band.
-          const token = secret();
-          const created = await sql<{
-            id: string;
-          }>`select access.create_invitation(${digest(token)},${JSON.stringify(body)}::jsonb,${idem.data}::uuid,${digest(JSON.stringify(body))}) as id`.execute(
-            tx,
-          );
-          return response(
-            {
-              id: created.rows[0].id,
-              url: `${config.STAFF_ORIGIN}/activate#${token}`,
-            },
-            201,
-          );
-        }
-        if (
-          req.method === "POST" &&
-          /^staff\/invitations\/[\w-]+\/revoke$/.test(path)
-        ) {
-          if (profile.role !== "SUPER_ADMIN")
-            throw new AppError("FORBIDDEN", 403);
-          await jsonInput(req, z.object({}).strict());
-          await sql`select access.revoke_invitation(${uuid.parse(path.split("/")[2])}::uuid)`.execute(
-            tx,
-          );
-          return new NextResponse(null, { status: 204 });
-        }
-        if (
-          (req.method === "POST" && path === "staff") ||
-          (req.method === "PATCH" && /^staff\/[\w-]+$/.test(path))
-        ) {
-          if (profile.role !== "SUPER_ADMIN")
-            throw new AppError("FORBIDDEN", 403);
-          const target =
-            path === "staff" ? null : uuid.parse(path.split("/")[1]);
-          const body = target
-            ? await jsonInput(req, accessInput)
-            : await jsonInput(req, createStaffInput);
-          const idem = uuid.safeParse(req.headers.get("idempotency-key"));
-          if (!idem.success) throw new AppError("PRECONDITION_REQUIRED", 400);
-          const revision = req.headers
-            .get("if-match")
-            ?.match(/^"([1-9][0-9]*)"$/)?.[1];
-          if (target && !revision)
-            throw new AppError("PRECONDITION_REQUIRED", 400);
-          const hash = digest(
-            JSON.stringify({ target, revision: revision ?? null, body }),
-          );
-          const result = await sql<{
-            id: string;
-          }>`select access.save_staff(${target}::uuid,${revision ?? null}::bigint,${JSON.stringify(body)}::jsonb,${idem.data}::uuid,${hash}) as id`.execute(
-            tx,
-          );
-          return response({ id: result.rows[0].id }, target ? 200 : 201);
-        }
+        // Staff, staff invitations, audit history, global settings and the
+        // caller's own sessions: src/administration.ts, keyset-paginated.
+        const administrationResponse = await administrationRoute(
+          req,
+          path,
+          tx,
+          profile,
+        );
+        if (administrationResponse) return administrationResponse;
         throw new AppError("NOT_FOUND", 404);
       },
     );

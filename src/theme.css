@@ -2158,3 +2158,72 @@ button.button-on-dark {
     display: block;
   }
 }
+
+/* ------------------------------------------- administration (repair pass 1) --- */
+/* A scrolling checklist for organization assignment: long lists stay inside
+   their fieldset instead of pushing the save button a page away. */
+.checklist {
+  max-block-size: 18rem;
+  overflow-y: auto;
+  border: var(--hairline) solid var(--border);
+  background: var(--surface);
+  padding: var(--space-1) var(--space-2);
+  scrollbar-width: thin;
+}
+/* The in-place confirmation for a destructive action. */
+.confirm-inline {
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--surface);
+  padding: var(--space-2);
+}
+.confirm-inline p {
+  margin: 0;
+}
+/* A value shown once (an activation link): selectable, never wrapped mid-token
+   into something that looks like two values. */
+.once-value {
+  inline-size: 100%;
+  font-family: var(--font-mono, monospace);
+  direction: ltr;
+}
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+.facts dt {
+  color: var(--text-muted);
+}
+.facts dd {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 30rem) {
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .facts dd {
+    margin-block-end: var(--space-1);
+  }
+}
+
+/* Administration tables size their columns to whole words and scroll inside
+   .table-wrap, instead of breaking codes such as ACCESS_CHANGED mid-token.
+   A cell that holds an identifier opts back in with .wrap-anywhere. */
+.admin-table th,
+.admin-table td {
+  overflow-wrap: break-word;
+}
+.admin-table .wrap-anywhere {
+  overflow-wrap: anywhere;
+}

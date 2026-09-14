@@ -13,6 +13,8 @@ import { ar as staffAr, en as staffEn } from "../src/i18n";
 import { respondentAr, respondentEn, fill } from "../src/respondent-i18n";
 import { campaignMessages } from "../src/campaign-i18n";
 import { visitMessages } from "../src/visits-i18n";
+import { adminMessages } from "../src/admin-i18n";
+import { AUDIT_ACTIONS } from "../src/administration";
 
 // Phase 13: locale-independent canonical values, per-field answer rules that
 // agree with the server, and wall-clock time in a record's own timezone.
@@ -117,6 +119,13 @@ test("L-4 every catalog touched by this phase is complete in both languages", ()
   same(respondentAr, respondentEn, "respondent");
   same(campaignMessages("ar"), campaignMessages("en"), "campaigns");
   same(visitMessages("ar"), visitMessages("en"), "visits");
+  // Post-Audit Repair Pass 1: administration screens, with a label for every
+  // audit action the server accepts.
+  same(adminMessages("ar"), adminMessages("en"), "administration");
+  for (const action of AUDIT_ACTIONS)
+    for (const locale of ["ar", "en"] as const)
+      assert.ok(adminMessages(locale)[`a_${action}`], `${locale} a_${action}`);
+  for (const [key, value] of Object.entries(adminMessages("en"))) assert.ok(value.length > 0, key);
   // No empty string, and no Arabic letters inside the English respondent catalog
   // except the language switch, which names Arabic in Arabic on purpose.
   for (const [key, value] of Object.entries(respondentEn)) {

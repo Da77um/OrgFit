@@ -20,12 +20,12 @@ test("anonymous APIs and staff page denied; respondent build has no staff API", 
   await expect(page.locator("html")).toHaveAttribute("lang", "ar");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   expect(
-    (await request.get("http://127.0.0.1:3001/api/v1/profile")).status(),
+    (await request.get(`http://127.0.0.1:${process.env.E2E_RESPONDENT_PORT ?? 3001}/api/v1/profile`)).status(),
   ).toBe(404);
   // The survey origin serves the respondent shell and nothing else. Opened
   // without an invitation fragment it reports the generic unavailable state and
   // never hints that a questionnaire exists.
-  await page.goto("http://127.0.0.1:3001/s");
+  await page.goto(`http://127.0.0.1:${process.env.E2E_RESPONDENT_PORT ?? 3001}/s`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "استبانة OrgFit",
   );
@@ -41,7 +41,7 @@ test("real signed OIDC login, org scoping, persistent AR/EN, CSRF, logout and mo
   request,
 }) => {
   await login(page);
-  await expect(page).toHaveURL("http://127.0.0.1:3000/workspace");
+  await expect(page).toHaveURL(`http://127.0.0.1:${process.env.E2E_STAFF_PORT ?? 3000}/workspace`);
   await expect(page.getByText("منظمة تجريبية أ")).toBeVisible();
   await expect(page.getByText("منظمة تجريبية ب")).toHaveCount(0);
   await page.getByLabel("اللغة").selectOption("en");
@@ -118,7 +118,7 @@ test("disabling a logged-in staff member denies the next request", async ({
   page,
 }) => {
   await login(page);
-  await expect(page).toHaveURL("http://127.0.0.1:3000/workspace");
+  await expect(page).toHaveURL(`http://127.0.0.1:${process.env.E2E_STAFF_PORT ?? 3000}/workspace`);
   const { migration } = JSON.parse(
     await readFile("work/e2e-fixture.json", "utf8"),
   );

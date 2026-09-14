@@ -123,10 +123,12 @@ export function Campaigns({
   path,
   profile,
   organization,
+  defaults,
 }: {
   path: string[];
   profile: Profile;
   organization: DirectoryRecord | null;
+  defaults?: { defaultTimezone: string; defaultCampaignThreshold: number };
 }) {
   const hydrated = useSyncExternalStore(
     subscribe,
@@ -487,7 +489,7 @@ export function Campaigns({
                 <input
                   id="timezone"
                   name="timezone"
-                  defaultValue="Asia/Riyadh"
+                  defaultValue={defaults?.defaultTimezone ?? "Asia/Riyadh"}
                   required
                 />
                 <label htmlFor="threshold">{m.threshold}</label>
@@ -495,7 +497,7 @@ export function Campaigns({
                   id="threshold"
                   name="threshold"
                   inputMode="numeric"
-                  defaultValue={5}
+                  defaultValue={defaults?.defaultCampaignThreshold ?? 5}
                   required
                 />
                 <button disabled={busy}>{m.create}</button>

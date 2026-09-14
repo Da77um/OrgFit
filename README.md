@@ -164,3 +164,12 @@ npx tsx tests/release/rehearsal.ts     # after npm run build: production builds 
 ```
 
 The drill and the rehearsal use the embedded Windows PostgreSQL package and Git's OpenSSL (`PG_BIN`, `OPENSSL` override the paths). The rehearsal is a local rehearsal with an S3 test double, **not staging**; no authorized non-production environment exists. **[Checkpoint G](docs/orgfit/checkpoint-g.md) ran:** technical GO as an implementation gate, production NO-GO; the candidate is now `orgfit-0.3.0-rc.2` (`e801b9a`).
+
+## Post-Audit Repair Pass 1 — administration screens and pagination
+
+Apply migration **019**. Super Admins now have `/staff` and `/staff/:id` (search, access editing, disable/re-enable, end sessions, identity-provider registration, staff invitations), `/audit` (filters, keyset pages, bounded CSV export of the selection) and `/settings` (versioned defaults for new campaigns and invitations, fixed policies, authentication mode, operational status, retention exactly as recorded). Every signed-in person has `/profile` (account, language, own sessions). Staff, invitation and audit lists are cursor-paginated; the 100-row limits are gone. Optional `OIDC_ACCOUNT_URL` adds a link to the identity provider's account page. See D-128 … D-135 and the pass entry in [phase status](docs/orgfit/phase-status.md).
+
+```bash
+npm run test:administration
+npx playwright test tests/browser/administration.spec.ts   # E2E_STAFF_PORT / E2E_RESPONDENT_PORT if 3000/3001 are taken
+```

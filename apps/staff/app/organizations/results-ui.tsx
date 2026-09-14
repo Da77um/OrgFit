@@ -751,10 +751,21 @@ function Recommendations({
     let live = true;
     void (async () => {
       try {
-        const r = await fetch("/api/v1/staff");
-        if (!r.ok) return;
-        const json = await jsonOf(r);
-        if (live) setStaff(json.data.items ?? []);
+        // The staff list is keyset-paginated; active accounts are followed
+        // page by page (bounded) so an owner past the first page is offered.
+        const all: StaffOption[] = [];
+        let cursor: string | null = null;
+        for (let page = 0; page < 20; page++) {
+          const r: Response = await fetch(
+            `/api/v1/staff?status=ACTIVE&limit=100${cursor ? `&cursor=${cursor}` : ""}`,
+          );
+          if (!r.ok) return;
+          const json = await jsonOf(r);
+          all.push(...(json.data.items ?? []));
+          cursor = json.data.nextCursor ?? null;
+          if (!cursor) break;
+        }
+        if (live) setStaff(all);
       } catch {
         /* The owner select degrades to "unassigned" only. */
       }

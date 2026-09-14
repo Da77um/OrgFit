@@ -82,3 +82,33 @@ export function readConfig(
     throw new ConfigurationError();
   return c;
 }
+
+// The identity provider's own account page, where a staff member changes their
+// password and second factor. OrgFit holds neither for provider accounts, so
+// the profile screen links out to this page, and only when an operator has
+// configured one. Optional: an absent or unusable value hides the link rather
+// than stopping the application, and it is never a place to put a secret — a
+// value carrying credentials, a query or a fragment is treated as absent.
+export function identityAccountUrl(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const value = env.OIDC_ACCOUNT_URL;
+  if (!value) return null;
+  let u: URL;
+  try {
+    u = new URL(value);
+  } catch {
+    return null;
+  }
+  const local = ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname);
+  if (
+    u.username ||
+    u.password ||
+    u.search ||
+    u.hash ||
+    (u.protocol !== "https:" &&
+      !(env.NODE_ENV !== "production" && local && u.protocol === "http:"))
+  )
+    return null;
+  return u.href;
+}

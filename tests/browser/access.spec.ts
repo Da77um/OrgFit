@@ -13,7 +13,7 @@ import { bootstrapDevAdmin } from "../../scripts/bootstrap-dev-admin";
 // administrator's credentials are never used, typed or read by any test.
 // ---------------------------------------------------------------------------
 
-const STAFF = "http://127.0.0.1:3000";
+const STAFF = `http://127.0.0.1:${process.env.E2E_STAFF_PORT ?? 3000}`;
 const EMAIL = `e2e-admin-${randomUUID().slice(0, 8)}@example.invalid`;
 const PASSWORD = `E2e${randomUUID().slice(0, 10)}7`;
 

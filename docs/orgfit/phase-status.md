@@ -14,6 +14,8 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 
 **2026-09-13:** a branded overview page at `/`, staff sign-in, invitation-only activation and a development-only password path with a seeded local Super Admin were added outside the phase sequence — see the entry near the end of this file and [landing-and-access.md](landing-and-access.md). The workspace home is now `/workspace`.
 
+**2026-09-14, after Checkpoint G:** Post-Audit Repair Pass 1 added the staff, audit, settings and profile screens and real pagination (migration 019) — see its entry near the end of this file. The production NO-GO is unchanged.
+
 Next step: **none in the phase sequence.** What remains is owner input (P-001 … P-008, P-010, itemized in checkpoint-g.md §6) and, only with explicit authorization, staging and deployment. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
 ## Sequence and status
@@ -43,6 +45,7 @@ Next step: **none in the phase sequence.** What remains is owner input (P-001 �
 | 14 | Security/retention/backups/resilience | COMPLETE — security-review.md, privacy-verification.md, retention-backup-runbook.md, incident-runbook.md, performance-results.md |
 | 15 | Release candidate/production readiness | COMPLETE — release candidate `orgfit-0.3.0-rc.1` (`ef914d8`); NO-GO for production; final-handoff.md, release-checklist.md, deployment-runbook.md, staff-operations-guide.md |
 | G | Final go/no-go checkpoint | RUN — technical GO (implementation gate), production NO-GO; candidate `orgfit-0.3.0-rc.2` (`e801b9a`); checkpoint-g.md |
+| PR1 | Post-Audit Repair Pass 1: administration screens and pagination | COMPLETE (development) — entry below; D-128 … D-135 |
 
 ## Phase 00 handoff — 2026-09-08
 
@@ -1525,6 +1528,73 @@ RC-003 (no provider packaging, P-002), RC-004 (operator/processor scripts rely o
 - **Commits**: `e801b9a` (CG-001 fix and version), and the documentation commit that adds this entry. No remote, nothing pushed, deployed or sent.
 - **Next**: no further phase or checkpoint. Stop.
 
+## Post-Audit Repair Pass 1 — administration screens and pagination — 2026-09-14
+
+- Step and status: **COMPLETE for audit findings 1–3** of `OrgFit-Audit-2026-09-14.md` (parent outputs directory), as development work. Not production readiness; the Checkpoint G production NO-GO is unchanged. Decisions D-128 … D-135.
+- Starting point: clean tree at `9e52403`; no changes had been made since the audit.
+
+### Findings verified before repair
+
+| Audit item | Verified how | Result |
+|---|---|---|
+| 1 — no staff-administration UI (P1) | Route inventory: no `staff` page under `apps/staff/app`; backend routes present in `route.ts` | Confirmed |
+| 2 — no `/audit`, `/settings`, `/profile` (P2) | Route inventory; no global settings table or routine in 001–018; profile limited to locale + logout on `/workspace` | Confirmed |
+| 3 — 100-row truncation (P2) | `001_foundation.sql` `list_staff()`/`audit()` `LIMIT 100`; `016_local_access.sql` `list_invitations()` `LIMIT 100`; routes return `nextCursor: null`; no later replacement in 002–018 | Confirmed |
+| Found in this pass (PR1-004) | `POST /api/v1/staff/invitations` generated a new secret on every request; an idempotent retry returned the original row's id with a link built from the new secret, matching no row | Confirmed by reading the route against `access.create_invitation`; repaired (D-132), AD-7 |
+| Found in this pass (PR1-005) | `access.revoke_sessions` (001) existed with no HTTP route | Confirmed; now `POST /api/v1/staff/:id/revoke-sessions` |
+| Found in this pass (PR1-006) | `POST /api/v1/staff` accepted any URL issuer, including ones that can never sign in | Confirmed; now bound to `OIDC_ISSUER` (D-133) |
+
+Audit findings 4–10 were not in this pass's scope and are unchanged (see remaining gaps).
+
+### Implemented
+
+- **Staff** `/staff`: search by name/email, role and status filters, keyset "Show more"; identity-provider account registration (issuer fixed to the configured provider); staff invitations — issue (link shown once, copy, replay explained), filter by state, withdraw with in-place confirmation; the invitation form is shown only while the development password switch is on and says it is development-only. **`/staff/:id`**: identity facts, access editor (role, eight capabilities, organization checklist with filter), last-Super-Admin notice and locked role, self-edit warning, stale-revision reload, disable/re-enable, end all sessions, link to that account's audit history.
+- **Audit** `/audit`: action, organization and UTC date-range filters; actor filter from any row and target filter from the staff record, both removable; filters kept in the address; keyset pages of 50; readable action labels in both languages with the code; target shown as a staff link, an identifier, or "withheld" for respondent invitations; CSV export of the current selection (≤5000 rows or refused; audited).
+- **Settings** `/settings`: versioned defaults (timezone, campaign threshold ≥5, staff invitation validity) with `If-Match`, used by the campaign and invitation forms; fixed policies (Arabic default, five-contributor floor); authentication mode (provider origin, development password switch, a danger alert if it is on in production); operational status tiles from `ops.alert_inputs()`; retention table exactly as recorded, unapproved classes labelled as proposals; version history. No secret is read or displayed.
+- **Profile** `/profile`: name, email, role, capabilities, assigned organizations; the existing language and sign-out controls; password/MFA section (provider link only when `OIDC_ACCOUNT_URL` is configured; plain statement for development password accounts); own active sessions with end-one and end-all-others.
+- **Pagination**: staff, invitations and audit are keyset pages with bounded size, allowlisted filters, validated opaque cursors and real `nextCursor` values (D-128).
+- **Navigation**: workspace home account panel links to My account and, for Super Admins only, Staff/Audit/Settings; a shared administration rail (`AdminFrame`); the organization rail links to My account.
+- **Authorization at three layers**: server page renders the permission-denied state without loading data for a non-administrator; `src/administration.ts` checks the role before touching the database; every new routine checks `access.is_admin()` or derives the account from `access.actor()`.
+
+### Changed files and migrations
+
+New: `db/migrations/019_administration.sql`; `src/administration.ts`, `src/pagination.ts`, `src/admin-i18n.ts`; `apps/staff/app/account-page.tsx`, `admin-client.ts`, `admin-controls.tsx`, `staff/[[...path]]/page.tsx`, `staff/staff-ui.tsx`, `audit/page.tsx`, `audit/audit-ui.tsx`, `settings/page.tsx`, `settings/settings-ui.tsx`, `profile/page.tsx`, `profile/profile-ui.tsx`; `tests/administration.test.ts`, `tests/browser/administration.spec.ts`.
+
+Modified: `apps/staff/app/api/v1/[...path]/route.ts` (staff/audit/invitation blocks moved to `src/administration.ts`), `shell.tsx`, `workspace/page.tsx`, `organizations/[[...path]]/page.tsx` and `campaigns-ui.tsx` (settings defaults), `results-ui.tsx` (owner picker follows cursors), `src/config.ts` (`identityAccountUrl`), `src/theme.css` (`.checklist`, `.confirm-inline`, `.once-value`, `.filter-chips`, `.facts`, `.admin-table`, all from existing tokens), `tests/localization.test.ts` (administration catalog parity and a label for every audit action), `playwright.config.ts`, `tests/serve.ts`, `tests/browser/access.spec.ts`, `tests/browser/foundation.spec.ts` (overridable ports only, D-134), `package.json` (`test:administration`), `.github/workflows/ci.yml`, `.env.example` and `deploy/processes.json` (optional `OIDC_ACCOUNT_URL`), `README.md`, `docs/orgfit/decisions.md`, `api-contracts.md`, `foundation.md`, `landing-and-access.md`, this file.
+
+Migration 019 adds four indexes, restates the audit action/field CHECK lists (+`SETTINGS_CHANGED`, `AUDIT_EXPORTED`; +`settings`, `session`, `audit`), creates append-only `ops.system_setting` (row 1 = the values 008/016 already used), and 16 routines. **Migrations 001–018 and anonymous 001–002 are untouched**; the superseded 100-row routines remain in place, unused.
+
+### Tests actually run
+
+Local PostgreSQL 18.4 loopback cluster (127.0.0.1:55432, started with `scripts/local-postgres.ps1`; every suite created fresh synthetic databases; nothing reset or dropped), Node 24.13.1, Chromium, Windows 11.
+
+| Check | Result |
+|---|---|
+| `tests/administration.test.ts` (AD-1 … AD-8) | **8 passed** — >100 staff reachable once and in order; 240 same-microsecond audit events + 60 more paginated identically to database order; filters; malformed cursor/limit/unknown key → 422; ordinary staff refused at route and at each routine, internal selector not executable by the runtime role; export bounded, audited, formula-safe, respondent invitation id absent, >5000 refused; own-session scoping (another account's session → NOT_FOUND and still valid; current → STATE_CONFLICT); settings floor at route and routine, invalid zone, concurrent saves → one REVISION_CONFLICT, idempotent replay, immutable history (operator UPDATE/DELETE/TRUNCATE refused), retention unapproved, no secret in status; LAST_ADMIN, stale revision, missing If-Match, two administrators disabling each other concurrently (≥1 active admin remains), revoke-sessions, issuer binding; >100 invitations paginated, state filters, **replay returns `url: null`**; cursor and account-URL validation |
+| All 24 existing node suites (`test` … `test:release`, incl. `test:integration`, `test:access`, `test:checkpoint-c/d/e`, `test:visits`, `test:operations`) with migration 019 applied | **279 passed, 0 failed** (logs `work/pass1-node-*.log`) — with the new suite, **287 passed** |
+| `npx playwright test tests/browser/administration.spec.ts tests/browser/access.spec.ts tests/browser/foundation.spec.ts` (ports 3100/3101) | **22 passed** (6 new + 4 access + 12 foundation). New spec: Super Admin invites → invitee activates → admin searches, edits access (invitee session ends), ends sessions via keyboard confirmation, disables (sign-in refused) and re-enables, stale second tab refused with reload, withdraws an invitation, registers a provider account — **UI only**; ordinary staff gets the denied page on `/staff`, `/staff/:id`, `/audit`, `/settings` and 403 on eight admin API calls; profile session scoping; 130 same-timestamp audit events reached through "Show more" plus CSV download row count; settings version, stale save, floor 4 → 422, retention labels; English LTR at 375px with no horizontal overflow on all four screens, skip link and keyboard path; axe (WCAG A/AA tags) on staff, profile, audit, settings (Arabic) and all four screens (English 375px) with **no violations** after repairs |
+| `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:boundaries`, `npm run test:production` | clean / pass; build lists `/audit`, `/profile`, `/settings`, `/staff/[[...path]]` |
+
+Defects found by this verification and repaired before completion: axe contrast on `.faint` identifiers (now `.muted`); Arabic dates rendered inside LTR spans reordered unreadably (D-135); a long sentence inside a non-wrapping badge overflowed `/settings` at 375px; administration tables broke codes mid-token; my own test expectations (a 29/30 window count, `Response.text()` stripping the CSV BOM, sign-in restoring the saved Arabic preference).
+
+**Not run in this pass:** the other 12 browser specs (they hard-code ports 3000/3001, which were held by two processes outside this repository that were not stopped; none of their screens changed apart from the campaign form's default values and the organization rail's extra link); `npm audit`; release manifest/rehearsal/rollback drill; real identity provider or `OIDC_ACCOUNT_URL` target; real devices, WebKit/Firefox, screen reader; remote CI.
+
+### Remaining gaps
+
+- Audit findings **4** (no staff request timeout), **5** (locale switch discards unsaved input), **6** (no scheduler), **7** (no malware engine), **8** (release revocation, SEC-M5), **9** (production prerequisites P-001 … P-008, P-010) and **10** (tooling, CG-003) are untouched.
+- Observed, not repaired: a click on the app-bar language switch before hydration is lost (existing `LocaleSwitch`); `access.save_staff` (001) checks `is_admin()` before taking its advisory lock, so a statement already running when its actor is disabled can still complete — the last-admin invariant held under the concurrent test, but the check order is unchanged because 001 is released.
+- The access editor lists at most 1000 organizations and says so; the recommendation owner picker follows at most 20 pages (2000 active staff).
+- No local password-change or MFA screen exists (by design, D-131); development invitations remain the only local account path, gated by the development switch.
+- The audit actor filter is set from a row, not by searching for a person; CSV export is limited to 5000 rows per selection.
+- The candidate identifier `orgfit-0.3.0-rc.2` no longer describes this tree; a new manifest is needed before any release decision.
+
+### Commit
+
+Not committed in this session; the working tree holds the changes above. No remote, nothing pushed, deployed or sent; no invitation was delivered anywhere (all links were synthetic and used only inside the test harness).
+
+### Exact next action
+
+**Post-Audit Repair Pass 2** — audit findings 4 and 5 (staff request deadlines with idempotency-safe retry, and an unsaved-change guard on the language switch, including the pre-hydration click), then finding 8 (release revocation). Before it, run the full Playwright suite on free ports 3000/3001.
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

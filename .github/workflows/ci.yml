@@ -53,6 +53,7 @@ jobs:
       - run: npm run test:access
       - run: npm run test:operations
       - run: npm run test:release
+      - run: npm run test:administration
       - run: npm run build
       - run: npm run check:boundaries
       - run: npm run test:production

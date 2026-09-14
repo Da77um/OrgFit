@@ -6,12 +6,17 @@ import { setupDatabase } from "./database";
 import { testProvider } from "./oidc-provider";
 import { generateCustodianKeypair } from "../src/key-custody";
 const fixture = await setupDatabase();
+// Overridable so the harness can run beside another local server (defaults unchanged).
+const STAFF_PORT = Number(process.env.E2E_STAFF_PORT ?? 3000);
+const RESPONDENT_PORT = Number(process.env.E2E_RESPONDENT_PORT ?? 3001);
+const STAFF_ORIGIN = `http://127.0.0.1:${STAFF_PORT}`;
+const RESPONDENT_ORIGIN = `http://localhost:${RESPONDENT_PORT}`;
 // The key custodian: the staff app receives only the PUBLIC half, so a launch
 // can seal a campaign private key it can never open again. The secret half goes
 // to the processor alone and is never given to either web process.
 const custodian = await generateCustodianKeypair();
 const custodyDirectory = resolve("work/key-custody");
-const provider = await testProvider();
+const provider = await testProvider(undefined, STAFF_ORIGIN);
 const env: NodeJS.ProcessEnv = {
   ...process.env,
   IMPORT_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
@@ -37,8 +42,8 @@ const env: NodeJS.ProcessEnv = {
   CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY: custodian.publicKey,
   NODE_ENV: "development",
   NEXT_TELEMETRY_DISABLED: "1",
-  STAFF_ORIGIN: "http://127.0.0.1:3000",
-  RESPONDENT_ORIGIN: "http://localhost:3001",
+  STAFF_ORIGIN,
+  RESPONDENT_ORIGIN,
   DATABASE_URL: fixture.url("orgfit_staff"),
   AUTH_DATABASE_URL: fixture.url("orgfit_auth"),
   OIDC_ISSUER: "http://127.0.0.1:4010",
@@ -78,7 +83,7 @@ const children = ["staff", "respondent"].map((app, i) =>
       "--hostname",
       "127.0.0.1",
       "--port",
-      String(3000 + i),
+      String(i === 0 ? STAFF_PORT : RESPONDENT_PORT),
     ],
     {
       cwd: resolve("apps", app),
@@ -89,7 +94,7 @@ const children = ["staff", "respondent"].map((app, i) =>
               GATEWAY_DATABASE_URL: fixture.url("orgfit_gateway"),
               INVITATION_DIGEST_KEY: env.INVITATION_DIGEST_KEY,
               INVITATION_DIGEST_KEY_VERSION: env.INVITATION_DIGEST_KEY_VERSION,
-              RESPONDENT_ORIGIN: "http://localhost:3001",
+              RESPONDENT_ORIGIN,
               NODE_ENV: "development",
               NEXT_TELEMETRY_DISABLED: "1",
               PATH: process.env.PATH,
