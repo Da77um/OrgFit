@@ -52,6 +52,9 @@ export const targetInput = z.discriminatedUnion("mode", [
     })
     .strict(),
   z.object({ mode: z.literal("DEPARTMENT"), departmentId: uuid }).strict(),
+  // Everyone the questionnaire targets (021): the whole organization, or only
+  // its targeted departments. Resolved at launch.
+  z.object({ mode: z.literal("ALL") }).strict(),
 ]);
 export const campaignInput = z
   .object({

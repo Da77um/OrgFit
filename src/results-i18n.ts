@@ -116,6 +116,16 @@ const ar = {
   FAILED: "تعذّر الإنشاء",
   EXPIRED: "انتهت الصلاحية",
   REVOKED: "مسحوب",
+  // Post-Audit Repair Pass 2: an accepted request is not a drawn report, and a
+  // job that waits far beyond the worker's one-minute cadence says so.
+  reportAccepted: "قُبل الطلب وأُدرج في قائمة الانتظار. لم يُنشأ التقرير بعد؛ تابع حالته في القائمة أدناه.",
+  jobQueuedNote: "بانتظار عملية إنشاء التقارير. لم يُرسم شيء بعد.",
+  jobRunningNote: "عملية إنشاء التقارير ترسم هذا الملف الآن.",
+  jobOverdue: "مضى على الطلب {minutes} دقيقة دون أن يكتمل. قد لا تكون عملية إنشاء التقارير تعمل؛ الطلب محفوظ وسيُنشأ عند تشغيلها. أبلغ فريق التشغيل إن استمر ذلك.",
+  jobFailedNote: "تعذّر إنشاء هذا الملف (الرمز: {code}). لم يُنشر أو يتغير شيء. يمكنك طلبه مرة أخرى.",
+  requestAgain: "طلبه مرة أخرى",
+  refreshStatus: "تحديث الحالة",
+  statusCheckedAt: "آخر تحقق من الحالة: {time} UTC",
   descriptive:
     "الفروق وصفية فقط ولا تعني دلالة إحصائية أو سببية أو تشخيصًا أو مقارنة معيارية.",
 } as const;
@@ -233,6 +243,14 @@ const en: Record<ResultsKey, string> = {
   FAILED: "Could not be drawn",
   EXPIRED: "Expired",
   REVOKED: "Withdrawn",
+  reportAccepted: "Request accepted and queued. The report has not been drawn yet; follow its status in the list below.",
+  jobQueuedNote: "Waiting for the report process. Nothing has been drawn yet.",
+  jobRunningNote: "The report process is drawing this file now.",
+  jobOverdue: "Requested {minutes} minutes ago and not finished. The report process may not be running; the request is kept and will be drawn when it runs. Tell the operations team if this continues.",
+  jobFailedNote: "This file could not be drawn (code: {code}). Nothing was published or changed. You can request it again.",
+  requestAgain: "Request again",
+  refreshStatus: "Refresh status",
+  statusCheckedAt: "Status last checked: {time} UTC",
   descriptive:
     "Differences are descriptive only. No statistical significance, causation, diagnosis or benchmark is implied.",
 };

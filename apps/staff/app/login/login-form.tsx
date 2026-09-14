@@ -22,6 +22,7 @@
 import { useId, useState, useSyncExternalStore } from "react";
 import { messages, type Locale } from "../../../../src/i18n";
 import { Alert } from "../../../../src/ui";
+import { RequestFailure, staffRequest } from "../staff-request";
 
 const subscribe = () => () => {};
 
@@ -57,29 +58,25 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
     setPending(true);
     setFormError("");
     try {
-      const response = await fetch("/api/v1/auth/password", {
+      // Bounded (Post-Audit Repair Pass 2). Signing in again after a lost
+      // answer is harmless: at worst an unused session expires on its own.
+      const { data } = await staffRequest<{ redirect: string }>(locale, "/api/v1/auth/password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: { email: email.trim(), password },
       });
-      if (response.ok) {
-        const body = (await response.json()) as { data: { redirect: string } };
-        // A full document navigation, not a client transition: the session
-        // cookie has just changed and every server component must be re-run.
-        location.assign(body.data.redirect);
-        return;
-      }
-      const code = ((await response.json().catch(() => ({}))) as { code?: string }).code;
-      setFormError(
-        response.status === 429
-          ? m.rateLimited
-          : response.status >= 500 || code === "TEMPORARILY_UNAVAILABLE"
-            ? m.unavailable
-            : m.credentialsInvalid,
-      );
-      setPassword("");
-    } catch {
-      setFormError(m.unavailable);
+      // A full document navigation, not a client transition: the session
+      // cookie has just changed and every server component must be re-run.
+      location.assign(data.redirect);
+      return;
+    } catch (e) {
+      const f = e instanceof RequestFailure ? e : null;
+      // A refusal of the credential keeps its one generic message; only
+      // throttling and "the service did not answer" are told apart from it.
+      if (f && f.kind === "REJECTED" && f.status === 429) setFormError(m.rateLimited);
+      else if (!f || f.kind === "REJECTED" || f.kind === "SESSION") {
+        setFormError(f ? m.credentialsInvalid : m.unavailable);
+        setPassword("");
+      } else setFormError(f.kind === "UNAVAILABLE" ? m.unavailable : f.message);
     } finally {
       setPending(false);
     }

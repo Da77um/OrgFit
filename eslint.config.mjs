@@ -5,6 +5,7 @@ export default [
   {
     ignores: [
       "**/.next/**",
+      "**/.next-e2e/**",
       "**/next-env.d.ts",
       "node_modules/**",
       "work/**",

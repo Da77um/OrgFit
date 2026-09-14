@@ -173,3 +173,12 @@ Apply migration **019**. Super Admins now have `/staff` and `/staff/:id` (search
 npm run test:administration
 npx playwright test tests/browser/administration.spec.ts   # E2E_STAFF_PORT / E2E_RESPONDENT_PORT if 3000/3001 are taken
 ```
+
+## Post-Audit Repair Pass 2 — staff request reliability and unsaved-form protection
+
+No migration and no server change. Every staff-screen request now has a deadline that covers the whole response, typed failures, and a stable idempotency key per logical change, so "send the same request again" after a lost answer replays the server's receipt instead of creating a second record; one-time links are reported as unrecoverable rather than reissued. Directory, visit, administration, results and questionnaire forms ask before a language change, sign-out or page link would discard unsaved edits (save / discard / keep editing). Report and attachment rows say what they are waiting for and when a background process appears not to be running. See D-136 … D-140 and the pass entry in [phase status](docs/orgfit/phase-status.md).
+
+```bash
+npm run test:requests
+npx playwright test tests/browser/reliability.spec.ts
+```

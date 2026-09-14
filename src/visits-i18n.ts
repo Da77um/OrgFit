@@ -112,6 +112,16 @@ const ar = {
   to: "إلى",
   apply: "تطبيق",
   back: "رجوع إلى القائمة",
+  // Post-Audit Repair Pass 2: what an attachment is waiting for, and what to
+  // do when the wait is far longer than the scanner's one-minute cadence.
+  scanWaitingNote: "بانتظار فحص الملف، ولا يمكن تنزيله قبل اجتياز الفحص.",
+  scanOverdue: "رُفع الملف قبل {minutes} دقيقة ولم يُفحص بعد. قد لا تكون عملية الفحص تعمل؛ يبقى الملف محجوبًا حتى تعمل. أبلغ فريق التشغيل إن استمر ذلك.",
+  uploadIncomplete: "لم يكتمل رفع هذا الملف، فلا يوجد محتوى خلف هذا السجل. احذفه وارفع الملف مرة أخرى.",
+  scanFailedNote: "تعذّر إكمال الفحص، فيبقى الملف محجوبًا. احذفه وارفعه مرة أخرى، أو أبلغ فريق التشغيل.",
+  refreshStatus: "تحديث الحالة",
+  statusCheckedAt: "آخر تحقق من الحالة: {time} UTC",
+  uploadRetry: "رفع الملف نفسه مرة أخرى",
+  uploadAccepted: "استُلم الملف وهو في الحجر بانتظار الفحص. لم يُفحص بعد.",
 } as const;
 export type VisitMessageKey = keyof typeof ar;
 const en: Record<VisitMessageKey, string> = {
@@ -220,5 +230,13 @@ const en: Record<VisitMessageKey, string> = {
   to: "To",
   apply: "Apply",
   back: "Back to list",
+  scanWaitingNote: "Waiting for the file check; it cannot be downloaded until the check passes.",
+  scanOverdue: "Uploaded {minutes} minutes ago and not yet checked. The checking process may not be running; the file stays blocked until it runs. Tell the operations team if this continues.",
+  uploadIncomplete: "This upload did not finish, so there is no content behind this row. Delete it and upload the file again.",
+  scanFailedNote: "The check could not be completed, so the file stays blocked. Delete it and upload it again, or tell the operations team.",
+  refreshStatus: "Refresh status",
+  statusCheckedAt: "Status last checked: {time} UTC",
+  uploadRetry: "Upload the same file again",
+  uploadAccepted: "File received and quarantined, waiting for its check. It has not been checked yet.",
 };
 export const visitMessages = (locale: Locale) => (locale === "en" ? en : ar);

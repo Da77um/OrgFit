@@ -6,6 +6,7 @@ import { messages, type Locale } from "../../../../src/i18n";
 import { Alert, Badge, ErrorState, LoadingState, Num, PageHeader } from "../../../../src/ui";
 import { errorText, useApi, useHydrated, utc } from "../admin-client";
 import { ConfirmAction } from "../admin-controls";
+import { ChangeProblem, silent, type ChangeFailure } from "../request-ui";
 import { AccountControls } from "../ui";
 
 type Session = {
@@ -40,27 +41,31 @@ export function ProfileScreen({
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
 
   const load = useCallback(async () => {
     try {
       setSessions((await api<{ items: Session[] }>("profile/sessions")).items);
+      setError("");
     } catch (e) {
-      setError(errorText(e, m.unavailable));
+      if (!silent(e)) setError(errorText(e, m.unavailable));
     }
   }, [api, m.unavailable]);
   useEffect(() => {
     void load();
   }, [load]);
 
-  const act = async (work: () => Promise<string>) => {
+  // Ending a session is safe to send again: a retry after a lost answer re-sends
+  // the same attempt, and "Check the current state" reloads the session list.
+  const act = async (scope: string, work: (again: boolean) => Promise<string>, again = false) => {
     setBusy(true);
-    setError("");
+    setProblem(null);
     setNote("");
     try {
-      setNote(await work());
+      setNote(await work(again));
       await load();
     } catch (e) {
-      setError(errorText(e, m.unavailable));
+      if (!silent(e)) setProblem({ failure: e, scope, retry: () => void act(scope, work, true) });
     } finally {
       setBusy(false);
     }
@@ -146,7 +151,15 @@ export function ProfileScreen({
       <section className="stack" aria-labelledby="sessions-heading">
         <h2 id="sessions-heading">{a.mySessions}</h2>
         <p className="page-sub">{a.mySessionsLead}</p>
-        {error && <ErrorState title={m.errorTitle} body={error} />}
+        {error && <ErrorState title={m.errorTitle} body={error} action={<button type="button" onClick={() => void load()}>{m.retry}</button>} />}
+        <ChangeProblem
+          locale={locale}
+          problem={problem}
+          ledger={api.ledger}
+          busy={busy}
+          onCheck={() => void load()}
+          onDismiss={() => setProblem(null)}
+        />
         {note && <Alert tone="success">{note}</Alert>}
         {!sessions && !error && <LoadingState label={a.loading} />}
         {sessions && (
@@ -190,8 +203,11 @@ export function ProfileScreen({
                           className="button-small button-secondary"
                           disabled={busy}
                           onClick={() =>
-                            void act(async () => {
-                              await api(`profile/sessions/${s.id}/revoke`, { method: "POST" });
+                            void act(`session-revoke:${s.id}`, async (again) => {
+                              const scope = `session-revoke:${s.id}`;
+                              await (again
+                                ? api.retry(scope)
+                                : api(`profile/sessions/${s.id}/revoke`, { method: "POST", scope }));
                               return a.sessionEnded;
                             })
                           }
@@ -217,8 +233,11 @@ export function ProfileScreen({
               confirmLabel={a.confirm}
               disabled={busy}
               onConfirm={() =>
-                act(async () => {
-                  const r = await api<{ revoked: number }>("profile/sessions/revoke-others", { method: "POST" });
+                act("sessions-revoke-others", async (again) => {
+                  const scope = "sessions-revoke-others";
+                  const r = again
+                    ? await api.retry<{ revoked: number }>(scope)
+                    : await api<{ revoked: number }>("profile/sessions/revoke-others", { method: "POST", scope });
                   return fill(a.othersEnded, { n: r.revoked });
                 })
               }

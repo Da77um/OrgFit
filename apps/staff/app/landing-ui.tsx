@@ -15,6 +15,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 import { Mark } from "../../../src/ui";
 import { messages, type Locale } from "../../../src/i18n";
 import { landing } from "../../../src/landing-i18n";
+import { staffRequest } from "./staff-request";
 
 const subscribe = () => () => {};
 const useHydrated = () =>
@@ -32,12 +33,7 @@ export function LanguageSwitch({ locale }: { locale: Locale }) {
     if (next === locale || pending) return;
     setPending(true);
     try {
-      const r = await fetch("/api/v1/locale", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale: next }),
-      });
-      if (!r.ok) throw new Error("unavailable");
+      await staffRequest(locale, "/api/v1/locale", { method: "POST", body: { locale: next } });
       location.reload();
     } catch {
       setPending(false);

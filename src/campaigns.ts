@@ -36,7 +36,7 @@ export type Campaign = {
   starts_at: Date;
   ends_at: Date | null;
   timezone: string;
-  target_mode: "SINGLE" | "SELECTED" | "DEPARTMENT";
+  target_mode: "SINGLE" | "SELECTED" | "DEPARTMENT" | "ALL";
   requested_target: Record<string, unknown>;
   locales: string[];
   roster_frozen_at: Date | null;

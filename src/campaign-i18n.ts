@@ -31,6 +31,15 @@ const ar = {
   SINGLE: "شخص واحد",
   SELECTED: "أشخاص محددون",
   DEPARTMENT: "قسم كامل",
+  ALL: "كل من يستهدفهم الاستبيان",
+  allHelp:
+    "إذا كان الاستبيان يستهدف المنظمة بالكامل فستُرسل الدعوة لكل المشاركين النشطين في المنظمة، وإذا كان يستهدف أقساماً محددة فلمشاركي تلك الأقسام فقط. تُحدَّد القائمة عند الإطلاق.",
+  questionnaireTarget: "استهداف الاستبيان",
+  entireOrganization: "المنظمة بالكامل",
+  OUTSIDE_QUESTIONNAIRE_TARGET:
+    "استهداف الحملة يتجاوز استهداف الاستبيان. اختر أشخاصاً أو قسماً ضمن أقسام الاستبيان المستهدفة، أو استخدم «كل من يستهدفهم الاستبيان».",
+  NO_ELIGIBLE_PARTICIPANTS:
+    "لا يوجد مشاركون نشطون ضمن استهداف الاستبيان. أضف مشاركين إلى الدليل أو عدّل استهداف الاستبيان.",
   participantId: "معرّف المشارك",
   participantIds: "معرّفات المشاركين (سطر لكل معرّف)",
   departmentId: "معرّف القسم",
@@ -108,6 +117,13 @@ const ar = {
   viewResults: "عرض النتائج المنشورة",
   belowThresholdFinal:
     "شارك في هذه الحملة عدد أقل من الحد الأدنى للنشر، لذلك لن تُنشر لها أي نتائج. هذه النتيجة نهائية.",
+  // Post-Audit Repair Pass 2: what a retry after a lost answer can and cannot
+  // give back. A link exists only in the answer that revealed it.
+  linkLostAnswer:
+    "أنجزت المحاولة السابقة هذا الإجراء، لكن الرابط كان في الرد الذي انقطع ولا يمكن إظهاره مرة أخرى. لإعطاء هذا الشخص رابطًا، دوّره؛ عندها يتوقف الرابط السابق عن العمل.",
+  revokeLostAnswer: "أنجزت المحاولة السابقة الإلغاء. حُدّثت القائمة لتعرض الحالة الحالية.",
+  exportLostAnswer:
+    "أصدرت المحاولة السابقة الروابط وأنشأت ملف التصدير، لكن معرّف الملف كان في الرد الذي انقطع ولا يمكن استرجاعه من هنا. أجرِ تصديرًا جديدًا مع تأكيد التدوير؛ عندها تتوقف روابط الملف المفقود عن العمل.",
 } as const;
 export type CampaignMessageKey = keyof typeof ar;
 const en: Record<CampaignMessageKey, string> = {
@@ -142,6 +158,15 @@ const en: Record<CampaignMessageKey, string> = {
   SINGLE: "One person",
   SELECTED: "Selected people",
   DEPARTMENT: "Whole department",
+  ALL: "Everyone the questionnaire targets",
+  allHelp:
+    "If the questionnaire targets the entire organization, every active participant in the organization is invited; if it targets specific departments, only participants in those departments. The list is fixed at launch.",
+  questionnaireTarget: "Questionnaire target",
+  entireOrganization: "Entire organization",
+  OUTSIDE_QUESTIONNAIRE_TARGET:
+    "The campaign reaches beyond the questionnaire's target. Choose people or a department within the questionnaire's targeted departments, or use “Everyone the questionnaire targets”.",
+  NO_ELIGIBLE_PARTICIPANTS:
+    "No active participants fall within the questionnaire's target. Add participants to the directory or change the questionnaire's target.",
   participantId: "Participant identifier",
   participantIds: "Participant identifiers (one per line)",
   departmentId: "Department identifier",
@@ -221,5 +246,10 @@ const en: Record<CampaignMessageKey, string> = {
   viewResults: "View published results",
   belowThresholdFinal:
     "Fewer people than the release threshold took part in this campaign, so no results will ever be published for it. This outcome is final.",
+  linkLostAnswer:
+    "The earlier attempt completed this action, but the link was in the answer that was lost and cannot be shown again. To give this person a link, rotate it; the earlier link then stops working.",
+  revokeLostAnswer: "The earlier attempt completed the revocation. The list has been refreshed to show the current state.",
+  exportLostAnswer:
+    "The earlier attempt issued the links and created the export file, but the file's identifier was in the answer that was lost and cannot be recovered here. Run a new export with rotation confirmed; the links in the lost file then stop working.",
 };
 export const campaignMessages = (v: Locale) => (v === "en" ? en : ar);

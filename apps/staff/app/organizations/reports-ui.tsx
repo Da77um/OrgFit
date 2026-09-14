@@ -1,16 +1,16 @@
 "use client";
-import { jsonOf, staffFetch } from "../staff-fetch";
-import { useCallback, useEffect, useState } from "react";
-import { messages, type Locale } from "../../../../src/i18n";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type Locale } from "../../../../src/i18n";
 import { resultsMessages } from "../../../../src/results-i18n";
 import {
   Alert,
   Badge,
   EmptyState,
-  ErrorState,
   Micro,
 } from "../../../../src/ui";
 import { formatUtc } from "../../../../src/zoned-time";
+import { RequestProblem, silent, useStaffApi } from "../request-ui";
+import { fillText, minutesSince, overdue, usePollWhile } from "../background-status";
 
 // The staff report panel.
 //
@@ -19,6 +19,11 @@ import { formatUtc } from "../../../../src/zoned-time";
 // state, a size and an expiry, never a metric. The download is a plain link to
 // the private endpoint, which re-authorizes the caller at the moment it is
 // clicked — the panel's own visibility is not the permission.
+//
+// Post-Audit Repair Pass 2: every request is bounded; a request whose answer
+// is lost is retried with the SAME idempotency key (the server answers from its
+// receipt, so a second job is never queued); accepted is worded as queued, not
+// as drawn; waiting jobs are refreshed and say when they are overdue.
 
 type M = ReturnType<typeof resultsMessages>;
 
@@ -47,6 +52,7 @@ type Comparison = {
 const instant = (value: string | null) => formatUtc(value);
 const kilobytes = (value: number | null) =>
   value === null ? "" : `${Math.max(1, Math.round(value / 1024))} KB`;
+const SCOPE = "report-request";
 
 export function ReportsPanel({
   org,
@@ -57,82 +63,69 @@ export function ReportsPanel({
   roundId: string;
   locale: Locale;
 }) {
-  const m: M = resultsMessages(locale),
-    base = messages(locale);
+  const m: M = resultsMessages(locale);
+  const client = useStaffApi(locale);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [comparisons, setComparisons] = useState<Comparison[]>([]);
   const [format, setFormat] = useState<"PDF" | "XLSX">("PDF");
   const [reportLocale, setReportLocale] = useState<Locale>(locale);
   const [comparisonId, setComparisonId] = useState("");
   const [status, setStatus] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(true);
+  const [loadProblem, setLoadProblem] = useState<unknown>(null);
+  const [submitProblem, setSubmitProblem] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const root = `/api/v1/organizations/${org}`;
+  const requestButton = useRef<HTMLButtonElement>(null);
 
-  const api = useCallback(
-    async (suffix: string, init?: RequestInit) => {
-      const r = await staffFetch(locale)(`/api/v1/organizations/${org}/${suffix}`, {
-        ...init,
-        headers: {
-          "Accept-Language": locale,
-          ...(init?.body ? { "content-type": "application/json" } : {}),
-          ...(init?.method && init.method !== "GET"
-            ? { "idempotency-key": crypto.randomUUID() }
-            : {}),
-        },
-      });
-      const json = await jsonOf(r);
-      if (!r.ok) throw new Error(json.message ?? base.unavailable);
-      return json.data;
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true);
+      try {
+        const listed = await client.read<{ items: Job[] }>(`${root}/reports?roundId=${roundId}`);
+        setJobs(listed.items);
+        const available = await client.read<{ items: Comparison[] }>(`${root}/comparisons`);
+        setComparisons(
+          available.items.filter((c) => c.leftRoundId === roundId || c.rightRoundId === roundId),
+        );
+        setLoadProblem(null);
+        setCheckedAt(new Date().toISOString());
+      } catch (e) {
+        if (!silent(e)) setLoadProblem(e);
+      } finally {
+        setLoading(false);
+      }
     },
-    [org, locale, base],
+    [client, root, roundId],
   );
-
-  const load = useCallback(async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const listed = (await api(`reports?roundId=${roundId}`)) as {
-        items: Job[];
-      };
-      setJobs(listed.items);
-      const available = (await api("comparisons")) as { items: Comparison[] };
-      setComparisons(
-        available.items.filter(
-          (c) => c.leftRoundId === roundId || c.rightRoundId === roundId,
-        ),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : base.unavailable);
-    } finally {
-      setBusy(false);
-    }
-  }, [api, roundId, base]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const submit = async () => {
-    setBusy(true);
-    setError("");
+  const waiting = jobs.some((j) => j.state === "QUEUED" || j.state === "RUNNING");
+  usePollWhile(waiting, () => load(true));
+
+  const finish = async (work: () => Promise<unknown>) => {
+    setSubmitting(true);
+    setSubmitProblem(null);
     setStatus("");
     try {
-      await api("reports", {
-        method: "POST",
-        body: JSON.stringify({
-          roundId,
-          format,
-          locale: reportLocale,
-          comparisonId: comparisonId || null,
-        }),
-      });
-      setStatus(m.reportRequested);
-      await load();
+      await work();
+      setStatus(m.reportAccepted);
+      await load(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : base.unavailable);
-      setBusy(false);
+      if (!silent(e)) setSubmitProblem(e);
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const submit = (body = { roundId, format, locale: reportLocale, comparisonId: comparisonId || null }) =>
+    finish(() => client.mutate(SCOPE, `${root}/reports`, { method: "POST", body }));
+
+  const unresolved = client.ledger.uncertain(SCOPE);
 
   return (
     <section className="card stack">
@@ -178,14 +171,55 @@ export function ReportsPanel({
             ))}
           </select>
         </label>
-        <button onClick={() => void submit()} disabled={busy}>
+        <button
+          ref={requestButton}
+          onClick={() => void submit()}
+          disabled={submitting || loading}
+          aria-busy={submitting || undefined}
+          data-testid="request-report"
+        >
           {m.requestReport}
         </button>
       </div>
-      {error && <ErrorState title={messages(locale).errorTitle} body={error} />}
+      <RequestProblem
+        locale={locale}
+        failure={submitProblem}
+        busy={submitting}
+        testId="report-request-problem"
+        onRetrySame={unresolved ? () => void finish(() => client.retry(SCOPE)) : undefined}
+        onCheck={unresolved ? () => void load() : undefined}
+        onDiscard={
+          unresolved
+            ? () => {
+                client.ledger.settle(SCOPE);
+                setSubmitProblem(null);
+              }
+            : undefined
+        }
+      />
+      <RequestProblem
+        locale={locale}
+        failure={loadProblem}
+        busy={loading}
+        testId="report-load-problem"
+        onRetryRead={() => void load()}
+      />
       <p role="status" aria-live="polite">
-        {busy ? m.loading : status}
+        {loading ? m.loading : status}
       </p>
+      <div className="row row-between">
+        <p className="muted">
+          {checkedAt ? fillText(m.statusCheckedAt, { time: instant(checkedAt).replace(" UTC", "") }) : ""}
+        </p>
+        <button
+          type="button"
+          className="button-small button-secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
+          {m.refreshStatus}
+        </button>
+      </div>
       {jobs.length ? (
         // Nine columns do not fit a 320px viewport, so the table scrolls inside
         // its own box rather than making the page scroll sideways.
@@ -212,13 +246,32 @@ export function ReportsPanel({
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id}>
+                <tr key={job.id} data-job-state={job.state}>
                   <td>
                     <Micro>{job.format}</Micro>
                   </td>
                   <td>{job.locale === "en" ? "English" : "العربية"}</td>
                   <td>
-                    <Badge tone={jobTone(job.state)}>{m[job.state]}</Badge>
+                    <Badge tone={jobTone(job)}>{m[job.state]}</Badge>
+                    <JobNote job={job} m={m} />
+                    {job.state === "FAILED" && (
+                      <button
+                        type="button"
+                        className="button-small button-secondary"
+                        disabled={submitting}
+                        onClick={() => {
+                          // A new, deliberate request: the form is set to the
+                          // failed job's format and language and the reader
+                          // confirms it (including any comparison) with the
+                          // request button. The failed job stays failed.
+                          setFormat(job.format);
+                          setReportLocale(job.locale);
+                          requestButton.current?.focus();
+                        }}
+                      >
+                        {m.requestAgain}
+                      </button>
+                    )}
                   </td>
                   <td>{kilobytes(job.byteCount)}</td>
                   <td>{job.pageCount ?? ""}</td>
@@ -246,20 +299,42 @@ export function ReportsPanel({
           </table>
         </div>
       ) : (
-        !busy && <EmptyState title={m.noReports} />
+        !loading && !loadProblem && <EmptyState title={m.noReports} />
       )}
     </section>
   );
 }
 
+function JobNote({ job, m }: { job: Job; m: M }) {
+  if (job.state === "QUEUED" || job.state === "RUNNING") {
+    const late = overdue(job.createdAt);
+    return (
+      <p className="field-hint" data-overdue={late || undefined}>
+        {late
+          ? fillText(m.jobOverdue, { minutes: minutesSince(job.createdAt) })
+          : job.state === "QUEUED"
+            ? m.jobQueuedNote
+            : m.jobRunningNote}
+      </p>
+    );
+  }
+  if (job.state === "FAILED")
+    return <p className="field-hint">{fillText(m.jobFailedNote, { code: job.failureCode ?? "—" })}</p>;
+  return null;
+}
+
 // A rendering job's state. Only a failure is carried in the danger tone; a
-// queued or running job is neutral, because waiting is not a problem.
-function jobTone(state: string) {
+// queued or running job is neutral, because waiting is not a problem — until
+// it has waited far beyond the process's cadence.
+function jobTone(job: Job) {
+  const state = job.state;
   return state === "READY"
     ? "positive"
     : state === "FAILED"
       ? "danger"
       : state === "EXPIRED" || state === "REVOKED"
         ? "caution"
-        : "neutral";
+        : overdue(job.createdAt)
+          ? "caution"
+          : "neutral";
 }

@@ -1595,6 +1595,36 @@ Not committed in this session; the working tree holds the changes above. No remo
 ### Exact next action
 
 **Post-Audit Repair Pass 2** — audit findings 4 and 5 (staff request deadlines with idempotency-safe retry, and an unsaved-change guard on the language switch, including the pre-hydration click), then finding 8 (release revocation). Before it, run the full Playwright suite on free ports 3000/3001.
+## Questionnaire department targeting — 2026-09-14
+
+**Status: IMPLEMENTED (development).** Owner instruction: Questionnaire → Organization → optional Department(s). Decisions D-141 … D-143.
+
+Changed: `db/migrations/020_questionnaire_targeting.sql` (new); `src/instruments.ts` (target input, `saveTarget`, department options, target data on list/detail, department filter, target on create); `apps/staff/app/questionnaires/target-picker.tsx` (new), `workspace.tsx`; `apps/staff/next.config.ts`, `.gitignore`, `eslint.config.mjs` (opt-in `E2E_NEXT_DIST_DIR` so the browser harness can run beside another `next dev` of this app; default unchanged); `package.json` (`test:targets`); `tests/questionnaire-targets.test.ts`, `tests/browser/questionnaire-targets.spec.ts` (new).
+
+| Check | Result |
+|---|---|
+| `npm run test:targets` | **9 passed** — upgrade from 019 keeps an existing questionnaire as entire organization; create with departments in one transaction; a foreign department rejects create (no row) and change (revision unchanged); direct inserts refused by composite FKs; empty/malformed/unknown/global/stale/missing If-Match refused; keyed replay and key-reuse conflict; audit; filter semantics; targeted department cannot be archived, archived department cannot be targeted; options organization-scoped; target change needs `instruments.manage` |
+| `npm test`, `test:instruments`, `test:directory`, `test:campaigns`, `test:localization` | 5, 8, 6, 18, 4 passed |
+| `npx playwright test tests/browser/questionnaire-targets.spec.ts` (ports 3100/3101, `E2E_NEXT_DIST_DIR=.next-e2e`) | **2 passed** — create, organization switch clears the selection, filter, edit, back to entire organization (English); Arabic RTL at 375px with no horizontal overflow. Screenshots `work/questionnaire-target-*.png` |
+| `npm run typecheck`, eslint on changed files | clean |
+
+**Not run:** the other node suites (integration, access, privacy, checkpoints, reports, visits, operations, release — 020 is a new migration, so the release manifest must be regenerated), the other browser specs, axe on the new controls, production build.
+
+**Open:** the department filter and picker exist on the questionnaire library only.
+
+### Campaign launch enforces the questionnaire target — 2026-09-14 (D-144)
+
+Changed: `db/migrations/021_campaign_questionnaire_target.sql` (new: campaign mode `ALL`, `core.questionnaire_audience`, `core.resolve_campaign_target`; `save_campaign`, `launch_campaign`, `launch_review` restated); `src/campaign-input.ts`, `src/campaigns.ts`, `src/http.ts`, `src/campaign-i18n.ts`; `apps/staff/app/organizations/campaigns-ui.tsx` (default mode "Everyone the questionnaire targets", questionnaire target and refusal in the launch review); `tests/campaign-targets.test.ts`, `tests/browser/campaign-targets.spec.ts` (new); `test:targets` runs both node files.
+
+| Check | Result |
+|---|---|
+| `npm run test:targets` | **16 passed** (9 questionnaire + 7 campaign: entire organization → all 4 active people, archived and foreign excluded; global template → whole organization; HR target → only HR; single/selected/department outside refused, inside launches; target narrowed after draft → review reports, launch refused, draft stays DRAFT with no invitations, widening lets it launch; launched roster unchanged by later edits; empty audience refused) |
+| `test:campaigns`, `test:instruments`, `test:directory`, `test:respondent`, `test:publication`, `test:checkpoint-c` | 18, 8, 6, 24, 13, 21 passed |
+| `npx playwright test tests/browser/campaign-targets.spec.ts tests/browser/questionnaire-targets.spec.ts` (3100/3101, `E2E_NEXT_DIST_DIR=.next-e2e`) | **3 passed**; screenshots `work/campaign-target-*.png` |
+| `npm run typecheck`, eslint on changed files | clean |
+
+**Not run:** `tests/browser/campaigns.spec.ts` and other specs that hard-code port 3000 (held by another session), remaining node suites, release manifest regeneration (migrations 020–021 are new).
+
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

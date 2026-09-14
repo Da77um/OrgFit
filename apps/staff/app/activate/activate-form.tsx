@@ -19,6 +19,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { messages, type Locale } from "../../../../src/i18n";
 import { Alert, DeniedState, EmptyState, LoadingState } from "../../../../src/ui";
 import { checkPasswordPolicy } from "../../../../src/password-policy";
+import { RequestFailure, staffRequest } from "../staff-request";
 
 type State =
   | "LOADING"
@@ -55,21 +56,21 @@ export function ActivateForm({ locale }: { locale: Locale }) {
   }>({});
   const [formError, setFormError] = useState("");
 
-  const inspect = useCallback(async (value: string) => {
+  // Bounded (Post-Audit Repair Pass 2). Returns the state it found, or null.
+  const inspect = useCallback(async (value: string, keepForm = false): Promise<State | null> => {
     try {
-      const response = await fetch("/api/v1/auth/invitation", {
+      const { data } = await staffRequest<{ state: State } & Invitation>(locale, "/api/v1/auth/invitation", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: value }),
+        body: { token: value },
       });
-      if (!response.ok) throw new Error("unavailable");
-      const body = (await response.json()) as { data: { state: State } & Invitation };
-      setInvitation({ email: body.data.email, role: body.data.role });
-      setState(body.data.state);
+      setInvitation({ email: data.email, role: data.role });
+      setState(data.state);
+      return data.state;
     } catch {
-      setState("UNAVAILABLE");
+      if (!keepForm) setState("UNAVAILABLE");
+      return null;
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     const read = () => {
@@ -103,18 +104,22 @@ export function ActivateForm({ locale }: { locale: Locale }) {
     setPending(true);
     setFormError("");
     try {
-      const response = await fetch("/api/v1/auth/activate", {
+      const { data } = await staffRequest<{ state: State }>(locale, "/api/v1/auth/activate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, displayName: displayName.trim(), password }),
+        body: { token, displayName: displayName.trim(), password },
       });
-      if (!response.ok) throw new Error("unavailable");
-      const body = (await response.json()) as { data: { state: State } };
       setPassword("");
       setConfirm("");
-      setState(body.data.state);
-    } catch {
-      setFormError(m.unavailable);
+      setState(data.state);
+    } catch (e) {
+      // The invitation is single-use, so activating twice cannot create two
+      // accounts. When the answer was lost, the invitation is read back: if it
+      // has been used, the screen says so (and to sign in) instead of offering
+      // a form that can no longer succeed. The password stays in memory only.
+      if (e instanceof RequestFailure && e.uncertain) {
+        const found = await inspect(token, true);
+        if (found === "VALID" || found === null) setFormError(e.message);
+      } else setFormError(m.unavailable);
     } finally {
       setPending(false);
     }

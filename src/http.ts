@@ -20,6 +20,9 @@ const codes: Record<string, number> = {
   // same thing whether or not the address exists.
   RATE_LIMITED: 429,
   VALIDATION_FAILED: 422,
+  // A campaign audience outside its questionnaire's target (021).
+  OUTSIDE_QUESTIONNAIRE_TARGET: 422,
+  NO_ELIGIBLE_PARTICIPANTS: 422,
   // Phase 12. A visit that cannot move where the caller asked, and an
   // attachment that has not been proven clean, are both conflicts rather than
   // validation problems: the request was well formed and the record said no.

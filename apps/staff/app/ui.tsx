@@ -1,6 +1,8 @@
 "use client";
 import { useState, useSyncExternalStore } from "react";
 import { localeOf, messages, type Locale } from "../../../src/i18n";
+import { RequestFailure, staffRequest } from "./staff-request";
+import { abortLeave, confirmLeave } from "./unsaved";
 export function AccountControls({
   locale,
   guest = false,
@@ -18,26 +20,30 @@ export function AccountControls({
     () => false,
   );
   async function change(action: "locale" | "logout") {
-    setPending(true);
     setError("");
+    // Both a language change (reload) and signing out discard unsaved edits
+    // elsewhere on the page; ask first (Post-Audit Repair Pass 2).
+    const decision = await confirmLeave(action === "logout" ? "signout" : "locale", locale);
+    if (!decision.go) return;
+    setPending(true);
     try {
-      const r = await fetch(
-        action === "logout"
-          ? "/api/v1/auth/logout"
-          : guest
-            ? "/api/v1/locale"
-            : "/api/v1/profile",
+      await staffRequest(
+        locale,
+        action === "logout" ? "/api/v1/auth/logout" : guest ? "/api/v1/locale" : "/api/v1/profile",
         {
           method: action === "logout" ? "POST" : guest ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(action === "logout" ? {} : { locale: value }),
+          body: action === "logout" ? {} : { locale: value },
         },
       );
-      if (!r.ok) throw new Error("unavailable");
       if (action === "logout") location.assign("/login");
+      else if (decision.next) location.assign(decision.next);
       else location.reload();
-    } catch {
-      setError(m.unavailable);
+    } catch (e) {
+      abortLeave();
+      // Signing out of a session that has already ended has nothing left to do.
+      if (e instanceof RequestFailure && e.kind === "SESSION")
+        return location.assign(action === "logout" ? "/login" : "/login?expired=1");
+      setError(e instanceof Error && e.message ? e.message : m.unavailable);
       setPending(false);
     }
   }

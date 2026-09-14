@@ -1,12 +1,26 @@
 /* Full document navigation intentionally clears organization-scoped client state. */
 "use client";
-import { jsonOf, staffFetch } from "../staff-fetch";
 import {
   useEffect,
   useState,
   useSyncExternalStore,
   type FormEvent,
 } from "react";
+import {
+  AttemptLedger,
+  RequestFailure,
+  sendAttempt,
+  staffRequest,
+  type Method,
+} from "../staff-request";
+import {
+  ChangeProblem,
+  redirectIfClean,
+  silent,
+  useLedger,
+  type ChangeFailure,
+} from "../request-ui";
+import { useFormDirty, useUnsavedChanges, type SaveOutcome } from "../unsaved";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
 import { directoryMessages } from "../../../../src/directory-i18n";
@@ -28,43 +42,51 @@ import {
 } from "../../../../src/ui";
 type M = ReturnType<typeof directoryMessages>;
 const subscribe = () => () => {};
+// Every directory request is bounded (Post-Audit Repair Pass 2). A change is
+// sent through the caller's AttemptLedger under a named scope, so a retry
+// after a lost answer carries the same idempotency key and body. A refusal
+// keeps its kind and uncertainty; only its wording is made specific here.
 async function api(
   path: string,
   locale: Locale,
-  method = "GET",
+  method: Method = "GET",
   body?: unknown,
   revision?: string,
-  key?: string,
-) {
-  const r = await staffFetch(locale)("/api/v1/" + path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "Accept-Language": locale,
-      ...(method !== "GET"
-        ? { "Idempotency-Key": key ?? crypto.randomUUID() }
-        : {}),
-      ...(revision ? { "If-Match": `"${revision}"` } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const json = await jsonOf(r);
-  if (!r.ok) {
+  change?: { ledger: AttemptLedger; scope: string; replace?: boolean; retry?: boolean },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const url = "/api/v1/" + path;
+  try {
+    if (method === "GET") return (await staffRequest(locale, url)).data;
+    if (!change) throw new Error("A directory change needs a ledger scope.");
+    const pending = change.retry ? change.ledger.uncertain(change.scope) : null;
+    const attempt =
+      pending?.attempt ??
+      change.ledger.prepare(locale, change.scope, { url, method, body, revision }, change.replace);
+    return (await sendAttempt(locale, change.ledger, attempt)).data;
+  } catch (e) {
+    redirectIfClean(e);
+    if (!(e instanceof RequestFailure)) throw e;
     const m = directoryMessages(locale);
-    throw new Error(
-      json.code === "DEPARTMENT_CYCLE"
+    const specific =
+      e.code === "DEPARTMENT_CYCLE"
         ? m.cycle
-        : json.code === "DEPARTMENT_IN_USE"
+        : e.code === "DEPARTMENT_IN_USE"
           ? m.inUse
-          : json.code === "IMPORT_EXPIRED"
+          : e.code === "IMPORT_EXPIRED"
             ? m.expired
-            : json.code === "IMPORT_CHANGED"
+            : e.code === "IMPORT_CHANGED"
               ? m.reviewAgain
-              : (json.message ?? messages(locale).unavailable),
+              : null;
+    if (!specific) throw e;
+    throw Object.assign(
+      new RequestFailure(specific, e.kind, { status: e.status, code: e.code, uncertain: e.uncertain, body: e.body }),
+      { attempt: e.attempt },
     );
   }
-  return json.data;
 }
+const failureMessage = (e: unknown, locale: Locale) =>
+  e instanceof Error && e.message ? e.message : messages(locale).unavailable;
 export function Directory({
   path,
   profile,
@@ -235,7 +257,13 @@ function Records({
     [archive, setArchive] = useState<DirectoryRecord | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [archiveProblem, setArchiveProblem] = useState<ChangeFailure | null>(null);
+  const ledger = useLedger();
+  const [archiveReason, setArchiveReason] = useState("");
+  // A typed archive reason is kept or discarded, never archived from the
+  // leave dialog: archiving is not a save.
+  useUnsavedChanges(!!archive && archiveReason.trim() !== "");
   async function load(next?: string) {
     setBusy(true);
     setError("");
@@ -254,7 +282,29 @@ function Records({
         setCursor(data.nextCursor);
       }
     } catch (e) {
-      setError((e as Error).message);
+      if (!silent(e)) setError(failureMessage(e, locale));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function archiveRecord(target: DirectoryRecord, reason: unknown, again = false) {
+    const scope = `archive:${target.id}`;
+    setBusy(true);
+    setError("");
+    setArchiveProblem(null);
+    try {
+      await api(
+        `${endpoint}/${target.id}/archive`,
+        locale,
+        "POST",
+        { reason },
+        String(target.revision),
+        { ledger, scope, replace: true, retry: again },
+      );
+      await saved();
+    } catch (e) {
+      if (!silent(e))
+        setArchiveProblem({ failure: e, scope, retry: () => void archiveRecord(target, reason, true) });
     } finally {
       setBusy(false);
     }
@@ -374,31 +424,23 @@ function Records({
       {archive && (
         <form
           className="panel stack"
-          onSubmit={async (e) => {
+          onSubmit={(e) => {
             e.preventDefault();
-            setBusy(true);
-            setError("");
-            try {
-              const f = new FormData(e.currentTarget);
-              await api(
-                `${endpoint}/${archive.id}/archive`,
-                locale,
-                "POST",
-                { reason: f.get("reason") },
-                String(archive.revision),
-              );
-              await saved();
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setBusy(false);
-            }
+            void archiveRecord(archive, archiveReason);
           }}
         >
           <h3>{m.archive}</h3>
           <p>{m.archiveHelp}</p>
+          <ChangeProblem
+            locale={locale}
+            problem={archiveProblem}
+            ledger={ledger}
+            busy={busy}
+            onCheck={() => void load()}
+            onDismiss={() => setArchiveProblem(null)}
+          />
           <label>
-            {m.reason} *<input name="reason" required maxLength={500} />
+            {m.reason} *<input name="reason" required maxLength={500} value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} />
           </label>
           <div className="row">
             <button disabled={busy}>{m.archive}</button>
@@ -520,6 +562,7 @@ function Records({
                     <button
                       onClick={() => {
                         setArchive(item);
+                        setArchiveReason("");
                         setEditor(null);
                       }}
                     >
@@ -706,11 +749,28 @@ function Editor({
     Object.entries(record ?? {}).map(([k, v]) => [camel(k), v]),
   );
   Object.assign(values, record?.contact ?? {});
+  const { dirty, form: formRef, bind } = useFormDirty(relation);
+  const ledger = useLedger();
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  // One scope per record (or per new record). An edit carries the revision it
+  // started from and may replace an unconfirmed attempt; a create may not,
+  // because a new key could create a second record if the first one landed.
+  const scope = `directory-save:${kind}:${record?.id ?? "new"}`;
+  // Dirty is released only by a confirmed save (the editor then closes) or an
+  // explicit Cancel; the leave dialog saves through this same path.
+  useUnsavedChanges(dirty, () => send());
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    await send();
+  }
+  async function send(again = false): Promise<SaveOutcome> {
+    const el = formRef.current;
+    if (!el) return { ok: false };
+    if (!again && !el.reportValidity()) return { ok: false };
     setBusy(true);
     setError("");
-    const f = new FormData(e.currentTarget),
+    setProblem(null);
+    const f = new FormData(el),
       body: Record<string, unknown> = {},
       contact: Record<string, unknown> = { schemaVersion: 1 };
     for (const field of fields) {
@@ -730,16 +790,23 @@ function Editor({
         record ? "PATCH" : "POST",
         body,
         record ? String(record.revision) : undefined,
+        { ledger, scope, replace: !!record, retry: again },
       );
       await onSaved();
+      return { ok: true };
     } catch (e) {
-      setError((e as Error).message);
+      if (!silent(e)) {
+        if (e instanceof RequestFailure && (e.uncertain || e.kind === "SESSION"))
+          setProblem({ failure: e, scope, retry: () => void send(true) });
+        else setError(failureMessage(e, locale));
+      }
+      return { ok: false };
     } finally {
       setBusy(false);
     }
   }
   return (
-    <form id="editor" className="panel stack" onSubmit={save}>
+    <form id="editor" {...bind} className="panel stack" onSubmit={save}>
       <h3>{record ? m.edit : m.new}</h3>
       <p>{m.required}</p>
       <div className="form-grid">
@@ -813,6 +880,14 @@ function Editor({
       {kind === "participant" && <p>{m.moveHelp}</p>}
       {kind !== "department" && <p>{m.contactHelp}</p>}
       {error && <p role="alert">{error}</p>}
+      <ChangeProblem
+        locale={locale}
+        problem={problem}
+        ledger={ledger}
+        busy={busy}
+        onDismiss={() => setProblem(null)}
+        testId="directory-editor-problem"
+      />
       <div className="row">
         <button disabled={busy}>{busy ? m.loading : m.save}</button>
         <button type="button" disabled={busy} onClick={onCancel}>
@@ -839,8 +914,22 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
     [mapping, setMapping] = useState<Record<string, string>>({}),
     [confirmed, setConfirmed] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [problem, setProblem] = useState<ChangeFailure | null>(null),
+    [picked, setPicked] = useState(false),
+    [mappingDirty, setMappingDirty] = useState(false);
+  const ledger = useLedger();
   const endpoint = `organizations/${org}/imports`;
+  // A chosen file not yet uploaded, or a mapping changed since the last
+  // validation, is lost by a reload. Neither is saved from the leave dialog:
+  // uploading and validating are steps the reader takes deliberately.
+  useUnsavedChanges(picked || mappingDirty);
+  const failed = (e: unknown, scope: string, retry: () => void) => {
+    if (silent(e)) return;
+    if (e instanceof RequestFailure && (e.uncertain || e.kind === "SESSION"))
+      setProblem({ failure: e, scope, retry });
+    else setError(failureMessage(e, locale));
+  };
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("import");
     if (!id) return;
@@ -863,20 +952,38 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
       active = false;
     };
   }, [endpoint, locale]);
+  // The upload is a keyed create. Its body (the file, base64) is held in this
+  // tab's memory only while its outcome is unconfirmed, so "send the same
+  // request again" can replay it; it is never written to storage.
   async function upload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
+    const file = new FormData(form).get("file") as File;
+    if (!file || file.size > 1048576) {
+      setError(m.fileHelp);
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let raw = "";
+    for (const byte of bytes) raw += String.fromCharCode(byte);
+    await sendUpload({
+      format: file.name.toLowerCase().endsWith(".xlsx") ? "XLSX" : "CSV",
+      base64: btoa(raw),
+    }, false, form);
+  }
+  async function sendUpload(body: unknown, again: boolean, form?: HTMLFormElement) {
     setBusy(true);
     setError("");
+    setProblem(null);
     try {
-      const file = new FormData(e.currentTarget).get("file") as File;
-      if (!file || file.size > 1048576) throw new Error(m.fileHelp);
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let raw = "";
-      for (const byte of bytes) raw += String.fromCharCode(byte);
-      const data = await api(endpoint, locale, "POST", {
-        format: file.name.toLowerCase().endsWith(".xlsx") ? "XLSX" : "CSV",
-        base64: btoa(raw),
+      const data = await api(endpoint, locale, "POST", body, undefined, {
+        ledger,
+        scope: "import-upload",
+        retry: again,
       });
+      form?.reset();
+      setPicked(false);
+      setMappingDirty(false);
       setRecord(data);
       window.history.replaceState(null, "", `?import=${data.id}`);
       setConfirmed(false);
@@ -888,15 +995,20 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
         ),
       );
     } catch (e) {
-      setError((e as Error).message);
+      failed(e, "import-upload", () => void sendUpload(body, true));
     } finally {
       setBusy(false);
     }
   }
-  async function run(action: "validate" | "commit") {
+  // Validate and commit carry the reviewed revision. A lost commit answer is
+  // retried with the same key, and the server's commit receipt answers it
+  // instead of committing the rows a second time.
+  async function run(action: "validate" | "commit", again = false) {
     if (!record) return;
+    const scope = `import-${action}`;
     setBusy(true);
     setError("");
+    setProblem(null);
     try {
       const data = await api(
         `${endpoint}/${record.id}/${action}`,
@@ -910,15 +1022,27 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
               confirmValidRows: true,
             },
         String(record.revision),
+        { ledger, scope, replace: action === "validate", retry: again },
       );
       setRecord({ ...record, ...data });
       setConfirmed(false);
+      if (action === "validate") setMappingDirty(false);
     } catch (e) {
-      setError((e as Error).message);
+      failed(e, scope, () => void run(action, true));
     } finally {
       setBusy(false);
     }
   }
+  const check = async () => {
+    if (!record) return;
+    try {
+      const data = await api(`${endpoint}/${encodeURIComponent(record.id)}`, locale);
+      setRecord(data);
+      setMapping(data.mapping ?? {});
+    } catch (e) {
+      if (!silent(e)) setError(failureMessage(e, locale));
+    }
+  };
   return (
     <section className="stack">
       <h2>{m.import}</h2>
@@ -926,12 +1050,27 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
       <form className="panel stack" onSubmit={upload}>
         <label>
           {m.source}
-          <input name="file" type="file" accept=".csv,.xlsx" required />
+          <input
+            name="file"
+            type="file"
+            accept=".csv,.xlsx"
+            required
+            onChange={(e) => setPicked(!!e.target.files?.length)}
+          />
         </label>
         <button disabled={busy}>{m.upload}</button>
       </form>
       <p>{m.duplicateHelp}</p>
       {error && <p role="alert">{error}</p>}
+      <ChangeProblem
+        locale={locale}
+        problem={problem}
+        ledger={ledger}
+        busy={busy}
+        onCheck={record ? () => void check() : undefined}
+        onDismiss={() => setProblem(null)}
+        testId="import-problem"
+      />
       <p role="status">
         {busy
           ? m.loading
@@ -953,6 +1092,7 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
                     if (e.target.value) next[h] = e.target.value;
                     else delete next[h];
                     setMapping(next);
+                    setMappingDirty(true);
                     setRecord({
                       ...record,
                       state: "UPLOADED",

@@ -1,6 +1,8 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
-import { jsonOf, staffFetch } from "../staff-fetch";
+import { ChangeProblem, silent, useStaffApi, type ChangeFailure } from "../request-ui";
+import { RequestFailure } from "../staff-request";
+import { useUnsavedChanges } from "../unsaved";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
@@ -361,24 +363,14 @@ export function History({
     () => true,
     () => false,
   );
-  const api = useCallback(
-    async (suffix: string, init?: RequestInit) => {
-      const r = await staffFetch(locale)(`/api/v1/organizations/${org}/${suffix}`, {
-        ...init,
-        headers: {
-          "Accept-Language": locale,
-          ...(init?.body ? { "content-type": "application/json" } : {}),
-          ...(init?.method && init.method !== "GET"
-            ? { "idempotency-key": crypto.randomUUID() }
-            : {}),
-        },
-      });
-      const json = await jsonOf(r);
-      if (!r.ok) throw new Error(json.message ?? base.unavailable);
-      return json.data;
-    },
-    [org, locale, base],
-  );
+  // Bounded reads; the one change here (recording a reviewed comparison) is a
+  // keyed create retried with its original key (Post-Audit Repair Pass 2).
+  const client = useStaffApi(locale);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const api = useCallback((suffix: string): Promise<any> => client.read(`/api/v1/organizations/${org}/${suffix}`), [client, org]);
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  // A rationale typed for a proposal is lost by a reload; ask before leaving.
+  useUnsavedChanges(!!proposal && form.rationale.trim() !== "");
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
@@ -389,11 +381,37 @@ export function History({
         setComparisons((await api(`comparisons?seriesId=${seriesId}`)).items);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : base.unavailable);
+      if (!silent(e)) setError(e instanceof Error ? e.message : base.unavailable);
     } finally {
       setBusy(false);
     }
   }, [api, seriesId, base]);
+  const recordComparison = async (body: unknown, again = false) => {
+    const scope = "comparison-create";
+    setError("");
+    setProblem(null);
+    setBusy(true);
+    try {
+      const created = again
+        ? await client.retry<ComparisonView>(scope)
+        : await client.mutate<ComparisonView>(scope, `/api/v1/organizations/${org}/comparisons`, {
+            method: "POST",
+            body,
+          });
+      setView(created);
+      setNote(m.saved);
+      setProposal(null);
+      setForm((f) => ({ ...f, rationale: "" }));
+      await load();
+    } catch (e) {
+      if (silent(e)) return;
+      if (e instanceof RequestFailure && (e.uncertain || e.kind === "SESSION"))
+        setProblem({ failure: e, scope, retry: () => void recordComparison(body, true) });
+      else setError(e instanceof Error ? e.message : base.unavailable);
+    } finally {
+      setBusy(false);
+    }
+  };
   useEffect(() => {
     void load();
   }, [load]);
@@ -420,6 +438,15 @@ export function History({
           sub={m.descriptive}
         />
         {error && <ErrorState title={base.errorTitle} body={error} />}
+        <ChangeProblem
+          locale={locale}
+          problem={problem}
+          ledger={client.ledger}
+          busy={busy}
+          onCheck={() => void load()}
+          onDismiss={() => setProblem(null)}
+          testId="comparison-problem"
+        />
         <p role="status" aria-live="polite">
           {busy ? m.loading : note}
         </p>
@@ -570,10 +597,7 @@ export function History({
                     </label>
                     <button
                       disabled={!form.rationale.trim() || busy}
-                      onClick={() =>
-                        void (async () => {
-                          setError("");
-                          try {
+                      onClick={() => {
                             const equivalentPairs = proposal.pairs.filter(
                               (p) => p.equivalent,
                             );
@@ -582,9 +606,7 @@ export function History({
                               : equivalentPairs.length
                                 ? "REVIEWED_EQUIVALENT"
                                 : "NOT_COMPARABLE";
-                            const created = await api("comparisons", {
-                              method: "POST",
-                              body: JSON.stringify({
+                            void recordComparison({
                                 leftRoundId: form.left,
                                 rightRoundId: form.right,
                                 classification,
@@ -596,17 +618,8 @@ export function History({
                                         rightKey: p.rightKey,
                                       })),
                                 rationale: form.rationale.trim(),
-                              }),
                             });
-                            setView(created);
-                            setNote(m.saved);
-                            setProposal(null);
-                            await load();
-                          } catch (e) {
-                            setError(e instanceof Error ? e.message : "");
-                          }
-                        })()
-                      }
+                      }}
                     >
                       {m.save}
                     </button>

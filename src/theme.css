@@ -1689,6 +1689,21 @@ dd {
   margin-block-start: var(--space-3);
   border-block-start: var(--hairline) solid var(--border-soft);
 }
+/* The unsaved-changes question (Post-Audit Repair Pass 2) is a native modal
+   <dialog>: the browser supplies the focus trap, the inert page and Escape.
+   It is rendered inside the ink app bar, so it restates the page's ink and
+   ground rather than inheriting the bar's inverse text. */
+dialog.modal {
+  margin: auto;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+dialog.modal::backdrop {
+  background: rgb(25 22 20 / 0.55);
+}
+dialog.modal :focus-visible {
+  outline-color: var(--focus);
+}
 .drawer {
   position: fixed;
   inset-block: 0;

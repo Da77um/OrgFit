@@ -266,8 +266,10 @@ test("audit: more than 100 same-timestamp events reachable in the browser, filte
   await expect(admin).toHaveURL(/action=PROFILE_UPDATED/);
   const table = admin.getByRole("region", { name: "الأحداث الإدارية، الأحدث أولًا" });
   await expect(table.locator("tbody tr")).toHaveCount(50);
-  // Filter by actor from a row.
-  await table.locator("tbody tr").first().getByRole("button").click();
+  // Filter by actor from a row — this administrator's row. In a full suite,
+  // earlier specs leave newer PROFILE_UPDATED events by the seeded account, so
+  // the newest row is not necessarily ours (found in Post-Audit Repair Pass 2).
+  await table.locator("tbody tr").filter({ hasText: "مسؤولة الإدارة" }).first().getByRole("button").click();
   await expect(admin).toHaveURL(new RegExp(`actorId=${adminId}`));
   await expect(table.locator("tbody tr")).toHaveCount(50);
   for (let shown = 50; shown < expected; shown += 50) {

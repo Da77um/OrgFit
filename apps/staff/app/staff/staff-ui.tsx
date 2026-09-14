@@ -1,7 +1,7 @@
 /* Full document navigation keeps each staff record's state separate. */
 /* eslint-disable @next/next/no-html-link-for-pages */
 "use client";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Profile } from "../../../../src/db";
 import { adminMessages, fill, type AdminMessages } from "../../../../src/admin-i18n";
 import { messages, type Locale } from "../../../../src/i18n";
@@ -15,6 +15,8 @@ import {
   PageHeader,
 } from "../../../../src/ui";
 import { ApiError, errorText, useApi, useHydrated, utc } from "../admin-client";
+import { ChangeProblem, silent, type ChangeFailure } from "../request-ui";
+import { useFormDirty, useUnsavedChanges, type SaveOutcome } from "../unsaved";
 import {
   AccessFields,
   ConfirmAction,
@@ -68,6 +70,17 @@ function refusal(e: unknown, a: AdminMessages, fallback: string) {
     if (e.code === "REVISION_CONFLICT") return a.conflictReload;
   }
   return errorText(e, fallback);
+}
+
+// What to show for a failed change: an unknown outcome or an ended session as
+// it is (with its retry or sign-in path), anything else as an administrator's
+// refusal.
+function shown(e: unknown, a: AdminMessages, locale: Locale) {
+  return e instanceof ApiError && (e.uncertain || e.kind === "SESSION")
+    ? e
+    : new ApiError(refusal(e, a, messages(locale).unavailable), "REJECTED", {
+        code: e instanceof ApiError ? e.code : "REJECTED",
+      });
 }
 
 function useOrganizations(locale: Locale) {
@@ -370,7 +383,21 @@ function InvitationRow({
   onChanged: () => void;
 }) {
   const api = useApi(locale);
-  const [error, setError] = useState("");
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  const [busy, setBusy] = useState(false);
+  const scope = `invitation-revoke:${i.id}`;
+  const withdraw = async (again = false) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await (again ? api.retry(scope) : api(`staff/invitations/${i.id}/revoke`, { method: "POST", scope }));
+      onChanged();
+    } catch (e) {
+      if (!silent(e)) setProblem({ failure: e, scope, retry: () => void withdraw(true) });
+    } finally {
+      setBusy(false);
+    }
+  };
   const tone = i.state === "PENDING" ? "caution" : i.state === "CONSUMED" ? "positive" : "neutral";
   return (
     <tr>
@@ -385,17 +412,18 @@ function InvitationRow({
             a={a}
             label={a.withdraw}
             confirmLabel={a.withdrawConfirm}
-            onConfirm={async () => {
-              try {
-                await api(`staff/invitations/${i.id}/revoke`, { method: "POST" });
-                onChanged();
-              } catch (e) {
-                setError(errorText(e, messages(locale).unavailable));
-              }
-            }}
+            disabled={busy}
+            onConfirm={() => withdraw()}
           />
         )}
-        {error && <p role="alert" className="field-error">{error}</p>}
+        <ChangeProblem
+          locale={locale}
+          problem={problem}
+          ledger={api.ledger}
+          busy={busy}
+          onCheck={onChanged}
+          onDismiss={() => setProblem(null)}
+        />
       </td>
     </tr>
   );
@@ -418,44 +446,64 @@ function RegisterForm({
   const [access, setAccess] = useState<AccessValue>(blankAccess);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const [error, setError] = useState("");
-  // One key per form fill, so a double submit or a retry after a timeout
-  // replays instead of registering twice.
-  const [key, setKey] = useState(() => crypto.randomUUID());
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  const { dirty, markClean, form: formRef, bind } = useFormDirty(JSON.stringify(access));
+  // The same registration is one logical change: a double submit or a retry
+  // after a lost answer carries the same idempotency key and body, and the
+  // server answers from its receipt instead of registering twice.
+  const scope = "staff-register";
+  async function send(again: boolean): Promise<SaveOutcome> {
+    const form = formRef.current;
+    if (!form) return { ok: false };
+    if (!again && !form.reportValidity()) return { ok: false };
     const f = new FormData(form);
     setBusy(true);
-    setError("");
+    setProblem(null);
     setNote("");
     try {
-      const created = await api<{ id: string }>("staff", {
-        method: "POST",
-        idempotencyKey: key,
-        body: {
-          issuer,
-          subject: String(f.get("subject") ?? "").trim(),
-          email: String(f.get("email") ?? "").trim(),
-          displayName: String(f.get("displayName") ?? "").trim(),
-          status: "ACTIVE",
-          ...access,
-        },
-      });
+      if (again) await api.retry(scope);
+      else
+        await api<{ id: string }>("staff", {
+          method: "POST",
+          scope,
+          body: {
+            issuer,
+            subject: String(f.get("subject") ?? "").trim(),
+            email: String(f.get("email") ?? "").trim(),
+            displayName: String(f.get("displayName") ?? "").trim(),
+            status: "ACTIVE",
+            ...access,
+          },
+        });
       form.reset();
       setAccess(blankAccess());
-      setKey(crypto.randomUUID());
+      markClean();
       setNote(a.registered);
       onDone();
-      return created;
+      return { ok: true };
     } catch (e) {
-      setError(refusal(e, a, messages(locale).unavailable));
+      if (!silent(e))
+        setProblem({
+          failure: shown(e, a, locale),
+          scope,
+          retry: () => void send(true),
+        });
+      return { ok: false };
     } finally {
       setBusy(false);
     }
   }
+  useUnsavedChanges(dirty, () => send(false));
   return (
-    <form className="panel stack" onSubmit={submit} aria-labelledby="register-heading">
+    <form
+      {...bind}
+      className="panel stack"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send(false);
+      }}
+      aria-labelledby="register-heading"
+    >
       <h3 id="register-heading">{a.registerTitle}</h3>
       <p className="field-hint">{a.registerLead}</p>
       <dl className="facts">
@@ -486,7 +534,15 @@ function RegisterForm({
         organizations={organizations.items}
         organizationsTruncated={organizations.truncated}
       />
-      {error && <Alert tone="danger" role="alert">{error}</Alert>}
+      <ChangeProblem
+        locale={locale}
+        problem={problem}
+        ledger={api.ledger}
+        busy={busy}
+        onCheck={onDone}
+        onDismiss={() => setProblem(null)}
+        testId="register-problem"
+      />
       {note && <Alert tone="success">{note}</Alert>}
       <button type="submit" disabled={busy}>{busy ? a.saving : a.register}</button>
     </form>
@@ -511,47 +567,70 @@ function InvitationForm({
   const api = useApi(locale);
   const [access, setAccess] = useState<AccessValue>(blankAccess);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
   const [issued, setIssued] = useState<{ url: string | null; replayed: boolean } | null>(null);
   const [copy, setCopy] = useState("");
-  const [key, setKey] = useState(() => crypto.randomUUID());
   const resultHeading = useRef<HTMLHeadingElement>(null);
+  const { dirty, markClean, form: formRef, bind } = useFormDirty(JSON.stringify(access));
+  // Not offered to the leave dialog's "save": issuing reveals a link once,
+  // and a reload straight afterwards would hide it before it could be copied.
+  useUnsavedChanges(dirty);
   useEffect(() => {
     if (issued) resultHeading.current?.focus();
   }, [issued]);
 
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
+  // A retry after a lost answer re-sends the same attempt. If the first one
+  // did create the invitation, the server says so and returns NO link: the
+  // secret existed only in the lost answer and cannot be recovered, and a new
+  // link would match no invitation (D-132). The result explains exactly that.
+  const scope = "staff-invitation";
+  async function send(again: boolean) {
+    const form = formRef.current;
+    if (!form) return;
     const f = new FormData(form);
     setBusy(true);
-    setError("");
+    setProblem(null);
     setIssued(null);
     setCopy("");
     try {
-      const result = await api<{ url: string | null; replayed: boolean }>("staff/invitations", {
-        method: "POST",
-        idempotencyKey: key,
-        body: {
-          email: String(f.get("email") ?? "").trim(),
-          locale: String(f.get("locale") ?? "ar"),
-          expiresInHours: Number(f.get("expiresInHours")),
-          ...access,
-        },
-      });
+      const result = again
+        ? await api.retry<{ url: string | null; replayed: boolean }>(scope)
+        : await api<{ url: string | null; replayed: boolean }>("staff/invitations", {
+            method: "POST",
+            scope,
+            body: {
+              email: String(f.get("email") ?? "").trim(),
+              locale: String(f.get("locale") ?? "ar"),
+              expiresInHours: Number(f.get("expiresInHours")),
+              ...access,
+            },
+          });
       setIssued(result);
       form.reset();
       setAccess(blankAccess());
-      setKey(crypto.randomUUID());
+      markClean();
       onDone();
     } catch (e) {
-      setError(refusal(e, a, messages(locale).unavailable));
+      if (!silent(e))
+        setProblem({
+          failure: shown(e, a, locale),
+          scope,
+          retry: () => void send(true),
+        });
     } finally {
       setBusy(false);
     }
   }
   return (
-    <form className="panel stack" onSubmit={submit} aria-labelledby="invite-heading">
+    <form
+      {...bind}
+      className="panel stack"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send(false);
+      }}
+      aria-labelledby="invite-heading"
+    >
       <h3 id="invite-heading">{a.newInvitation}</h3>
       <Alert tone={production ? "danger" : "warning"} role="note">{a.invitationsDevOnly}</Alert>
       {issued && (
@@ -617,7 +696,15 @@ function InvitationForm({
         organizations={organizations.items}
         organizationsTruncated={organizations.truncated}
       />
-      {error && <Alert tone="danger" role="alert">{error}</Alert>}
+      <ChangeProblem
+        locale={locale}
+        problem={problem}
+        ledger={api.ledger}
+        busy={busy}
+        onCheck={onDone}
+        onDismiss={() => setProblem(null)}
+        testId="invitation-problem"
+      />
       <button type="submit" disabled={busy}>{busy ? a.saving : a.issue}</button>
     </form>
   );
@@ -634,8 +721,8 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
   const [access, setAccess] = useState<AccessValue>(blankAccess);
   const [loadError, setLoadError] = useState<{ text: string; missing: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [conflict, setConflict] = useState(false);
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  const conflict = problem?.failure instanceof ApiError && problem.failure.code === "REVISION_CONFLICT";
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
@@ -644,7 +731,7 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
       const r = await api<StaffRecord>(`staff/${id}`);
       setRecord(r);
       setAccess({ role: r.role, capabilities: r.capabilities, organizationIds: r.organizationIds });
-      setConflict(false);
+      setProblem(null);
     } catch (e) {
       setLoadError({
         text: errorText(e, m.unavailable),
@@ -656,6 +743,15 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
     void load();
   }, [load]);
 
+  // Unsaved access edits: the leave dialog can save them through the same
+  // revision-checked change as the Save access button.
+  const norm = (v: AccessValue) =>
+    JSON.stringify([v.role, [...v.capabilities].sort(), [...v.organizationIds].sort()]);
+  const accessDirty = !!record && norm(access) !== norm(record);
+  useUnsavedChanges(
+    accessDirty,
+    record ? () => save({ ...access, status: record.status }, a.accessSaved) : undefined,
+  );
   if (!hydrated || (!record && !loadError)) return <LoadingState label={a.loading} />;
   if (loadError || !record)
     return (
@@ -669,18 +765,45 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
   const lastAdmin =
     record.role === "SUPER_ADMIN" && record.status === "ACTIVE" && record.otherActiveSuperAdmins === 0;
 
-  async function save(body: AccessValue & { status: "ACTIVE" | "DISABLED" }, done: string) {
-    if (!record) return;
+  // Access and status changes share one scope and carry the record revision,
+  // so a different change may replace an unconfirmed one: if the first did
+  // land, the stale revision is refused rather than applied twice.
+  async function save(
+    body: AccessValue & { status: "ACTIVE" | "DISABLED" },
+    done: string,
+    again = false,
+  ): Promise<SaveOutcome> {
+    if (!record) return { ok: false };
+    const scope = "staff-access";
     setBusy(true);
-    setError("");
+    setProblem(null);
     setNote("");
     try {
-      await api(`staff/${record.id}`, { method: "PATCH", revision: record.revision, body });
+      if (again) await api.retry(scope);
+      else await api(`staff/${record.id}`, { method: "PATCH", revision: record.revision, body, scope, replace: true });
       setNote(done);
       await load();
+      return { ok: true };
     } catch (e) {
-      setConflict(e instanceof ApiError && e.code === "REVISION_CONFLICT");
-      setError(refusal(e, a, m.unavailable));
+      if (!silent(e)) setProblem({ failure: shown(e, a, locale), scope, retry: () => void save(body, done, true) });
+      return { ok: false };
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function revokeSessions(again = false) {
+    if (!record) return;
+    const scope = "staff-revoke-sessions";
+    setBusy(true);
+    setProblem(null);
+    setNote("");
+    try {
+      if (again) await api.retry(scope);
+      else await api(`staff/${record.id}/revoke-sessions`, { method: "POST", scope });
+      setNote(a.sessionsRevoked);
+      await load();
+    } catch (e) {
+      if (!silent(e)) setProblem({ failure: shown(e, a, locale), scope, retry: () => void revokeSessions(true) });
     } finally {
       setBusy(false);
     }
@@ -700,15 +823,21 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
           </div>
         }
       />
-      {error && (
-        <Alert tone="danger" role="alert">
-          {error}{" "}
-          {conflict && (
-            <button type="button" className="button-small button-secondary" onClick={() => void load()}>
-              {a.reload}
-            </button>
-          )}
-        </Alert>
+      <ChangeProblem
+        locale={locale}
+        problem={problem}
+        ledger={api.ledger}
+        busy={busy}
+        onCheck={() => void load()}
+        onDismiss={() => setProblem(null)}
+        testId="staff-record-problem"
+      />
+      {conflict && (
+        <p>
+          <button type="button" className="button-small button-secondary" onClick={() => void load()}>
+            {a.reload}
+          </button>
+        </p>
       )}
       {note && <Alert tone="success">{note}</Alert>}
 
@@ -773,20 +902,7 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
           confirmLabel={a.revokeSessionsConfirm}
           body={a.revokeSessionsBody}
           disabled={busy}
-          onConfirm={async () => {
-            setBusy(true);
-            setError("");
-            setNote("");
-            try {
-              await api(`staff/${record.id}/revoke-sessions`, { method: "POST" });
-              setNote(a.sessionsRevoked);
-              await load();
-            } catch (e) {
-              setError(refusal(e, a, m.unavailable));
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onConfirm={() => revokeSessions()}
         />
         {record.status === "ACTIVE" ? (
           !lastAdmin && (
@@ -796,8 +912,8 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
               confirmLabel={a.disableConfirm}
               body={a.disableBody}
               disabled={busy}
-              onConfirm={() =>
-                save(
+              onConfirm={async () => {
+                await save(
                   {
                     role: record.role,
                     capabilities: record.capabilities,
@@ -805,8 +921,8 @@ export function StaffRecordView({ profile, id }: { profile: Profile; id: string 
                     status: "DISABLED",
                   },
                   a.saved,
-                )
-              }
+                );
+              }}
             />
           )
         ) : (

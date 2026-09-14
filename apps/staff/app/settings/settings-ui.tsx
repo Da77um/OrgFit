@@ -1,10 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Profile } from "../../../../src/db";
 import { adminMessages, fill, type AdminMessages } from "../../../../src/admin-i18n";
 import { messages, type Locale } from "../../../../src/i18n";
 import { Alert, Badge, ErrorState, LoadingState, Num, PageHeader, Tile } from "../../../../src/ui";
 import { ApiError, errorText, useApi, useHydrated, utc } from "../admin-client";
+import { ChangeProblem, isUncertain, silent, type ChangeFailure } from "../request-ui";
+import { useUnsavedChanges, type SaveOutcome } from "../unsaved";
 
 type Settings = {
   revision: number;
@@ -62,66 +64,112 @@ export function SettingsScreen({ profile }: { profile: Profile }) {
   const api = useApi(locale);
   const hydrated = useHydrated();
   const [data, setData] = useState<StatusData | null>(null);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ tone: "success" | "danger"; text: string; conflict?: boolean } | null>(null);
-  const [key, setKey] = useState(() => crypto.randomUUID());
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [dirty, setDirty] = useState(false);
 
   const load = useCallback(async () => {
-    setLoadError("");
+    setLoadError(null);
     try {
       setData(await api<StatusData>("settings/status"));
     } catch (e) {
-      setLoadError(errorText(e, m.unavailable));
+      if (!silent(e)) setLoadError(e);
     }
-  }, [api, m.unavailable]);
+  }, [api]);
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Dirty means "differs from the stored version": the form is keyed by the
+  // revision, so a confirmed save remounts it with the new values and clean.
+  const current = data?.settings;
+  const checkDirty = useCallback(() => {
+    const el = formRef.current;
+    if (!el || !current) return setDirty(false);
+    const f = new FormData(el);
+    setDirty(
+      String(f.get("defaultTimezone") ?? "").trim() !== current.defaultTimezone ||
+        Number(f.get("defaultCampaignThreshold")) !== current.defaultCampaignThreshold ||
+        Number(f.get("staffInvitationHours")) !== current.staffInvitationHours,
+    );
+  }, [current]);
+  useEffect(() => {
+    setDirty(false);
+  }, [current]);
+
+  // A settings change carries the revision it was based on, so it may replace
+  // an unconfirmed one: if the earlier one landed, this is refused as stale.
+  const scope = "settings";
+  const save = async (again = false): Promise<SaveOutcome> => {
+    const el = formRef.current;
+    if (!el || !current) return { ok: false };
+    if (!again && !el.reportValidity()) return { ok: false };
+    const f = new FormData(el);
+    setBusy(true);
+    setResult(null);
+    setProblem(null);
+    try {
+      if (again) await api.retry(scope);
+      else
+        await api("settings", {
+          method: "PATCH",
+          revision: current.revision,
+          scope,
+          replace: true,
+          body: {
+            defaultTimezone: String(f.get("defaultTimezone") ?? "").trim(),
+            defaultCampaignThreshold: Number(f.get("defaultCampaignThreshold")),
+            staffInvitationHours: Number(f.get("staffInvitationHours")),
+          },
+        });
+      setResult({ tone: "success", text: a.defaultsSaved });
+      await load();
+      return { ok: true };
+    } catch (err) {
+      if (silent(err)) return { ok: false };
+      if (isUncertain(err) || (err instanceof ApiError && err.kind === "SESSION"))
+        setProblem({ failure: err, scope, retry: () => void save(true) });
+      else {
+        const conflict = err instanceof ApiError && err.code === "REVISION_CONFLICT";
+        setResult({ tone: "danger", text: conflict ? a.conflictReload : errorText(err, m.unavailable), conflict });
+      }
+      return { ok: false };
+    } finally {
+      setBusy(false);
+    }
+  };
+  useUnsavedChanges(dirty, () => save());
 
   if (!hydrated || (!data && !loadError)) return <LoadingState label={a.loading} />;
   if (!data)
     return (
       <>
         <PageHeader title={a.settingsTitle} />
-        <ErrorState title={m.errorTitle} body={loadError} action={<button type="button" onClick={() => void load()}>{m.retry}</button>} />
+        <ErrorState title={m.errorTitle} body={errorText(loadError, m.unavailable)} action={<button type="button" onClick={() => void load()}>{m.retry}</button>} />
       </>
     );
 
   const { settings, status, authentication } = data;
 
-  async function save(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    setBusy(true);
-    setResult(null);
-    try {
-      await api("settings", {
-        method: "PATCH",
-        revision: settings.revision,
-        idempotencyKey: key,
-        body: {
-          defaultTimezone: String(f.get("defaultTimezone") ?? "").trim(),
-          defaultCampaignThreshold: Number(f.get("defaultCampaignThreshold")),
-          staffInvitationHours: Number(f.get("staffInvitationHours")),
-        },
-      });
-      setKey(crypto.randomUUID());
-      setResult({ tone: "success", text: a.defaultsSaved });
-      await load();
-    } catch (err) {
-      const conflict = err instanceof ApiError && err.code === "REVISION_CONFLICT";
-      setResult({ tone: "danger", text: conflict ? a.conflictReload : errorText(err, m.unavailable), conflict });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <>
       <PageHeader title={a.settingsTitle} sub={a.settingsLead} />
 
-      <form className="panel stack" onSubmit={save} aria-labelledby="defaults-heading" key={settings.revision}>
+      <form
+        ref={formRef}
+        className="panel stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+        onInput={checkDirty}
+        onChange={checkDirty}
+        aria-labelledby="defaults-heading"
+        key={settings.revision}
+      >
         <div className="card-head">
           <h2 id="defaults-heading">{a.defaultsTitle}</h2>
           <span>
@@ -192,6 +240,15 @@ export function SettingsScreen({ profile }: { profile: Profile }) {
             )}
           </Alert>
         )}
+        <ChangeProblem
+          locale={locale}
+          problem={problem}
+          ledger={api.ledger}
+          busy={busy}
+          onCheck={() => void load()}
+          onDismiss={() => setProblem(null)}
+          testId="settings-problem"
+        />
         <button type="submit" disabled={busy}>{busy ? a.saving : a.saveDefaults}</button>
       </form>
 

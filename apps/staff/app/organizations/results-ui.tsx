@@ -1,6 +1,8 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
-import { jsonOf, staffFetch } from "../staff-fetch";
+import { ChangeProblem, silent, useStaffApi, type ChangeFailure } from "../request-ui";
+import { RequestFailure } from "../staff-request";
+import { useUnsavedChanges, type SaveOutcome } from "../unsaved";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
@@ -561,47 +563,57 @@ function RecommendationCard({
   staff: StaffOption[];
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState({
+  const stored = {
     status: item.action?.status ?? "OPEN",
     ownerStaffId: item.action?.ownerStaffId ?? "",
     dueDate: item.action?.dueDate ?? "",
     staffNotes: item.action?.staffNotes ?? "",
     resolution: item.action?.resolution ?? "",
-  });
+  };
+  const [form, setForm] = useState(stored);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  const client = useStaffApi(locale);
+  // Dirty against what the server holds for this action; a confirmed save
+  // reloads the card with the saved values, which are then clean.
+  const dirty = JSON.stringify(form) !== JSON.stringify(stored);
+  useUnsavedChanges(dirty, () => save());
   const group = data.groups?.find((g) => g.key === item.groupKey);
   const metricLabel = (key: string) =>
     localeText(data.metrics.find((x) => x.key === key)?.label, locale) || key;
-  const save = async () => {
+  // The first save creates the follow-up row (no revision: not replaceable
+  // while unconfirmed); later saves carry its revision and may replace.
+  const scope = `recommendation-action:${item.id}`;
+  const save = async (again = false): Promise<SaveOutcome> => {
     setBusy(true);
     setNote("");
+    setProblem(null);
     try {
-      const r = await fetch(
-        `/api/v1/organizations/${org}/recommendation-actions/${item.id}`,
-        {
+      if (again) await client.retry(scope);
+      else
+        await client.mutate(scope, `/api/v1/organizations/${org}/recommendation-actions/${item.id}`, {
           method: "PATCH",
-          headers: {
-            "content-type": "application/json",
-            "idempotency-key": crypto.randomUUID(),
-            "accept-language": locale,
-            ...(item.action ? { "if-match": `"${item.action.revision}"` } : {}),
-          },
-          body: JSON.stringify({
+          revision: item.action?.revision,
+          replace: !!item.action,
+          body: {
             status: form.status,
             ownerStaffId: form.ownerStaffId || null,
             dueDate: form.dueDate || null,
             staffNotes: form.staffNotes || null,
             resolution: form.resolution || null,
-          }),
-        },
-      );
-      const json = await jsonOf(r);
-      if (!r.ok) throw new Error(json.message ?? "");
+          },
+        });
       setNote(m.saved);
       onSaved();
+      return { ok: true };
     } catch (e) {
-      setNote(e instanceof Error && e.message ? e.message : m.unavailable);
+      if (!silent(e)) {
+        if (e instanceof RequestFailure && (e.uncertain || e.kind === "SESSION"))
+          setProblem({ failure: e, scope, retry: () => void save(true) });
+        else setNote(e instanceof Error && e.message ? e.message : m.unavailable);
+      }
+      return { ok: false };
     } finally {
       setBusy(false);
     }
@@ -725,6 +737,14 @@ function RecommendationCard({
           </button>
           <span role="status">{note}</span>
         </div>
+        <ChangeProblem
+          locale={locale}
+          problem={problem}
+          ledger={client.ledger}
+          busy={busy}
+          onCheck={onSaved}
+          onDismiss={() => setProblem(null)}
+        />
       </div>
     </section>
   );
@@ -747,6 +767,7 @@ function Recommendations({
   // The owner list is staff identity, not result data: it comes from the access
   // surface and never from the release.
   const [staff, setStaff] = useState<StaffOption[]>([]);
+  const client = useStaffApi(locale);
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -756,13 +777,11 @@ function Recommendations({
         const all: StaffOption[] = [];
         let cursor: string | null = null;
         for (let page = 0; page < 20; page++) {
-          const r: Response = await fetch(
+          const data: { items?: StaffOption[]; nextCursor?: string | null } = await client.read(
             `/api/v1/staff?status=ACTIVE&limit=100${cursor ? `&cursor=${cursor}` : ""}`,
           );
-          if (!r.ok) return;
-          const json = await jsonOf(r);
-          all.push(...(json.data.items ?? []));
-          cursor = json.data.nextCursor ?? null;
+          all.push(...(data.items ?? []));
+          cursor = data.nextCursor ?? null;
           if (!cursor) break;
         }
         if (live) setStaff(all);
@@ -773,7 +792,7 @@ function Recommendations({
     return () => {
       live = false;
     };
-  }, []);
+  }, [client]);
   const items = data.items ?? [];
   const preview = data.previewCount ?? 5;
   const shown = all ? items : items.slice(0, preview);
@@ -824,6 +843,7 @@ export function Results({
   const [data, setData] = useState<ViewData | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const client = useStaffApi(locale);
   const hydrated = useSyncExternalStore(
     subscribe,
     () => true,
@@ -841,28 +861,26 @@ export function Results({
           return;
         }
         const suffix = next === "overview" ? "" : `/${next}`;
-        const r = await staffFetch(locale)(
-          `/api/v1/organizations/${org}/assessments/${roundId}/results${suffix}`,
-          { headers: { "Accept-Language": locale } },
-        );
-        const json = await jsonOf(r);
-        if (!r.ok)
-          throw new Error(
-            json.code === "RESULTS_NOT_READY"
-              ? m.notReady
-              : json.code === "RESULTS_UNAVAILABLE"
-                ? m.unavailable
-                : (json.message ?? base.unavailable),
+        try {
+          setData(
+            await client.read<ViewData>(
+              `/api/v1/organizations/${org}/assessments/${roundId}/results${suffix}`,
+            ),
           );
-        setData(json.data);
+        } catch (e) {
+          if (e instanceof RequestFailure && e.code === "RESULTS_NOT_READY") throw new Error(m.notReady);
+          if (e instanceof RequestFailure && e.code === "RESULTS_UNAVAILABLE") throw new Error(m.unavailable);
+          throw e;
+        }
       } catch (e) {
+        if (silent(e)) return;
         setData(null);
         setError(e instanceof Error ? e.message : base.unavailable);
       } finally {
         setBusy(false);
       }
     },
-    [org, roundId, locale, m, base],
+    [org, roundId, client, m, base],
   );
   useEffect(() => {
     void load(view);

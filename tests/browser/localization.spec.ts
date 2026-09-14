@@ -132,11 +132,14 @@ test("attachment error states read truthfully beside the control on a 320px Arab
   await expect(nearby).toHaveText(/حجم الملف يتجاوز الحد المسموح به/);
   await expect(nearby).toBeInViewport();
 
-  // A connection that drops mid-upload says the service did not answer, in
-  // Arabic, and never a browser's own English network message.
+  // A connection that drops mid-upload says so, in Arabic, and never a
+  // browser's own English network message. Since Post-Audit Repair Pass 2 it
+  // also says the upload's outcome is unconfirmed (the bytes may have arrived)
+  // instead of the generic "service unavailable" (D-136).
   await page.route("**/attachments/*/content", (route) => route.abort("internetdisconnected"));
   await input.setInputFiles({ name: "تقرير.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF\n") });
-  await expect(nearby).toHaveText(/الخدمة غير متاحة حاليًا/);
+  await expect(nearby).toContainText("انقطع الاتصال بالخادم");
+  await expect(nearby).toContainText("لم يتأكد حفظ هذا التغيير");
   await expect(nearby).not.toContainText("fetch");
   await page.unroute("**/attachments/*/content");
 

@@ -23,6 +23,7 @@ import { Label, Lockup, Micro } from "../../../src/ui";
 import { messages, type Locale } from "../../../src/i18n";
 import { adminMessages } from "../../../src/admin-i18n";
 import { LocaleSwitch } from "./locale-switch";
+import { UnsavedChangesGuard } from "./unsaved";
 
 export type Section =
   | "overview"
@@ -281,6 +282,9 @@ export function AppBar({
           <LocaleSwitch locale={locale} />
         </div>
       </div>
+      {/* One unsaved-changes guard per signed-in screen (Post-Audit Repair
+          Pass 2): the language switch, sign-out and page links ask through it. */}
+      <UnsavedChangesGuard locale={locale} />
     </header>
   );
 }

@@ -32,6 +32,122 @@ export type Version = {
   schema_hash: string | null;
   engine_version: string;
 };
+// Questionnaire targeting (020). The organization always owns the
+// questionnaire; a target only narrows it to some of that organization's own
+// departments. Department identifiers travel, never names.
+export const targetInput = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("ORGANIZATION") }).strict(),
+  z
+    .object({
+      mode: z.literal("DEPARTMENTS"),
+      departmentIds: z.array(uuid).min(1).max(500),
+    })
+    .strict(),
+]);
+export type TargetInput = z.infer<typeof targetInput>;
+export type DepartmentOption = {
+  id: string;
+  code: string;
+  name_ar: string;
+  name_en: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+};
+export type QuestionnaireTarget = {
+  target_mode: "ORGANIZATION" | "DEPARTMENTS";
+  departments: DepartmentOption[];
+};
+export async function departmentOptions(
+  tx: Tx,
+  org: string,
+): Promise<DepartmentOption[]> {
+  const r =
+    await sql<DepartmentOption>`select id,code,name_ar,name_en,status from instrument.department_options(${org}::uuid)`.execute(
+      tx,
+    );
+  return r.rows;
+}
+// Department labels for questionnaires of one organization, resolved from the
+// relational target rows. Global questionnaires have no departments.
+export async function targetDepartments(
+  tx: Tx,
+  org: string | null,
+  questionnaireIds: string[],
+): Promise<Map<string, DepartmentOption[]>> {
+  const result = new Map<string, DepartmentOption[]>();
+  if (!org || !questionnaireIds.length) return result;
+  const rows = await sql<{
+    questionnaire_id: string;
+    department_id: string;
+  }>`select questionnaire_id,department_id from instrument.questionnaire_department where organization_id=${org}::uuid and questionnaire_id = any(${questionnaireIds}::uuid[])`.execute(
+    tx,
+  );
+  if (!rows.rows.length) return result;
+  const options = new Map(
+    (await departmentOptions(tx, org)).map((d) => [d.id, d]),
+  );
+  for (const row of rows.rows) {
+    const d = options.get(row.department_id);
+    if (!d) continue;
+    result.set(row.questionnaire_id, [
+      ...(result.get(row.questionnaire_id) ?? []),
+      d,
+    ]);
+  }
+  for (const list of result.values())
+    list.sort(
+      (a, b) => a.name_ar.localeCompare(b.name_ar, "ar") || a.id.localeCompare(b.id),
+    );
+  return result;
+}
+export async function saveTarget(
+  tx: Tx,
+  args: {
+    org: string | null;
+    qid: string;
+    revision: string | null;
+    target: TargetInput;
+    idem: string;
+  },
+) {
+  if (!args.org) throw new AppError("VALIDATION_FAILED", 422);
+  const departmentIds =
+    args.target.mode === "DEPARTMENTS"
+      ? [...new Set(args.target.departmentIds)].sort()
+      : [];
+  const hash = digest(
+    canonicalJson({
+      org: args.org,
+      qid: args.qid,
+      mode: args.target.mode,
+      departmentIds,
+    }),
+  );
+  await sql`select instrument.save_target(${args.org}::uuid,${args.qid}::uuid,${args.revision}::bigint,${args.target.mode},${departmentIds}::uuid[],${args.idem}::uuid,${hash})`.execute(
+    tx,
+  );
+}
+export async function questionnaireDetail(
+  tx: Tx,
+  org: string | null,
+  qid: string,
+) {
+  const q = await sql<
+    Record<string, unknown>
+  >`select * from instrument.questionnaire where id=${qid}::uuid and organization_id is not distinct from ${org}::uuid`.execute(
+    tx,
+  );
+  if (!q.rows.length) throw new AppError("NOT_FOUND", 404);
+  const versions =
+    await sql`select id,version_number,state,revision,metadata->'title' title from instrument.questionnaire_version where questionnaire_id=${qid}::uuid order by version_number desc limit 100`.execute(
+      tx,
+    );
+  const departments = await targetDepartments(tx, org, [qid]);
+  return {
+    ...q.rows[0],
+    departments: departments.get(qid) ?? [],
+    versions: versions.rows,
+  };
+}
 export async function instrumentAccess(
   tx: Tx,
   org: string | null,
@@ -121,14 +237,23 @@ export async function instrumentRoute(
   path: string,
   tx: Tx,
 ): Promise<Response | null> {
+  // The department choices of one organization, for targeting and filtering.
+  const options = path.match(/^organizations\/([^/]+)\/questionnaire-departments$/);
+  if (options) {
+    if (req.method !== "GET") throw new AppError("NOT_FOUND", 404);
+    const org = uuid.parse(options[1]);
+    await instrumentAccess(tx, org);
+    return response({ items: await departmentOptions(tx, org) });
+  }
   const match = path.match(
-    /^(?:organizations\/([^/]+)\/)?questionnaires(?:\/([^/]+)(?:\/(versions|archive)(?:\/([^/]+)(?:\/(publish|retire|new-version|validate))?)?)?)?$/,
+    /^(?:organizations\/([^/]+)\/)?questionnaires(?:\/([^/]+)(?:\/(versions|archive|target)(?:\/([^/]+)(?:\/(publish|retire|new-version|validate))?)?)?)?$/,
   );
   if (!match) return null;
   const org = match[1] ? uuid.parse(match[1]) : null,
     qid = match[2] ? uuid.parse(match[2]) : null,
     vid = match[4] ? uuid.parse(match[4]) : null,
     action = match[5];
+  if (match[3] === "target" && vid) throw new AppError("NOT_FOUND", 404);
   await instrumentAccess(tx, org, req.method !== "GET");
   if (req.method === "GET" && !qid) {
     const query = z
@@ -136,32 +261,42 @@ export async function instrumentRoute(
         q: z.string().max(100).default(""),
         status: z.enum(["ACTIVE", "ARCHIVED", "ALL"]).default("ACTIVE"),
         cursor: uuid.optional(),
+        departmentId: uuid.optional(),
       })
       .strict()
       .parse(Object.fromEntries(new URL(req.url).searchParams));
-    const rows =
-      await sql`select id,name_ar,name_en,source,status,revision from instrument.questionnaire where organization_id is not distinct from ${org}::uuid and (${query.status}='ALL' or status=${query.status}) and (${query.cursor ?? null}::uuid is null or id>${query.cursor ?? null}::uuid) and (${query.q}='' or strpos(lower(name_ar||' '||name_en),lower(${query.q}))>0) order by id limit 51`.execute(
-        tx,
-      );
+    const department = query.departmentId ?? null;
+    // A department filter exists only beneath an organization, and only for
+    // that organization's own departments.
+    if (department) {
+      if (!org) throw new AppError("VALIDATION_FAILED", 422);
+      if (!(await departmentOptions(tx, org)).some((d) => d.id === department))
+        throw new AppError("VALIDATION_FAILED", 422);
+    }
+    const rows = await sql<{
+      id: string;
+      target_mode: QuestionnaireTarget["target_mode"];
+    }>`select id,name_ar,name_en,source,status,revision,target_mode from instrument.questionnaire q where organization_id is not distinct from ${org}::uuid and (${query.status}='ALL' or status=${query.status}) and (${query.cursor ?? null}::uuid is null or id>${query.cursor ?? null}::uuid) and (${query.q}='' or strpos(lower(name_ar||' '||name_en),lower(${query.q}))>0) and (${department}::uuid is null or q.target_mode='ORGANIZATION' or exists(select 1 from instrument.questionnaire_department t where t.organization_id=q.organization_id and t.questionnaire_id=q.id and t.department_id=${department}::uuid)) order by id limit 51`.execute(
+      tx,
+    );
+    const items = rows.rows.slice(0, 50);
+    const departments = await targetDepartments(
+      tx,
+      org,
+      items.filter((i) => i.target_mode === "DEPARTMENTS").map((i) => i.id),
+    );
     return response({
-      items: rows.rows.slice(0, 50),
-      nextCursor:
-        rows.rows.length > 50 ? (rows.rows[49] as { id: string }).id : null,
+      items: items.map((i) => ({
+        ...i,
+        departments: departments.get(i.id) ?? [],
+      })),
+      nextCursor: rows.rows.length > 50 ? rows.rows[49].id : null,
     });
   }
   if (req.method === "GET" && qid) {
+    if (match[3] === "target") throw new AppError("NOT_FOUND", 404);
     if (vid) return response(await getVersion(tx, org, qid, vid));
-    const q = await sql<
-      Record<string, unknown>
-    >`select * from instrument.questionnaire where id=${qid}::uuid and organization_id is not distinct from ${org}::uuid`.execute(
-      tx,
-    );
-    if (!q.rows.length) throw new AppError("NOT_FOUND", 404);
-    const versions =
-      await sql`select id,version_number,state,revision,metadata->'title' title from instrument.questionnaire_version where questionnaire_id=${qid}::uuid order by version_number desc limit 100`.execute(
-        tx,
-      );
-    return response({ ...q.rows[0], versions: versions.rows });
+    return response(await questionnaireDetail(tx, org, qid));
   }
   const { idem, revision } = preconditions(req, !!qid);
   if (req.method === "POST" && !qid) {
@@ -180,11 +315,13 @@ export async function instrumentRoute(
             })
             .strict()
             .optional(),
+          target: targetInput.optional(),
         })
         .strict(),
     );
     if (body.source?.organizationId && body.source.organizationId !== org)
       throw new AppError("NOT_FOUND", 404);
+    if (body.target && !org) throw new AppError("VALIDATION_FAILED", 422);
     const d = body.source
       ? copyInstrument(
           (
@@ -198,16 +335,36 @@ export async function instrumentRoute(
         )
       : blankInstrument();
     d.title = body.title;
-    return response(
-      await saveInstrument(tx, {
+    const created = (await saveInstrument(tx, {
+      org,
+      action: "CREATE",
+      document: instrumentSchema.parse(d),
+      sourceId: body.source?.versionId,
+      idem,
+    })) as Version;
+    // Created and targeted in one transaction: a questionnaire is never left
+    // behind with only half of what was asked. A replay answers both steps
+    // from their receipts under the same key.
+    if (body.target && body.target.mode !== "ORGANIZATION") {
+      const current = await sql<{
+        revision: string;
+      }>`select revision from instrument.questionnaire where id=${created.questionnaire_id}::uuid`.execute(
+        tx,
+      );
+      await saveTarget(tx, {
         org,
-        action: "CREATE",
-        document: instrumentSchema.parse(d),
-        sourceId: body.source?.versionId,
+        qid: created.questionnaire_id,
+        revision: current.rows[0].revision,
+        target: body.target,
         idem,
-      }),
-      201,
-    );
+      });
+    }
+    return response(created, 201);
+  }
+  if (req.method === "POST" && qid && match[3] === "target") {
+    const target = await jsonInput(req, targetInput);
+    await saveTarget(tx, { org, qid, revision, target, idem });
+    return response(await questionnaireDetail(tx, org, qid));
   }
   if (req.method === "POST" && qid && match[3] === "archive") {
     await jsonInput(req, z.object({}).strict());

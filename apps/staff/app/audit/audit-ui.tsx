@@ -6,7 +6,7 @@ import { messages, type Locale } from "../../../../src/i18n";
 import { Alert, Badge, EmptyState, ErrorState, LoadingState, Num, PageHeader } from "../../../../src/ui";
 import { ApiError, errorText, useApi, useHydrated, utc } from "../admin-client";
 import type { OrganizationOption } from "../admin-controls";
-import { jsonOf, staffFetch } from "../staff-fetch";
+import { RequestFailure, staffRequest } from "../staff-request";
 
 type AuditEvent = {
   id: string;
@@ -146,17 +146,22 @@ export function AuditBrowser({ profile, initial }: { profile: Profile; initial: 
     setExporting(true);
     setExportState(null);
     try {
-      const r = await staffFetch(locale)("/api/v1/audit/exports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept-Language": locale },
-        body: JSON.stringify({ filters: query }),
-      });
-      if (r.status === 401) return location.assign("/login?expired=1");
-      if (!r.ok) {
-        const json = await jsonOf(r);
-        throw new ApiError(json.message ?? m.unavailable, r.status, json.code ?? "");
+      // Bounded like every staff request, including the file body. An export
+      // is not keyed and is itself audited, so a lost answer is never replayed
+      // automatically; exporting again is the reader's own decision.
+      let r;
+      try {
+        r = await staffRequest(locale, "/api/v1/audit/exports", {
+          method: "POST",
+          body: { filters: query },
+          read: "blob",
+          timeoutMs: 60_000,
+        });
+      } catch (e) {
+        if (e instanceof RequestFailure && e.kind === "SESSION") return location.assign("/login?expired=1");
+        throw e;
       }
-      const blob = await r.blob();
+      const blob = r.blob!;
       const name = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1] ?? "orgfit-audit.csv";
       const href = URL.createObjectURL(blob);
       const link = document.createElement("a");

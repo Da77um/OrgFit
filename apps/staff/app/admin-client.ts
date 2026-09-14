@@ -1,63 +1,50 @@
-import { useCallback, useSyncExternalStore } from "react";
-import { messages, type Locale } from "../../../src/i18n";
-import { jsonOf, staffFetch } from "./staff-fetch";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { type Locale } from "../../../src/i18n";
+import { useStaffApi } from "./request-ui";
+import { RequestFailure } from "./staff-request";
 
 // Request helpers shared by the administration and account screens.
 //
 // A refusal keeps its code, so a screen can tell "someone changed this record"
 // (offer a reload) from "you may not do this" and from "the service did not
-// answer". An ended session goes to sign-in and says so, as everywhere else.
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code: string,
-  ) {
-    super(message);
-  }
-}
+// answer". Since Post-Audit Repair Pass 2 every call is bounded, and every
+// change is keyed per logical attempt: `scope` names the change (it defaults
+// to the method and path), and an unconfirmed attempt is retried with the same
+// key and body through `api.retry(scope)`.
+export { RequestFailure as ApiError };
 
 export type Mutation = {
   method: "POST" | "PATCH";
   body?: unknown;
   revision?: number | string;
-  idempotencyKey?: string;
+  scope?: string;
+  replace?: boolean;
 };
 
+export const scopeOf = (path: string, mutation: Mutation) =>
+  mutation.scope ?? `${mutation.method} ${path}`;
+
 export function useApi(locale: Locale) {
-  return useCallback(
-    async <T>(path: string, mutation?: Mutation): Promise<T> => {
-      const r = await staffFetch(locale)(`/api/v1/${path}`, {
-        method: mutation?.method ?? "GET",
-        headers: {
-          "Accept-Language": locale,
-          ...(mutation
-            ? {
-                "Content-Type": "application/json",
-                "Idempotency-Key": mutation.idempotencyKey ?? crypto.randomUUID(),
-              }
-            : {}),
-          ...(mutation?.revision !== undefined
-            ? { "If-Match": `"${mutation.revision}"` }
-            : {}),
-        },
-        body: mutation ? JSON.stringify(mutation.body ?? {}) : undefined,
-      });
-      if (r.status === 401) {
-        location.assign("/login?expired=1");
-        throw new ApiError(messages(locale).denied, 401, "SESSION_REQUIRED");
-      }
-      if (r.status === 204) return null as T;
-      const json = await jsonOf(r);
-      if (!r.ok)
-        throw new ApiError(
-          json.message ?? messages(locale).unavailable,
-          r.status,
-          json.code ?? "TEMPORARILY_UNAVAILABLE",
-        );
-      return json.data as T;
-    },
-    [locale],
+  const client = useStaffApi(locale);
+  const call = useCallback(
+    <T,>(path: string, mutation?: Mutation): Promise<T> =>
+      mutation
+        ? client.mutate<T>(scopeOf(path, mutation), `/api/v1/${path}`, {
+            method: mutation.method,
+            body: mutation.body ?? {},
+            revision: mutation.revision,
+            replace: mutation.replace,
+          })
+        : client.read<T>(`/api/v1/${path}`),
+    [client],
+  );
+  return useMemo(
+    () =>
+      Object.assign(call, {
+        retry: client.retry,
+        ledger: client.ledger,
+      }),
+    [call, client],
   );
 }
 

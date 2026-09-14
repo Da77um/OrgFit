@@ -1,5 +1,7 @@
 "use client";
-import { jsonOf, staffFetch } from "../staff-fetch";
+import { ChangeProblem, silent, useStaffApi, type ChangeFailure } from "../request-ui";
+import { RequestFailure } from "../staff-request";
+import { navigateAfterSave, useUnsavedChanges, type SaveOutcome } from "../unsaved";
 /* Full navigation deliberately clears organization context and draft state. */
 import { useEffect, useState, useCallback } from "react";
 import type { Profile } from "../../../../src/db";
@@ -29,6 +31,18 @@ import {
   PageHeader,
 } from "../../../../src/ui";
 import { InstrumentPreview } from "./preview";
+import type { QuestionnaireTarget } from "../../../../src/instruments";
+import {
+  TargetPicker,
+  TargetSummary,
+  entireOrganization,
+  organizationName,
+  departmentName,
+  targetBody,
+  targetComplete,
+  useDepartmentOptions,
+  type TargetValue,
+} from "./target-picker";
 type LibraryItem = {
   id: string;
   name_ar: string;
@@ -36,8 +50,9 @@ type LibraryItem = {
   source: string;
   status: string;
   revision: string;
-};
+} & Partial<QuestionnaireTarget>;
 type LibraryDetail = LibraryItem & {
+  organization_id: string | null;
   versions: {
     id: string;
     version_number: number;
@@ -78,7 +93,16 @@ export function InstrumentWorkspace({
     [creating, setCreating] = useState(false),
     [cloneTarget, setCloneTarget] = useState(org ?? ""),
     [issues, setIssues] = useState<{ path: string; code: string }[]>([]),
-    [newTypes, setNewTypes] = useState<Record<string, QuestionType>>({});
+    [newTypes, setNewTypes] = useState<Record<string, QuestionType>>({}),
+    // Department targeting beneath the organization. Changing an organization
+    // clears its department selection in the same event, so identifiers from
+    // one organization are never carried into another.
+    [createOrg, setCreateOrg] = useState(org ?? ""),
+    [createTarget, setCreateTarget] = useState<TargetValue>(entireOrganization),
+    [cloneTargetValue, setCloneTargetValue] = useState<TargetValue>(entireOrganization),
+    [editTarget, setEditTarget] = useState<TargetValue>(entireOrganization),
+    [targetDirty, setTargetDirty] = useState(false),
+    [departmentFilter, setDepartmentFilter] = useState("");
   const base = `/api/v1/${org ? `organizations/${org}/` : ""}questionnaires`,
     suffix = org ? `?organization=${org}` : "";
   const canManage =
@@ -89,48 +113,90 @@ export function InstrumentWorkspace({
       detail?.source !== "BUILTIN" &&
       detail?.status === "ACTIVE" &&
       version?.state === "DRAFT";
+  // Bounded requests; every change keyed per logical attempt (Post-Audit
+  // Repair Pass 2). A change that carries a revision may replace an
+  // unconfirmed one in its scope (a stale revision is refused); a create may
+  // not. `again` re-sends the scope's unconfirmed attempt unchanged.
+  const client = useStaffApi(locale);
+  const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  const scopeOptions = useDepartmentOptions(client.read, org),
+    createOptions = useDepartmentOptions(client.read, createOrg || null),
+    cloneOptions = useDepartmentOptions(client.read, cloneTarget || null);
+  const orgLabel = (id: string | null) =>
+    organizationName(organizations.find((o) => o.id === id), locale);
   const api = useCallback(
-    async (url: string, method = "GET", body?: unknown, revision?: string) => {
-      const res = await staffFetch(locale)(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "Accept-Language": locale,
-          "Idempotency-Key": crypto.randomUUID(),
-          ...(revision ? { "If-Match": `"${revision}"` } : {}),
-        },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      });
-      const data = await jsonOf(res);
-      if (!res.ok) {
-        if (data.issues) setIssues(data.issues);
-        throw Error(
-          res.status === 409
-            ? t(
-                "تعارض مع نسخة أحدث. احتفظ بتعديلاتك ثم أعد تحميل النسخة؛ لم تُستبدل بياناتك.",
-                "A newer revision exists. Keep your edits, then reload the version; your changes were not overwritten.",
-              )
-            : data.message ||
-                t(
-                  "تعذر تنفيذ العملية. راجع الأخطاء وحاول مجدداً.",
-                  "Could not complete the operation. Review errors and retry.",
-                ),
+    async (
+      url: string,
+      method: "GET" | "POST" | "PATCH" = "GET",
+      body?: unknown,
+      revision?: string,
+      scope?: string,
+      again = false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ): Promise<any> => {
+      try {
+        if (method === "GET") return await client.read(url);
+        const s = scope ?? `${method} ${url}`;
+        return again
+          ? await client.retry(s)
+          : await client.mutate(s, url, { method, body, revision, replace: revision !== undefined });
+      } catch (e) {
+        if (!(e instanceof RequestFailure)) throw e;
+        const issues = e.body?.issues;
+        if (Array.isArray(issues)) setIssues(issues);
+        if (e.uncertain || e.kind === "SESSION" || e.kind === "CANCELLED" || e.kind !== "REJECTED") throw e;
+        throw Object.assign(
+          new RequestFailure(
+            e.status === 409 && e.code !== "IDEMPOTENCY_CONFLICT"
+              ? t(
+                  "تعارض مع نسخة أحدث. احتفظ بتعديلاتك ثم أعد تحميل النسخة؛ لم تُستبدل بياناتك.",
+                  "A newer revision exists. Keep your edits, then reload the version; your changes were not overwritten.",
+                )
+              : e.message ||
+                  t(
+                    "تعذر تنفيذ العملية. راجع الأخطاء وحاول مجدداً.",
+                    "Could not complete the operation. Review errors and retry.",
+                  ),
+            e.kind,
+            { status: e.status, code: e.code, body: e.body },
+          ),
+          { attempt: e.attempt },
         );
       }
-      return data.data;
     },
-    [locale, t],
+    [client, t],
   );
+  // An unknown outcome or an ended session is shown with its exact retry; a
+  // refusal is shown as before.
+  const fail = useCallback((e: unknown, scope?: string, retry?: () => void) => {
+    if (silent(e)) return;
+    if (e instanceof RequestFailure && (e.uncertain || e.kind === "SESSION"))
+      setProblem({ failure: e, scope, retry });
+    else setError(e instanceof Error ? e.message : "");
+  }, []);
   const loadList = useCallback(
-    async (after?: string) => {
+    async (after?: string, department = departmentFilter) => {
       const data = await api(
-        `${base}?${new URLSearchParams({ q, status, ...(after ? { cursor: after } : {}) })}`,
+        `${base}?${new URLSearchParams({
+          q,
+          status,
+          ...(after ? { cursor: after } : {}),
+          ...(org && department ? { departmentId: department } : {}),
+        })}`,
       );
       setList((old) => (after ? [...old, ...data.items] : data.items));
       setCursor(data.nextCursor);
     },
-    [api, base, q, status],
+    [api, base, q, status, org, departmentFilter],
   );
+  const showDetail = useCallback((data: LibraryDetail) => {
+    setDetail(data);
+    setEditTarget({
+      mode: data.target_mode ?? "ORGANIZATION",
+      departmentIds: (data.departments ?? []).map((d) => d.id),
+    });
+    setTargetDirty(false);
+  }, []);
   useEffect(() => {
     let live = true;
     setReady(true);
@@ -139,7 +205,7 @@ export function InstrumentWorkspace({
         if (path[0]) {
           const data = await api(`${base}/${path[0]}`);
           if (!live) return;
-          setDetail(data);
+          showDetail(data);
           if (path[1] === "versions" && path[2]) {
             const v = await api(`${base}/${path[0]}/versions/${path[2]}`);
             if (live) {
@@ -155,15 +221,20 @@ export function InstrumentWorkspace({
           }
         }
       } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : "");
+        if (live && !silent(e)) setError(e instanceof Error ? e.message : "");
       }
     })();
     return () => {
       live = false;
     };
-  }, [api, base, path]);
-  const save = useCallback(async () => {
-    if (!doc || !version || busy || !editable) return;
+  }, [api, base, path, showDetail]);
+  // Autosave and the leave dialog share this one save. If an earlier save's
+  // answer was lost, that exact attempt is sent again first (same key and
+  // body: the server answers from its receipt), and only then is the current
+  // document saved against the revision it produced.
+  const save = useCallback(async (): Promise<SaveOutcome> => {
+    if (!dirty) return { ok: true };
+    if (!doc || !version || busy || !editable) return { ok: false };
     const parsed = instrumentSchema.safeParse(doc);
     if (!parsed.success) {
       setError(
@@ -172,7 +243,7 @@ export function InstrumentWorkspace({
           "Some fields are invalid. Check numbers and text; only plain text is allowed.",
         ),
       );
-      return;
+      return { ok: false };
     }
     const problems = definitionIssues(parsed.data);
     if (problems.length) {
@@ -183,60 +254,60 @@ export function InstrumentWorkspace({
           "Fix configuration structure before saving.",
         ),
       );
-      return;
+      return { ok: false };
     }
+    const url = `${base}/${version.questionnaire_id}/versions/${version.id}`;
+    const scope = "version-save";
     setBusy(true);
     setError("");
+    setProblem(null);
     try {
-      const v = await api(
-        `${base}/${version.questionnaire_id}/versions/${version.id}`,
-        "PATCH",
-        parsed.data,
-        version.revision,
-      );
+      let current: Version = version;
+      const replayed = !!client.ledger.uncertain(scope);
+      if (replayed) {
+        current = await api(url, "PATCH", undefined, undefined, scope, true);
+        setVersion(current);
+      }
+      const v: Version =
+        replayed && JSON.stringify(current.document) === JSON.stringify(parsed.data)
+          ? current
+          : await api(url, "PATCH", parsed.data, current.revision, scope);
       setVersion(v);
       setDoc(v.document);
+      // Clean only now that the server has confirmed this document.
       setDirty(false);
       setIssues([]);
       setMessage(t("تم الحفظ.", "Saved."));
+      return { ok: true };
     } catch (e) {
-      setError((e as Error).message);
+      fail(e, scope, () => void save());
+      return { ok: false };
     } finally {
       setBusy(false);
     }
-  }, [doc, version, busy, editable, api, base, t]);
+  }, [dirty, doc, version, busy, editable, api, base, t, client, fail]);
+  // Autosave pauses while a save is unconfirmed: the reader chooses to send it
+  // again, and the edits stay protected by the leave guard meanwhile.
   useEffect(() => {
-    if (!dirty || busy || error) return;
+    if (!dirty || busy || error || problem) return;
     const timer = setTimeout(() => void save(), 1400);
     return () => clearTimeout(timer);
-  }, [dirty, busy, error, save]);
-  useEffect(() => {
-    const warn = (e: BeforeUnloadEvent) => {
-      if (dirty) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, busy, error, problem, save]);
+  useUnsavedChanges(dirty && editable, save);
   const change = (d: Instrument) => {
     setDoc(d);
     setDirty(true);
     setError("");
     setMessage(t("تعديلات غير محفوظة…", "Unsaved changes…"));
   };
-  const action = async (name: string) => {
+  const action = async (name: string, again = false) => {
     if (!version || dirty) return;
+    const url = `${base}/${version.questionnaire_id}/versions/${version.id}/${name}`;
     setBusy(true);
     setError("");
+    setProblem(null);
     try {
-      const result = await api(
-        `${base}/${version.questionnaire_id}/versions/${version.id}/${name}`,
-        "POST",
-        {},
-        version.revision,
-      );
+      const result = await api(url, "POST", {}, version.revision, `POST ${url}`, again);
       if (name === "validate") {
         setIssues(result.issues);
         setMessage(
@@ -248,7 +319,7 @@ export function InstrumentWorkspace({
               ),
         );
       } else if (name === "new-version")
-        location.assign(
+        navigateAfterSave(
           `/questionnaires/${result.questionnaire_id}/versions/${result.id}${suffix}`,
         );
       else {
@@ -257,21 +328,27 @@ export function InstrumentWorkspace({
         setMessage(t("تم تحديث حالة النسخة.", "Version status updated."));
       }
     } catch (e) {
-      setError((e as Error).message);
+      fail(e, `POST ${base}/${version.questionnaire_id}/versions/${version.id}/${name}`, () => void action(name, true));
     } finally {
       setBusy(false);
     }
   };
-  const create = async (clone = false) => {
+  const create = async (clone = false, again = false) => {
     setBusy(true);
     setError("");
+    setProblem(null);
+    const scope = "questionnaire-create";
     try {
-      const target = clone ? cloneTarget : org;
-      const result = await api(
+      const target = clone ? cloneTarget : createOrg;
+      const targeting = clone
+        ? targetBody(cloneTargetValue, cloneOptions.items)
+        : targetBody(createTarget, createOptions.items);
+      const result = again ? await api("", "POST", undefined, undefined, scope, true) : await api(
         `/api/v1/${target ? `organizations/${target}/` : ""}questionnaires`,
         "POST",
         {
           title,
+          ...(target ? { target: targeting } : {}),
           ...(clone && version
             ? {
                 source: {
@@ -282,12 +359,38 @@ export function InstrumentWorkspace({
               }
             : {}),
         },
+        undefined,
+        scope,
       );
-      location.assign(
+      navigateAfterSave(
         `/questionnaires/${result.questionnaire_id}/versions/${result.id}${target ? `?organization=${target}` : ""}`,
       );
     } catch (e) {
-      setError((e as Error).message);
+      fail(e, scope, () => void create(clone, true));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveTarget = async (again = false) => {
+    if (!detail) return;
+    const url = `${base}/${detail.id}/target`,
+      scope = `POST ${url}`;
+    setBusy(true);
+    setError("");
+    setProblem(null);
+    try {
+      const result = await api(
+        url,
+        "POST",
+        targetBody(editTarget, scopeOptions.items),
+        detail.revision,
+        scope,
+        again,
+      );
+      showDetail(result);
+      setMessage(t("تم حفظ الاستهداف.", "Target saved."));
+    } catch (e) {
+      fail(e, scope, () => void saveTarget(true));
     } finally {
       setBusy(false);
     }
@@ -420,6 +523,14 @@ export function InstrumentWorkspace({
                 body={error}
               />
             )}
+            <ChangeProblem
+              locale={locale}
+              problem={problem}
+              ledger={client.ledger}
+              busy={busy}
+              onDismiss={() => setProblem(null)}
+              testId="questionnaire-problem"
+            />
             <p role="status" aria-live="polite">
               {busy ? t("جارٍ الحفظ…", "Saving…") : message}
             </p>
@@ -484,6 +595,34 @@ export function InstrumentWorkspace({
                     ))}
                   </select>
                 </label>
+                {/* Beneath the organization: disabled until one is chosen, and
+                    only that organization's departments are offered. */}
+                <label>
+                  {t("القسم", "Department")}
+                  <select
+                    value={departmentFilter}
+                    disabled={!org || scopeOptions.loading}
+                    data-testid="questionnaire-department-filter"
+                    onChange={(e) => {
+                      setDepartmentFilter(e.target.value);
+                      void loadList(undefined, e.target.value).catch(
+                        (x) => !silent(x) && setError(x.message),
+                      );
+                    }}
+                  >
+                    <option value="">
+                      {org
+                        ? t("كل الأقسام", "All departments")
+                        : t("اختر منظمة أولاً", "Select an organization first")}
+                    </option>
+                    {scopeOptions.items.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {departmentName(d, locale)}
+                        {d.status === "ACTIVE" ? "" : ` (${t("مؤرشف", "archived")})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <form
                   className="row"
                   onSubmit={(e) => {
@@ -515,6 +654,8 @@ export function InstrumentWorkspace({
                     onClick={() => {
                       setCreating(!creating);
                       setTitle(tr());
+                      setCreateOrg(org ?? "");
+                      setCreateTarget(entireOrganization);
                     }}
                   >
                     {t("إنشاء استبيان فارغ", "Create blank questionnaire")}
@@ -522,13 +663,50 @@ export function InstrumentWorkspace({
                 )}
                 </div>
                 {creating && (
-                  <fieldset disabled={busy}>
+                  <fieldset disabled={busy} className="stack" data-testid="questionnaire-create">
                     <Translated
                       label={t("عنوان الاستبيان", "Questionnaire title")}
                       value={title}
                       onChange={setTitle}
                     />
-                    <button onClick={() => void create()}>
+                    <label>
+                      {t("المنظمة", "Organization")}
+                      <select
+                        value={createOrg}
+                        data-testid="questionnaire-create-organization"
+                        onChange={(e) => {
+                          setCreateOrg(e.target.value);
+                          // Keep the chosen mode but never the departments.
+                          setCreateTarget((v) => ({ mode: v.mode, departmentIds: [] }));
+                        }}
+                      >
+                        <option value="">
+                          {t("عامة / قوالب توضيحية", "Global / illustrative templates")}
+                        </option>
+                        {organizations.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {organizationName(o, locale)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {createOrg && (
+                      <TargetPicker
+                        key={createOrg}
+                        name="create"
+                        t={t}
+                        locale={locale}
+                        org={createOrg}
+                        value={createTarget}
+                        onChange={setCreateTarget}
+                        options={createOptions}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      disabled={!!createOrg && !targetComplete(createTarget, createOptions.items)}
+                      onClick={() => void create()}
+                    >
                       {t("إنشاء", "Create")}
                     </button>
                   </fieldset>
@@ -564,6 +742,9 @@ export function InstrumentWorkspace({
                           {t("استبيان مخصص", "Custom questionnaire")}
                         </Badge>
                       )}
+                      {org && (
+                        <TargetSummary t={t} locale={locale} organization={orgLabel(org)} target={item} />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -596,6 +777,44 @@ export function InstrumentWorkspace({
                     )}
                   </p>
                 )}
+                {org && (
+                  <TargetSummary t={t} locale={locale} organization={orgLabel(org)} target={detail} />
+                )}
+                {org &&
+                  canManage &&
+                  detail.source !== "BUILTIN" &&
+                  detail.status === "ACTIVE" && (
+                    <details data-testid="questionnaire-target-edit">
+                      <summary>{t("تعديل الاستهداف", "Change target")}</summary>
+                      <fieldset disabled={busy} className="stack">
+                        <p className="muted">
+                          {t(
+                            "يبقى الاستبيان تابعاً لهذه المنظمة؛ الأقسام تحدد نطاقه داخلها فقط.",
+                            "The questionnaire stays with this organization; departments only narrow it within the organization.",
+                          )}
+                        </p>
+                        <TargetPicker
+                          name="edit"
+                          t={t}
+                          locale={locale}
+                          org={org}
+                          value={editTarget}
+                          onChange={(v) => {
+                            setEditTarget(v);
+                            setTargetDirty(true);
+                          }}
+                          options={scopeOptions}
+                        />
+                        <button
+                          type="button"
+                          disabled={!targetDirty || !targetComplete(editTarget, scopeOptions.items)}
+                          onClick={() => void saveTarget()}
+                        >
+                          {t("حفظ الاستهداف", "Save target")}
+                        </button>
+                      </fieldset>
+                    </details>
+                  )}
                 <ul>
                   {detail.versions.map((v) => (
                     <li key={v.id}>
@@ -618,19 +837,19 @@ export function InstrumentWorkspace({
                     <button
                       disabled={busy}
                       onClick={async () => {
-                        setBusy(true);
-                        try {
-                          await api(
-                            `${base}/${detail.id}/archive`,
-                            "POST",
-                            {},
-                            detail.revision,
-                          );
-                          location.assign(`/questionnaires${suffix}`);
-                        } catch (e) {
-                          setError((e as Error).message);
-                          setBusy(false);
-                        }
+                        const url = `${base}/${detail.id}/archive`;
+                        const archiveOnce = async (again: boolean) => {
+                          setBusy(true);
+                          setProblem(null);
+                          try {
+                            await api(url, "POST", {}, detail.revision, `POST ${url}`, again);
+                            navigateAfterSave(`/questionnaires${suffix}`);
+                          } catch (e) {
+                            fail(e, `POST ${url}`, () => void archiveOnce(true));
+                            setBusy(false);
+                          }
+                        };
+                        await archiveOnce(false);
                       }}
                     >
                       {t("أرشفة الاستبيان", "Archive questionnaire")}
@@ -655,6 +874,9 @@ export function InstrumentWorkspace({
                     {t("كل النسخ", "All versions")}
                   </a>
                 </div>
+                {org && detail && (
+                  <TargetSummary t={t} locale={locale} organization={orgLabel(org)} target={detail} />
+                )}
                 {detail?.source === "BUILTIN" && (
                   <p>
                     {t(
@@ -1031,7 +1253,10 @@ export function InstrumentWorkspace({
                         {t("نطاق النسخة", "Destination scope")}
                         <select
                           value={cloneTarget}
-                          onChange={(e) => setCloneTarget(e.target.value)}
+                          onChange={(e) => {
+                            setCloneTarget(e.target.value);
+                            setCloneTargetValue((v) => ({ mode: v.mode, departmentIds: [] }));
+                          }}
                         >
                           {!org && (
                             <option value="">{t("عامة", "Global")}</option>
@@ -1047,7 +1272,23 @@ export function InstrumentWorkspace({
                             ))}
                         </select>
                       </label>
-                      <button type="button" onClick={() => void create(true)}>
+                      {cloneTarget && (
+                        <TargetPicker
+                          key={cloneTarget}
+                          name="clone"
+                          t={t}
+                          locale={locale}
+                          org={cloneTarget}
+                          value={cloneTargetValue}
+                          onChange={setCloneTargetValue}
+                          options={cloneOptions}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        disabled={!!cloneTarget && !targetComplete(cloneTargetValue, cloneOptions.items)}
+                        onClick={() => void create(true)}
+                      >
                         {t("إنشاء نسخة مخصصة", "Create custom copy")}
                       </button>
                     </fieldset>

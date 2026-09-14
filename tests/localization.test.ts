@@ -14,6 +14,7 @@ import { respondentAr, respondentEn, fill } from "../src/respondent-i18n";
 import { campaignMessages } from "../src/campaign-i18n";
 import { visitMessages } from "../src/visits-i18n";
 import { adminMessages } from "../src/admin-i18n";
+import { resultsMessages } from "../src/results-i18n";
 import { AUDIT_ACTIONS } from "../src/administration";
 
 // Phase 13: locale-independent canonical values, per-field answer rules that
@@ -122,6 +123,17 @@ test("L-4 every catalog touched by this phase is complete in both languages", ()
   // Post-Audit Repair Pass 1: administration screens, with a label for every
   // audit action the server accepts.
   same(adminMessages("ar"), adminMessages("en"), "administration");
+  // Post-Audit Repair Pass 2: request, unsaved-change and background-state
+  // wording, with the same placeholders in both languages.
+  same(resultsMessages("ar"), resultsMessages("en"), "results");
+  const holes = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join();
+  for (const [a, b] of [
+    [staffAr, staffEn],
+    [resultsMessages("ar"), resultsMessages("en")],
+    [visitMessages("ar"), visitMessages("en")],
+    [campaignMessages("ar"), campaignMessages("en")],
+  ] as Record<string, string>[][])
+    for (const key of Object.keys(a)) assert.equal(holes(a[key]), holes(b[key]), key);
   for (const action of AUDIT_ACTIONS)
     for (const locale of ["ar", "en"] as const)
       assert.ok(adminMessages(locale)[`a_${action}`], `${locale} a_${action}`);

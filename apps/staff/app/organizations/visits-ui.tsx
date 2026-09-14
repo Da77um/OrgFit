@@ -1,6 +1,5 @@
 /* Full document navigation intentionally clears organization-scoped state. */
 "use client";
-import { jsonOf, staffFetch } from "../staff-fetch";
 import {
   useCallback,
   useEffect,
@@ -8,6 +7,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { RequestProblem, silent, useStaffApi } from "../request-ui";
+import { RequestFailure, staffRequest } from "../staff-request";
+import { navigateAfterSave, useUnsavedChanges, type SaveOutcome } from "../unsaved";
+import { fillText, minutesSince, overdue as isOverdue, usePollWhile } from "../background-status";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
 import { messages, type Locale } from "../../../../src/i18n";
@@ -23,10 +26,8 @@ import {
 } from "../../../../src/attachment-types";
 import { Workspace, organizationName } from "../shell";
 import {
-  Alert,
   Badge,
   EmptyState,
-  ErrorState,
   Label,
   LoadingState,
   Micro,
@@ -34,6 +35,7 @@ import {
 } from "../../../../src/ui";
 import {
   formatInZone,
+  formatUtc,
   instantToWallClock,
   wallClockToInstant,
 } from "../../../../src/zoned-time";
@@ -185,206 +187,337 @@ export function Visits({
   } | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(true);
-  const [error, setError] = useState("");
+  const [loadProblem, setLoadProblem] = useState<unknown>(null);
   const [note, setNote] = useState("");
-  const [attachmentError, setAttachmentError] = useState("");
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  // One failed change at a time, shown where it was made. `retry` re-sends the
+  // SAME attempt (same idempotency key and body); `scope` names the ledger
+  // entry when there is one.
+  const [problem, setProblem] = useState<{
+    failure: unknown;
+    where: "page" | "attachment";
+    scope?: string;
+    retry?: () => Promise<boolean>;
+  } | null>(null);
+  // The values each open form started from, so "dirty" means "differs from
+  // what was loaded", not "was touched".
+  const [formStart, setFormStart] = useState("");
+  const [followUpStart, setFollowUpStart] = useState("");
   // The refusal is brought into view when it appears: a file picker returning
   // on a phone does not leave the page where the finger was.
   const attachmentAlert = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (attachmentError)
+    if (problem?.where === "attachment")
       attachmentAlert.current?.scrollIntoView({ block: "nearest" });
-  }, [attachmentError]);
+  }, [problem]);
   const hydrated = useSyncExternalStore(
     subscribe,
     () => true,
     () => false,
   );
+  const client = useStaffApi(locale);
+  const root = `/api/v1/organizations/${org}`;
 
-  const api = useCallback(
-    async (suffix: string, init?: RequestInit) => {
-      const r = await staffFetch(locale)(`/api/v1/organizations/${org}/${suffix}`, {
-        ...init,
-        headers: {
-          "Accept-Language": locale,
-          ...(init?.body ? { "content-type": "application/json" } : {}),
-          ...(init?.method && init.method !== "GET"
-            ? { "idempotency-key": crypto.randomUUID() }
-            : {}),
-          ...(init?.headers ?? {}),
-        },
-      });
-      if (r.status === 204) return null;
-      const json = await jsonOf(r);
-      if (!r.ok) throw new Error(json.message ?? base.unavailable);
-      return json.data;
-    },
-    [org, locale, base],
-  );
-
-  const load = useCallback(async () => {
-    setBusy(true);
-    setError("");
-    try {
-      setConsultants((await api("visit-consultants")).items);
-      if (visitId) setVisit(await api(`visits/${visitId}`));
-      else {
-        const query = new URLSearchParams();
-        if (filters.state) query.set("state", filters.state);
-        if (filters.consultantId)
-          query.set("consultantId", filters.consultantId);
-        setVisits((await api(`visits?${query.toString()}`)).items);
-        setOverdue(
-          (await api(`follow-ups?status=OPEN&dueBefore=${today(timezone)}`)).items,
-        );
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setBusy(true);
+      try {
+        setConsultants((await client.read<{ items: Consultant[] }>(`${root}/visit-consultants`)).items);
+        if (visitId) setVisit(await client.read<Visit>(`${root}/visits/${visitId}`));
+        else {
+          const query = new URLSearchParams();
+          if (filters.state) query.set("state", filters.state);
+          if (filters.consultantId) query.set("consultantId", filters.consultantId);
+          setVisits((await client.read<{ items: Visit[] }>(`${root}/visits?${query.toString()}`)).items);
+          setOverdue(
+            (await client.read<{ items: FollowUp[] }>(
+              `${root}/follow-ups?status=OPEN&dueBefore=${today(timezone)}`,
+            )).items,
+          );
+        }
+        setLoadProblem(null);
+        setCheckedAt(new Date().toISOString());
+      } catch (e) {
+        if (!silent(e)) setLoadProblem(e);
+      } finally {
+        if (!quiet) setBusy(false);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : base.unavailable);
-    } finally {
-      setBusy(false);
-    }
-  }, [api, visitId, filters, base]);
+    },
+    [client, root, visitId, filters, timezone],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // A quarantined file is waiting on the scanner; look again while it waits.
+  usePollWhile(
+    !!visit?.attachments?.some((a) => a.scanStatus === "QUARANTINED"),
+    () => load(true),
+  );
+
   // An error is shown where the action was taken. On a phone the page header
   // is a long scroll away from the attachment control, and a refusal printed
-  // up there would be announced but never seen.
+  // up there would be announced but never seen. Resolves true only once the
+  // server has confirmed the change.
   const guarded = async (
     work: () => Promise<void>,
-    report: (message: string) => void = setError,
-  ) => {
+    where: "page" | "attachment" = "page",
+    scope?: string,
+    retry?: () => Promise<boolean>,
+  ): Promise<boolean> => {
     setBusy(true);
-    setError("");
-    setAttachmentError("");
+    setProblem(null);
     setNote("");
     try {
       await work();
-      await load();
+      await load(true);
+      return true;
     } catch (e) {
-      report(e instanceof Error ? e.message : base.unavailable);
+      if (!silent(e)) setProblem({ failure: e, where, scope, retry });
+      return false;
+    } finally {
       setBusy(false);
     }
   };
 
-  const submitVisit = (values: VisitForm) =>
-    guarded(async () => {
-      const body = {
-        relatedRoundId: values.relatedRoundId || null,
-        assignedConsultantId: values.assignedConsultantId,
-        // An unparseable time or zone is sent as-is and refused by the server's
-        // validation, rather than being guessed at here.
-        scheduledStart:
-          wallClockToInstant(values.scheduledStart, values.timezone) ??
-          values.scheduledStart,
-        scheduledEnd: values.scheduledEnd
-          ? (wallClockToInstant(values.scheduledEnd, values.timezone) ??
-            values.scheduledEnd)
-          : null,
-        timezone: values.timezone,
-        purpose: values.purpose,
-        notes: values.notes || null,
-        findings: values.findings || null,
-        recommendations: values.recommendations || null,
-        followUpDate: values.followUpDate || null,
-        amendmentReason: values.amendmentReason || null,
-      };
-      if (visit)
-        await api(`visits/${visit.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-          headers: { "if-match": `"${visit.revision}"` },
-        });
-      else {
-        const created = (await api("visits", {
-          method: "POST",
-          body: JSON.stringify(body),
-        })) as Visit;
-        location.assign(`/organizations/${org}/visits/${created.id}`);
-        return;
-      }
-      setForm(null);
-    });
+  // One logical change: the first send, or a retry of the same attempt, then
+  // what to do with the confirmed answer.
+  const change = <T,>(
+    scope: string,
+    send: () => Promise<T>,
+    apply: (data: T, retried: boolean) => void | Promise<void>,
+    where: "page" | "attachment" = "page",
+  ): Promise<boolean> => {
+    const again = (): Promise<boolean> =>
+      guarded(async () => apply(await client.retry<T>(scope), true), where, scope, again);
+    return guarded(async () => apply(await send(), false), where, scope, again);
+  };
+
+  const visitBody = (values: VisitForm) => ({
+    relatedRoundId: values.relatedRoundId || null,
+    assignedConsultantId: values.assignedConsultantId,
+    // An unparseable time or zone is sent as-is and refused by the server's
+    // validation, rather than being guessed at here.
+    scheduledStart:
+      wallClockToInstant(values.scheduledStart, values.timezone) ??
+      values.scheduledStart,
+    scheduledEnd: values.scheduledEnd
+      ? (wallClockToInstant(values.scheduledEnd, values.timezone) ??
+        values.scheduledEnd)
+      : null,
+    timezone: values.timezone,
+    purpose: values.purpose,
+    notes: values.notes || null,
+    findings: values.findings || null,
+    recommendations: values.recommendations || null,
+    followUpDate: values.followUpDate || null,
+    amendmentReason: values.amendmentReason || null,
+  });
+
+  // Creating a visit is not replaceable while an earlier create is
+  // unconfirmed (it could be a second visit); an edit is, because its
+  // revision precondition refuses a stale write.
+  // `navigate`: go to a created visit at once (the Save button). The leave
+  // dialog passes false and navigates itself once the language is saved. A
+  // retry confirmed later from the page always continues to the new visit.
+  const submitVisit = async (values: VisitForm, navigate = false): Promise<SaveOutcome> => {
+    let next: string | undefined;
+    const ok = visit
+      ? await change(
+          "visit-save",
+          () =>
+            client.mutate<Visit>("visit-save", `${root}/visits/${visit.id}`, {
+              method: "PATCH",
+              body: visitBody(values),
+              revision: visit.revision,
+              replace: true,
+            }),
+          () => setForm(null),
+        )
+      : await change(
+          "visit-save",
+          () =>
+            client.mutate<Visit>("visit-save", `${root}/visits`, {
+              method: "POST",
+              body: visitBody(values),
+            }),
+          (created, retried) => {
+            next = `/organizations/${org}/visits/${created.id}`;
+            setForm(null);
+            if (navigate || retried) navigateAfterSave(next);
+          },
+        );
+    return ok ? { ok: true, next } : { ok: false };
+  };
+  const saveVisit = (values: VisitForm) => void submitVisit(values, true);
 
   const transition = (target: string) =>
-    guarded(async () => {
-      if (!visit) return;
-      await api(`visits/${visit.id}/transition`, {
-        method: "POST",
-        body: JSON.stringify({ target, reason: reason || null }),
-        headers: { "if-match": `"${visit.revision}"` },
-      });
-      setReason("");
-    });
-
-  const submitFollowUp = () =>
-    guarded(async () => {
-      if (!visit || !followUpForm) return;
-      const body = {
-        title: followUpForm.title,
-        ownerStaffId: followUpForm.ownerStaffId,
-        dueDate: followUpForm.dueDate,
-        status: followUpForm.status,
-        notes: followUpForm.notes || null,
-        closureReason: followUpForm.closureReason || null,
-      };
-      if (followUpForm.id)
-        await api(`visits/${visit.id}/follow-ups/${followUpForm.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-          headers: { "if-match": `"${followUpForm.revision}"` },
-        });
-      else
-        await api(`visits/${visit.id}/follow-ups`, {
+    visit &&
+    change(
+      "visit-transition",
+      () =>
+        client.mutate("visit-transition", `${root}/visits/${visit.id}/transition`, {
           method: "POST",
-          body: JSON.stringify(body),
-        });
-      setFollowUpForm(null);
-    });
+          body: { target, reason: reason || null },
+          revision: visit.revision,
+          replace: true,
+        }),
+      () => setReason(""),
+    );
+
+  const submitFollowUp = async (): Promise<SaveOutcome> => {
+    if (!visit || !followUpForm) return { ok: false };
+    const body = {
+      title: followUpForm.title,
+      ownerStaffId: followUpForm.ownerStaffId,
+      dueDate: followUpForm.dueDate,
+      status: followUpForm.status,
+      notes: followUpForm.notes || null,
+      closureReason: followUpForm.closureReason || null,
+    };
+    const ok = await change(
+      "follow-up-save",
+      () =>
+        followUpForm.id
+          ? client.mutate("follow-up-save", `${root}/visits/${visit.id}/follow-ups/${followUpForm.id}`, {
+              method: "PATCH",
+              body,
+              revision: followUpForm.revision ?? undefined,
+              replace: true,
+            })
+          : client.mutate("follow-up-save", `${root}/visits/${visit.id}/follow-ups`, {
+              method: "POST",
+              body,
+            }),
+      () => setFollowUpForm(null),
+    );
+    return ok ? { ok: true } : { ok: false };
+  };
 
   // Two calls: one to mint a row and a generated object name, one to stream the
   // bytes. The response of the second is deliberately not a download link — the
   // file is quarantined until something else has proved it safe.
-  const upload = (file: File) =>
-    guarded(async () => {
-      if (!visit) return;
-      const declaredType = typeFor(file.name);
-      if (!declaredType) throw new Error(m.allowedTypes);
-      const started = (await api(`visits/${visit.id}/attachments`, {
-        method: "POST",
-        body: JSON.stringify({ filename: file.name, declaredType }),
-      })) as { id: string; maxBytes: number };
-      if (file.size > started.maxBytes) throw new Error(base.tooLarge);
-      const r = await staffFetch(locale)(
-        `/api/v1/organizations/${org}/visits/${visit.id}/attachments/${started.id}/content`,
-        {
-          method: "PUT",
-          headers: {
-            "content-type": "application/octet-stream",
-            "Accept-Language": locale,
-          },
-          body: await file.arrayBuffer(),
-        },
+  //
+  // The first call is keyed like any other change. The second carries raw
+  // bytes and is not: when its answer is lost, the row is read back first, and
+  // the bytes are sent again only if the row is still waiting for them.
+  const sendContent = async (file: File, id: string, maxBytes: number) => {
+    if (!visit) return;
+    if (file.size > maxBytes)
+      throw new RequestFailure(base.tooLarge, "REJECTED", { code: "PAYLOAD_TOO_LARGE" });
+    await staffRequest(locale, `${root}/visits/${visit.id}/attachments/${id}/content`, {
+      method: "PUT",
+      raw: await file.arrayBuffer(),
+      headers: { "Content-Type": "application/octet-stream" },
+      // Up to 20 MB over a slow link: a longer deadline than a JSON call.
+      timeoutMs: 120_000,
+    });
+    setNote(m.uploadAccepted);
+  };
+  const resendContent = (file: File, id: string, maxBytes: number): Promise<boolean> =>
+    guarded(
+      async () => {
+        const current = await client.read<Visit>(`${root}/visits/${visitId}`);
+        const row = current.attachments?.find((a) => a.id === id);
+        if (row && row.scanStatus !== "UPLOADING") {
+          // The earlier upload did arrive.
+          setNote(m.uploadAccepted);
+          return;
+        }
+        await sendContent(file, id, maxBytes);
+      },
+      "attachment",
+      undefined,
+      () => resendContent(file, id, maxBytes),
+    );
+  const upload = async (file: File) => {
+    if (!visit) return;
+    const declaredType = typeFor(file.name);
+    if (!declaredType) {
+      setProblem({ failure: new RequestFailure(m.allowedTypes, "REJECTED"), where: "attachment" });
+      return;
+    }
+    const holder: { started?: { id: string; maxBytes: number } } = {};
+
+    const begun = await change(
+      "attachment-begin",
+      () =>
+        client.mutate<{ id: string; maxBytes: number }>(
+          "attachment-begin",
+          `${root}/visits/${visit.id}/attachments`,
+          { method: "POST", body: { filename: file.name, declaredType } },
+        ),
+      async (data) => {
+        holder.started = data;
+        await sendContent(file, data.id, data.maxBytes);
+      },
+      "attachment",
+    );
+    const s = holder.started;
+    if (!begun && s) {
+      // The row exists; only the bytes are in doubt.
+      setProblem((p) =>
+        p && p.failure instanceof RequestFailure && p.failure.uncertain
+          ? { ...p, scope: undefined, retry: () => resendContent(file, s.id, s.maxBytes) }
+          : p,
       );
-      if (!r.ok) {
-        // A refusal from something in front of the application (a proxy's own
-        // 413 page) is not JSON; its status still says what happened, and a
-        // parser's complaint must never be shown in its place.
-        const body = (await jsonOf(r)) as { message?: string };
-        throw new Error(
-          body.message ?? (r.status === 413 ? base.tooLarge : base.unavailable),
-        );
-      }
-      setNote(m.QUARANTINED);
-    }, setAttachmentError);
+    }
+  };
 
   const removeAttachment = (id: string) =>
-    guarded(async () => {
-      if (!visit) return;
-      await api(`visits/${visit.id}/attachments/${id}`, { method: "DELETE" });
-    });
+    visit &&
+    change(
+      `attachment-remove:${id}`,
+      () =>
+        client.mutate(`attachment-remove:${id}`, `${root}/visits/${visit.id}/attachments/${id}`, {
+          method: "DELETE",
+        }),
+      () => undefined,
+      "attachment",
+    );
+
+  // Unsaved edits: the visit form and the follow-up form can be saved from the
+  // leave dialog; a typed transition reason can only be kept or discarded.
+  const visitDirty = form !== null && JSON.stringify(form) !== formStart;
+  useUnsavedChanges(visitDirty, form ? () => submitVisit(form) : undefined);
+  const followUpDirty = followUpForm !== null && JSON.stringify(followUpForm) !== followUpStart;
+  useUnsavedChanges(followUpDirty, followUpForm ? submitFollowUp : undefined);
+  useUnsavedChanges(reason.trim() !== "");
+  const openVisitForm = (values: VisitForm) => {
+    setForm(values);
+    setFormStart(JSON.stringify(values));
+  };
+  const openFollowUpForm = (values: NonNullable<typeof followUpForm>) => {
+    setFollowUpForm(values);
+    setFollowUpStart(JSON.stringify(values));
+  };
+
+  const problemView = (where: "page" | "attachment") => {
+    if (problem?.where !== where) return null;
+    const uncertain = problem.failure instanceof RequestFailure && problem.failure.uncertain;
+    const retryable =
+      !!problem.retry && uncertain && (!problem.scope || !!client.ledger.uncertain(problem.scope));
+    return (
+      <RequestProblem
+        locale={locale}
+        failure={problem.failure}
+        busy={busy}
+        testId={`visit-${where}-problem`}
+        bare={where === "attachment"}
+        onRetrySame={retryable ? () => void problem.retry!() : undefined}
+        onCheck={uncertain ? () => void load() : undefined}
+        onDiscard={
+          problem.scope && client.ledger.uncertain(problem.scope)
+            ? () => {
+                client.ledger.settle(problem.scope!);
+                setProblem(null);
+              }
+            : undefined
+        }
+      />
+    );
+  };
 
   const shell = (children: React.ReactNode) => (
     <Workspace
@@ -415,7 +548,14 @@ export function Visits({
         <div className="note" role="note">
           <p>{m.noEmail}</p>
         </div>
-        {error && <ErrorState title={base.errorTitle} body={error} />}
+        <RequestProblem
+          locale={locale}
+          failure={loadProblem}
+          busy={busy}
+          testId="visits-load-problem"
+          onRetryRead={() => void load()}
+        />
+        {problemView("page")}
         <p role="status" aria-live="polite">
           {busy ? m.loading : note}
         </p>
@@ -466,7 +606,7 @@ export function Visits({
                 </label>
                 <button
                   onClick={() =>
-                    setForm(blankVisit(consultants[0]?.id ?? "", timezone))
+                    openVisitForm(blankVisit(consultants[0]?.id ?? "", timezone))
                   }
                   disabled={busy || !consultants.length}
                 >
@@ -482,7 +622,7 @@ export function Visits({
                 setForm={setForm}
                 consultants={consultants}
                 completed={false}
-                onSubmit={submitVisit}
+                onSubmit={saveVisit}
                 busy={busy}
               />
             )}
@@ -617,7 +757,7 @@ export function Visits({
                 <button
                   disabled={busy}
                   onClick={() =>
-                    setForm({
+                    openVisitForm({
                       relatedRoundId: visit.relatedRoundId ?? "",
                       assignedConsultantId: visit.assignedConsultantId,
                       scheduledStart: instantToWallClock(visit.scheduledStart, visit.timezone),
@@ -644,7 +784,7 @@ export function Visits({
                 setForm={setForm}
                 consultants={consultants}
                 completed={completed}
-                onSubmit={submitVisit}
+                onSubmit={saveVisit}
                 busy={busy}
               />
             )}
@@ -711,7 +851,7 @@ export function Visits({
                             <button
                               disabled={busy}
                               onClick={() =>
-                                setFollowUpForm({
+                                openFollowUpForm({
                                   id: f.id,
                                   revision: f.revision,
                                   title: f.title,
@@ -735,7 +875,7 @@ export function Visits({
               <button
                 disabled={busy || !consultants.length}
                 onClick={() =>
-                  setFollowUpForm({
+                  openFollowUpForm({
                     id: null,
                     revision: null,
                     title: "",
@@ -881,11 +1021,20 @@ export function Visits({
                   />
                 </label>
               )}
-              {attachmentError && (
-                <div ref={attachmentAlert}>
-                  <Alert tone="danger" role="alert">
-                    {attachmentError}
-                  </Alert>
+              <div ref={attachmentAlert} data-testid="visit-attachment-problem">{problemView("attachment")}</div>
+              {visit.attachments?.some((a) => a.scanStatus === "QUARANTINED" || a.scanStatus === "UPLOADING") && (
+                <div className="row row-between">
+                  <p className="muted">
+                    {checkedAt ? fillText(m.statusCheckedAt, { time: formatUtc(checkedAt).replace(" UTC", "") }) : ""}
+                  </p>
+                  <button
+                    type="button"
+                    className="button-small button-secondary"
+                    disabled={busy}
+                    onClick={() => void load()}
+                  >
+                    {m.refreshStatus}
+                  </button>
                 </div>
               )}
               {!visit.attachments?.length && (
@@ -919,11 +1068,12 @@ export function Visits({
                           <td>
                             <bdi dir="ltr">{kilobytes(a.size)}</bdi>
                           </td>
-                          <td>
+                          <td data-scan-state={a.scanStatus}>
                             {m[a.scanStatus]}
                             {a.rejectionCode
                               ? ` — ${rejection(m, a.rejectionCode)}`
                               : ""}
+                            <ScanNote attachment={a} m={m} />
                           </td>
                           <td>{a.uploadedByName ?? ""}</td>
                           <td>
@@ -1136,6 +1286,23 @@ function visitTone(state: string) {
       : state === "IN_PROGRESS"
         ? "accent"
         : "neutral";
+}
+// What a file is waiting for, in words, beside its status (Post-Audit Repair
+// Pass 2). A quarantined file waits for the scanner, which runs every minute;
+// one still waiting after ten minutes says the scanner may not be running.
+function ScanNote({ attachment: a, m }: { attachment: Attachment; m: M }) {
+  if (a.scanStatus === "QUARANTINED") {
+    const late = isOverdue(a.createdAt);
+    return (
+      <p className="field-hint" data-overdue={late || undefined}>
+        {late ? fillText(m.scanOverdue, { minutes: minutesSince(a.createdAt) }) : m.scanWaitingNote}
+      </p>
+    );
+  }
+  if (a.scanStatus === "UPLOADING" && isOverdue(a.createdAt))
+    return <p className="field-hint">{m.uploadIncomplete}</p>;
+  if (a.scanStatus === "FAILED") return <p className="field-hint">{m.scanFailedNote}</p>;
+  return null;
 }
 function rejection(m: M, code: string) {
   return code in m ? m[code as VisitMessageKey] : m.REJECTED_OTHER;
