@@ -14,8 +14,9 @@
 //
 // What it does, all of it idempotent:
 //   1. applies db/roles.sql when a role a later phase introduced is missing;
-//   2. sets the LOGIN roles' passwords, from DEV_ROLE_PASSWORD if supplied or
-//      generated and written to the ignored file work/dev-environment.json;
+//   2. sets the LOGIN roles' passwords to the cluster's one stable value
+//      (scripts/role-password.ts): DEV_ROLE_PASSWORD if supplied, else the
+//      password the development app already uses, else one kept in work/;
 //   3. creates the core and anonymous databases if they are absent, with the
 //      same REVOKE/GRANT shape the operator instructions require;
 //   4. applies every migration, and the anonymous migration;
@@ -25,28 +26,17 @@
 // ---------------------------------------------------------------------------
 
 import pg from "pg";
-import { randomBytes } from "node:crypto";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { migrate } from "./migrate";
 import { migrateAnonymous } from "./migrate-anonymous";
-
-const LOGIN_ROLES = [
-  "orgfit_migrator",
-  "orgfit_staff",
-  "orgfit_auth",
-  "orgfit_gateway",
-  "orgfit_processor",
-  "orgfit_anon_migrator",
-  "orgfit_report",
-  "orgfit_scanner",
-];
+import { clusterRolePassword, LOGIN_ROLES, passwordLiteral } from "./role-password";
 
 export async function provisionDev(
   adminUrl: string,
   name = "orgfit_dev",
-  password = randomBytes(24).toString("hex"),
+  password = clusterRolePassword(adminUrl),
 ) {
   if (process.env.NODE_ENV === "production")
     throw new Error("Refused: development provisioning only.");
@@ -66,7 +56,7 @@ export async function provisionDev(
     if (rows.length < LOGIN_ROLES.length + 2)
       await admin.query(await readFile("db/roles.sql", "utf8"));
     for (const role of LOGIN_ROLES)
-      await admin.query(`ALTER ROLE ${role} PASSWORD '${password}'`);
+      await admin.query(`ALTER ROLE ${role} PASSWORD ${passwordLiteral(password)}`);
 
     const present = async (database: string) =>
       (await admin.query("SELECT 1 FROM pg_database WHERE datname=$1", [database]))
@@ -143,7 +133,8 @@ if (
     const connections = await provisionDev(
       adminUrl,
       process.env.DEV_DATABASE_NAME ?? "orgfit_dev",
-      process.env.DEV_ROLE_PASSWORD ?? randomBytes(24).toString("hex"),
+      // Keeps the password development and the tests already share (role-password.ts).
+      clusterRolePassword(adminUrl),
     );
     await mkdir("work", { recursive: true });
     // Written to the ignored work/ directory, not printed: these carry role

@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, symlinkSync } from "node:fs";
 import { resolve, join } from "node:path";
 import pg from "pg";
 import { migrate } from "../scripts/migrate";
+import { clusterRolePassword, LOGIN_ROLES, passwordLiteral } from "../scripts/role-password";
 import { migrateAnonymous } from "../scripts/migrate-anonymous";
 import { withStaff } from "../src/db";
 import { campaignTransition } from "../src/campaigns";
@@ -78,13 +79,13 @@ test("R-3 a populated database from the previous release upgrades in place and k
   console.log(`R-3 baseline state written by ${BASELINE} in ${Date.now() - started} ms; A processed ${state.A.processed}, released ${state.A.released}`);
   assert.equal(state.A.processed, 6);
 
-  // The baseline harness gave the login roles a password it did not report.
-  // Set a new one on this dedicated loopback test cluster.
-  const password = randomBytes(24).toString("hex");
+  // The baseline commit's harness gave the login roles a random password it did
+  // not report (and briefly broke anything else using this cluster). Put back
+  // the cluster's stable one, which is also what development sign-in uses.
+  const password = clusterRolePassword(adminUrl);
   const admin = new pg.Client({ connectionString: adminUrl });
   await admin.connect();
-  for (const role of ["orgfit_migrator", "orgfit_staff", "orgfit_auth", "orgfit_gateway", "orgfit_processor", "orgfit_anon_migrator", "orgfit_report", "orgfit_scanner"])
-    await admin.query(`ALTER ROLE ${role} PASSWORD '${password}'`);
+  for (const role of LOGIN_ROLES) await admin.query(`ALTER ROLE ${role} PASSWORD ${passwordLiteral(password)}`);
   await admin.end();
   const at = (role: string, database: string) => {
     const u = new URL(adminUrl);

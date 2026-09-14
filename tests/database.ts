@@ -5,6 +5,7 @@ import { migrate } from "../scripts/migrate";
 import { migrateAnonymous } from "../scripts/migrate-anonymous";
 import { seed } from "../scripts/seed";
 import { seedInstruments } from "../scripts/seed-instruments";
+import { clusterRolePassword, passwordLiteral } from "../scripts/role-password";
 // A dedicated test cluster only. New databases are retained; no reset/drop path.
 const loginRoles = [
   "orgfit_migrator",
@@ -34,7 +35,9 @@ export async function setupDatabase(
   const suffix = randomBytes(6).toString("hex"),
     name = `orgfit_test_${suffix}`,
     anonName = `orgfit_anon_test_${suffix}`;
-  const password = randomBytes(32).toString("hex");
+  // Roles are cluster-wide: a fresh random password here broke development
+  // sign-in and any parallel run on the same cluster. One stable value instead.
+  const password = clusterRolePassword(adminUrl);
   try {
     // db/roles.sql is idempotent, so it is applied whenever a role introduced
     // by a later phase is still missing on this cluster.
@@ -44,9 +47,9 @@ export async function setupDatabase(
     );
     if (rows.length < loginRoles.length + 2)
       await admin.query(await readFile("db/roles.sql", "utf8"));
-    // Role credentials are generated for this synthetic local cluster, never printed.
+    // Role credentials for this synthetic local cluster, never printed.
     for (const role of loginRoles)
-      await admin.query(`ALTER ROLE ${role} PASSWORD '${password}'`);
+      await admin.query(`ALTER ROLE ${role} PASSWORD ${passwordLiteral(password)}`);
     await admin.query(`CREATE DATABASE ${name}`);
     await admin.query(`REVOKE ALL ON DATABASE ${name} FROM PUBLIC`);
     await admin.query(
