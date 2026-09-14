@@ -234,10 +234,65 @@ export async function reapplyTombstones(
     }
   }
 
+  // The two stores are backed up separately, so a restore can bring them back
+  // to different points. Neither direction may pass silently (Phase 15, D-123).
+  incidents.push(...(await storeInconsistencies(coreUrl, anonUrl, ledger)));
+
   const retention = await runRetention(coreUrl, anonUrl);
   const opened = incidents.length === 0 || !!options.openDespiteIncidents;
   if (opened) await core(coreUrl, (c) => c.query("SELECT ops.set_restore_state('NORMAL')"));
   return { applied, incidents, retention, opened };
+}
+
+// ---- cross-store reconciliation ------------------------------------------------
+//
+// The core batch record and the anonymous batch marker must agree:
+//  * a core batch whose output was committed (OUTPUT_COMMITTED, CLEANUP_PENDING,
+//    CLEANED) needs its marker with the same batch id and count, unless the
+//    anonymous set was purged on purpose (an ANONYMOUS_CAMPAIGN tombstone).
+//    Otherwise an anonymous store restored to an earlier point than the core
+//    has lost accepted answers whose intake was already erased — silently,
+//    because every core-side count still agrees;
+//  * a marker with no core batch of the same id means the anonymous store is
+//    ahead of the core: invitations may be READY again, and the processor
+//    would refuse the campaign with MARKER_MISMATCH.
+// Identifiers and counts only; nothing here reads an answer.
+
+export async function storeInconsistencies(coreUrl: string, anonUrl: string, ledger?: Tombstone[]) {
+  const coreSide = await core(coreUrl, async (c) => ({
+    batches: (
+      await c.query(
+        "SELECT id::text AS id, campaign_id::text AS campaign, state, processed_count FROM intake.processing_batch",
+      )
+    ).rows as { id: string; campaign: string; state: string; processed_count: number | null }[],
+    purged: (
+      await c.query("SELECT subject_id::text AS id FROM ops.deletion_tombstone WHERE class='ANONYMOUS_CAMPAIGN'")
+    ).rows.map((r) => r.id as string),
+  }));
+  const markers = await anonymous(anonUrl, async (c) =>
+    (await c.query("SELECT id::text AS id, campaign_id::text AS campaign, response_count FROM anonymous.processed_batch"))
+      .rows as { id: string; campaign: string; response_count: number }[],
+  );
+  const purged = new Set([
+    ...coreSide.purged,
+    ...(ledger ?? []).filter((t) => t.class === "ANONYMOUS_CAMPAIGN").map((t) => t.subjectId),
+  ]);
+  const markerOf = new Map(markers.map((m) => [m.campaign, m]));
+  const batchOf = new Map(coreSide.batches.map((b) => [b.campaign, b]));
+  const found: { campaignId: string; reason: string }[] = [];
+  for (const b of coreSide.batches) {
+    if (!["OUTPUT_COMMITTED", "CLEANUP_PENDING", "CLEANED"].includes(b.state) || !b.processed_count) continue;
+    if (purged.has(b.campaign)) continue;
+    const m = markerOf.get(b.campaign);
+    if (!m) found.push({ campaignId: b.campaign, reason: "ANONYMOUS_OUTPUT_MISSING_FOR_COMMITTED_BATCH" });
+    else if (m.id !== b.id || m.response_count !== b.processed_count)
+      found.push({ campaignId: b.campaign, reason: "ANONYMOUS_MARKER_MISMATCH" });
+  }
+  for (const m of markers) {
+    const b = batchOf.get(m.campaign);
+    if (!b || b.id !== m.id) found.push({ campaignId: m.campaign, reason: "ANONYMOUS_OUTPUT_AHEAD_OF_CORE" });
+  }
+  return found;
 }
 
 // ---- alerts ----------------------------------------------------------------------
@@ -254,6 +309,8 @@ export type AlertInputs = {
   rateLimitedLastWindow: number;
   lastRetentionRun: string | null;
   unapprovedRetentionClasses: number;
+  /** Cross-store disagreements; present only when the check can reach both stores. */
+  storeInconsistencies?: number;
 };
 export type Alert = { code: string; severity: "critical" | "warning"; value: number | string };
 
@@ -276,6 +333,7 @@ export function evaluateAlerts(
     alerts.push({ code, severity, value });
   if (input.restoreState !== "NORMAL") add("RESTORE_REAPPLY_PENDING", "critical", input.restoreState);
   if (input.countMismatch > 0) add("INTAKE_PROCESSED_COUNT_MISMATCH", "critical", input.countMismatch);
+  if (input.storeInconsistencies) add("ANONYMOUS_STORE_INCONSISTENT", "critical", input.storeInconsistencies);
   if (input.blockedReleases > 0) add("PUBLICATION_BLOCKED", "critical", input.blockedReleases);
   if (input.closedUnprocessedOverdue > 0) add("CLOSED_CAMPAIGN_UNPROCESSED", "warning", input.closedUnprocessedOverdue);
   if (input.insufficientIntakeOverdue > 0) add("INSUFFICIENT_INTAKE_RETENTION_OVERDUE", "critical", input.insufficientIntakeOverdue);

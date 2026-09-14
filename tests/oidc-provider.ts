@@ -5,11 +5,14 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 // The staff origin is a parameter so that scripts/showcase.ts can bring the
 // same provider up beside the Playwright harness on its own port pair. The
 // redirect target is still pinned to exactly one origin per provider instance.
+// The release rehearsal (Phase 15) serves it behind a TLS proxy, so the issuer
+// it advertises can be the public https URL rather than its own listener.
 export async function testProvider(
   port = 4010,
   staffOrigin = "http://127.0.0.1:3000",
+  publicIssuer?: string,
 ) {
-  const issuer = `http://127.0.0.1:${port}`,
+  const issuer = publicIssuer ?? `http://127.0.0.1:${port}`,
     keys = await generateKeyPair("RS256"),
     jwk = await exportJWK(keys.publicKey);
   const codes = new Map<

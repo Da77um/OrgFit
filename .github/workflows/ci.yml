@@ -17,6 +17,9 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release suite compares migrations with earlier gate-passed commits.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -25,6 +28,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      - run: npm run test:localization
       - run: npm run test:integration
       - run: npm run test:directory
       - run: npm run test:instruments
@@ -46,6 +50,9 @@ jobs:
       - run: npm run test:reports
       - run: npm run test:checkpoint-e
       - run: npm run test:visits
+      - run: npm run test:access
+      - run: npm run test:operations
+      - run: npm run test:release
       - run: npm run build
       - run: npm run check:boundaries
       - run: npm run test:production

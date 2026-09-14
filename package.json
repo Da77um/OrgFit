@@ -1,7 +1,7 @@
 {
   "name": "orgfit",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0-rc.1",
   "type": "module",
   "engines": {
     "node": ">=24 <25"
@@ -62,7 +62,10 @@
     "tombstones:ship": "tsx scripts/ship-tombstones.ts",
     "restore:reapply": "tsx scripts/restore-reapply.ts",
     "ops:check": "tsx scripts/ops-check.ts",
-    "test:operations": "tsx --test --test-concurrency=1 tests/operations.test.ts"
+    "test:operations": "tsx --test --test-concurrency=1 tests/operations.test.ts",
+    "release:manifest": "tsx scripts/release-manifest.ts",
+    "release:preflight": "tsx scripts/release-preflight.ts",
+    "test:release": "tsx --test --test-concurrency=1 tests/release.test.ts tests/release-upgrade.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1128.0",

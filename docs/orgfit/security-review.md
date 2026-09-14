@@ -67,3 +67,26 @@ Production gates listed in `decisions.md` remain open and are not repeated as de
 ## 5. Not verified
 
 Real identity provider and MFA factors; TLS configuration; network segmentation; provider IAM; proxy/CDN logs; secret manager integration; S3 bucket policies and lifecycle rules; KMS deletion windows; WAF; container/host hardening; penetration testing; any production data.
+
+## 6. Phase 15 addendum — release candidate (2026-09-14)
+
+Still a self-review, not an independent assessment.
+
+### Found and fixed
+
+| ID | Severity | Defect | Repair | Evidence |
+|---|---|---|---|---|
+| RC-001 | High | **An anonymous store restored to an earlier point than the core lost committed answers silently.** The two databases are separate backup sets; with the anonymous side older, a campaign whose intake was already erased had no answers anywhere while every core count agreed, and nothing — not the replay, not `ops:check` — compared the stores. | Cross-store reconciliation in `restore:reapply` (incident, environment stays closed) and `ops:check` (`ANONYMOUS_STORE_INCONSISTENT`, critical) — D-123 | R-4; rollback drill mixed restore points, both directions |
+| RC-002 | Medium | **CI did not run `test:localization`, `test:access` or `test:operations`**, so Phase 13 and 14 guarantees were unguarded outside this machine; the shallow checkout could not compare migrations with earlier commits | Suites and `test:release` added; `fetch-depth: 0` | `.github/workflows/ci.yml` (remote CI still not run) |
+
+### Residual, added by this phase
+
+| ID | Severity | Issue | Owner (role) | Repair steps |
+|---|---|---|---|---|
+| RC-003 | Medium | No provider deployment packaging or infrastructure definition — the process manifest and runbook are provider-neutral by design | Platform operator (P-002) | Once the provider is chosen: images or units per process, secret-manager wiring, network policy, proxy config; re-run the rehearsal steps there |
+| RC-004 | Low | Operator, processor and publication scripts do not themselves refuse a non-TLS database URL in production (staff, gateway, renderer and scanner do); release preflight does | Implementer | Add the same `sslmode=verify-full` guard to `operatorUrl`, `corePool`, `anonymousPool` and the migrators |
+| RC-005 | Low | Four dependency ranges in `package.json` use `^` (`@fontsource/*`, `playwright`, `@napi-rs/canvas`, `pdfjs-dist`); the lockfile pins them and `npm ci` is reproducible, but a lockfile regeneration could drift | Implementer | Pin exact versions |
+
+### Status of Phase 14 residuals
+
+SEC-M2 exercised in the rehearsal (proxy overwrites `X-Forwarded-For`; the per-IP bucket counted it) — still requires the real proxy. SEC-M4 is **checked** by release preflight, not continuously enforced. SEC-M7 **rehearsed locally** (TLS proxy, TLS-only database, `verify-full`) — not on real infrastructure. SEC-H1, SEC-H2, SEC-M1, SEC-M3, SEC-M5, SEC-M6, SEC-L1–L4 unchanged. **No critical implementation defect is known to remain open.**

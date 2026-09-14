@@ -1,6 +1,6 @@
 import { statfs, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { alertInputs, evaluateAlerts, operatorUrl } from "../src/operations";
+import { alertInputs, anonymousOperatorUrl, evaluateAlerts, operatorUrl, storeInconsistencies } from "../src/operations";
 
 // Alert evaluation for a scheduler or monitoring agent. Exit 2 on any critical
 // alert, 1 if the check itself failed. Output carries counts and ages only.
@@ -13,6 +13,10 @@ async function newestBackupAgeHours(dir: string | undefined) {
 }
 try {
   const input = await alertInputs(operatorUrl());
+  // Cross-store reconciliation needs the anonymous operator credential; where
+  // the scheduler has it, a store restored to a different point is critical.
+  if (process.env.ANONYMOUS_MIGRATION_DATABASE_URL)
+    input.storeInconsistencies = (await storeInconsistencies(operatorUrl(), anonymousOperatorUrl())).length;
   const disk = process.env.OPS_DISK_PATH ? await statfs(process.env.OPS_DISK_PATH) : null;
   const alerts = evaluateAlerts(input, {
     backupAgeHours: await newestBackupAgeHours(process.env.BACKUP_DIRECTORY),

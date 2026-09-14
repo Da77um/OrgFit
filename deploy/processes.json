@@ -1,0 +1,140 @@
+{
+  "$comment": "OrgFit release process manifest (Phase 15). Provider-neutral: it names every process, the one database identity it runs as, the environment it must hold and the environment it must never hold. scripts/release-preflight.ts validates an environment against this file; docs/orgfit/deployment-runbook.md explains it. Values never appear here.",
+  "schemaVersion": 1,
+  "runtime": { "node": ">=24 <25", "postgresql": "18", "install": "npm ci", "build": "npm run build" },
+  "keys": {
+    "hex64": [
+      "IMPORT_ENCRYPTION_KEY",
+      "INVITATION_DIGEST_KEY",
+      "INVITATION_DIGEST_KEY_PREVIOUS",
+      "LINK_EXPORT_ENCRYPTION_KEY",
+      "REPORT_ENCRYPTION_KEY",
+      "PARTICIPATION_EXPORT_ENCRYPTION_KEY",
+      "ATTACHMENT_ENCRYPTION_KEY"
+    ],
+    "mustDiffer": [
+      "IMPORT_ENCRYPTION_KEY",
+      "INVITATION_DIGEST_KEY",
+      "INVITATION_DIGEST_KEY_PREVIOUS",
+      "LINK_EXPORT_ENCRYPTION_KEY",
+      "REPORT_ENCRYPTION_KEY",
+      "PARTICIPATION_EXPORT_ENCRYPTION_KEY",
+      "ATTACHMENT_ENCRYPTION_KEY"
+    ]
+  },
+  "databaseUrls": {
+    "DATABASE_URL": "orgfit_staff",
+    "AUTH_DATABASE_URL": "orgfit_auth",
+    "GATEWAY_DATABASE_URL": "orgfit_gateway",
+    "PROCESSOR_DATABASE_URL": "orgfit_processor",
+    "ANONYMOUS_DATABASE_URL": "orgfit_processor",
+    "REPORT_DATABASE_URL": "orgfit_report",
+    "SCANNER_DATABASE_URL": "orgfit_scanner",
+    "MIGRATION_DATABASE_URL": "orgfit_migrator",
+    "ANONYMOUS_MIGRATION_DATABASE_URL": "orgfit_anon_migrator"
+  },
+  "storage": {
+    "IMPORT": ["IMPORT_S3_BUCKET", "IMPORT_LOCAL_DIRECTORY"],
+    "LINK_EXPORT": ["LINK_EXPORT_S3_BUCKET", "LINK_EXPORT_LOCAL_DIRECTORY"],
+    "REPORT": ["REPORT_S3_BUCKET", "REPORT_LOCAL_DIRECTORY"],
+    "PARTICIPATION_EXPORT": ["PARTICIPATION_EXPORT_S3_BUCKET", "PARTICIPATION_EXPORT_LOCAL_DIRECTORY"],
+    "ATTACHMENT": ["ATTACHMENT_S3_BUCKET", "ATTACHMENT_LOCAL_DIRECTORY"]
+  },
+  "processes": {
+    "staff": {
+      "kind": "web",
+      "command": "npm run start -w @orgfit/staff",
+      "health": { "live": "/health/live", "ready": "/health/ready" },
+      "required": [
+        "NODE_ENV", "STAFF_ORIGIN", "RESPONDENT_ORIGIN", "DATABASE_URL", "AUTH_DATABASE_URL",
+        "OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_MFA_ACR",
+        "IMPORT_ENCRYPTION_KEY", "INVITATION_DIGEST_KEY", "INVITATION_DIGEST_KEY_VERSION",
+        "LINK_EXPORT_ENCRYPTION_KEY", "CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY", "CAMPAIGN_KEY_CUSTODY_DIRECTORY",
+        "REPORT_ENCRYPTION_KEY", "PARTICIPATION_EXPORT_ENCRYPTION_KEY", "ATTACHMENT_ENCRYPTION_KEY"
+      ],
+      "storage": ["IMPORT", "LINK_EXPORT", "REPORT", "PARTICIPATION_EXPORT", "ATTACHMENT"],
+      "optional": ["AWS_REGION", "IMPORT_S3_ENDPOINT", "LINK_EXPORT_S3_ENDPOINT", "REPORT_S3_ENDPOINT", "PARTICIPATION_EXPORT_S3_ENDPOINT", "ATTACHMENT_S3_ENDPOINT", "REPORT_THEME", "NEXT_TELEMETRY_DISABLED"],
+      "forbidden": [
+        "MIGRATION_DATABASE_URL", "PROCESSOR_DATABASE_URL", "ANONYMOUS_DATABASE_URL", "ANONYMOUS_MIGRATION_DATABASE_URL",
+        "GATEWAY_DATABASE_URL", "REPORT_DATABASE_URL", "SCANNER_DATABASE_URL", "CAMPAIGN_KEY_CUSTODY_SECRET_KEY",
+        "INVITATION_DIGEST_KEY_PREVIOUS", "BOOTSTRAP_ADMIN_PASSWORD"
+      ]
+    },
+    "respondent": {
+      "kind": "web",
+      "command": "npm run start -w @orgfit/respondent",
+      "health": { "live": "/health/live", "ready": "/health/ready" },
+      "required": ["NODE_ENV", "RESPONDENT_ORIGIN", "GATEWAY_DATABASE_URL", "INVITATION_DIGEST_KEY", "INVITATION_DIGEST_KEY_VERSION"],
+      "recommended": ["RATE_LIMIT_CLIENT_IP_HEADER"],
+      "optional": ["INVITATION_DIGEST_KEY_PREVIOUS", "RATE_LIMIT_TRUSTED_PROXY_HOPS", "RATE_LIMIT_EXCHANGE_PER_IP", "RATE_LIMIT_EXCHANGE_PER_TOKEN", "RATE_LIMIT_DRAFT_PER_SESSION", "RATE_LIMIT_FINAL_PER_SESSION", "NEXT_TELEMETRY_DISABLED"],
+      "forbidden": [
+        "DATABASE_URL", "AUTH_DATABASE_URL", "MIGRATION_DATABASE_URL", "PROCESSOR_DATABASE_URL", "ANONYMOUS_DATABASE_URL",
+        "ANONYMOUS_MIGRATION_DATABASE_URL", "REPORT_DATABASE_URL", "SCANNER_DATABASE_URL",
+        "CAMPAIGN_KEY_CUSTODY_SECRET_KEY", "CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY", "OIDC_CLIENT_SECRET",
+        "IMPORT_ENCRYPTION_KEY", "LINK_EXPORT_ENCRYPTION_KEY", "REPORT_ENCRYPTION_KEY",
+        "PARTICIPATION_EXPORT_ENCRYPTION_KEY", "ATTACHMENT_ENCRYPTION_KEY"
+      ]
+    },
+    "processor": {
+      "kind": "job",
+      "commands": { "npm run privacy:process": "every 5 min", "npm run publication:release": "every 5 min, after privacy:process" },
+      "required": ["NODE_ENV", "PROCESSOR_DATABASE_URL", "ANONYMOUS_DATABASE_URL", "CAMPAIGN_KEY_CUSTODY_SECRET_KEY", "CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY", "CAMPAIGN_KEY_CUSTODY_DIRECTORY"],
+      "forbidden": [
+        "DATABASE_URL", "AUTH_DATABASE_URL", "GATEWAY_DATABASE_URL", "MIGRATION_DATABASE_URL", "ANONYMOUS_MIGRATION_DATABASE_URL",
+        "REPORT_DATABASE_URL", "SCANNER_DATABASE_URL", "OIDC_CLIENT_SECRET", "INVITATION_DIGEST_KEY",
+        "IMPORT_ENCRYPTION_KEY", "LINK_EXPORT_ENCRYPTION_KEY", "REPORT_ENCRYPTION_KEY",
+        "PARTICIPATION_EXPORT_ENCRYPTION_KEY", "ATTACHMENT_ENCRYPTION_KEY"
+      ]
+    },
+    "report": {
+      "kind": "job",
+      "commands": { "npm run reports:generate": "every 1 min", "npm run reports:expire": "hourly" },
+      "required": ["NODE_ENV", "REPORT_DATABASE_URL", "REPORT_ENCRYPTION_KEY"],
+      "storage": ["REPORT"],
+      "optional": ["AWS_REGION", "REPORT_S3_ENDPOINT", "REPORT_THEME"],
+      "forbidden": [
+        "DATABASE_URL", "AUTH_DATABASE_URL", "GATEWAY_DATABASE_URL", "MIGRATION_DATABASE_URL", "PROCESSOR_DATABASE_URL",
+        "ANONYMOUS_DATABASE_URL", "ANONYMOUS_MIGRATION_DATABASE_URL", "SCANNER_DATABASE_URL",
+        "CAMPAIGN_KEY_CUSTODY_SECRET_KEY", "OIDC_CLIENT_SECRET", "INVITATION_DIGEST_KEY",
+        "IMPORT_ENCRYPTION_KEY", "LINK_EXPORT_ENCRYPTION_KEY", "PARTICIPATION_EXPORT_ENCRYPTION_KEY", "ATTACHMENT_ENCRYPTION_KEY"
+      ]
+    },
+    "scanner": {
+      "kind": "job",
+      "commands": { "npm run attachments:scan": "every 1 min", "npm run attachments:expire": "hourly" },
+      "required": ["NODE_ENV", "SCANNER_DATABASE_URL", "ATTACHMENT_ENCRYPTION_KEY"],
+      "storage": ["ATTACHMENT"],
+      "optional": ["AWS_REGION", "ATTACHMENT_S3_ENDPOINT"],
+      "forbidden": [
+        "DATABASE_URL", "AUTH_DATABASE_URL", "GATEWAY_DATABASE_URL", "MIGRATION_DATABASE_URL", "PROCESSOR_DATABASE_URL",
+        "ANONYMOUS_DATABASE_URL", "ANONYMOUS_MIGRATION_DATABASE_URL", "REPORT_DATABASE_URL",
+        "CAMPAIGN_KEY_CUSTODY_SECRET_KEY", "OIDC_CLIENT_SECRET", "INVITATION_DIGEST_KEY",
+        "IMPORT_ENCRYPTION_KEY", "LINK_EXPORT_ENCRYPTION_KEY", "REPORT_ENCRYPTION_KEY", "PARTICIPATION_EXPORT_ENCRYPTION_KEY"
+      ]
+    },
+    "operator": {
+      "kind": "job",
+      "commands": {
+        "npm run db:migrate": "release step",
+        "npm run db:migrate-anonymous": "release step",
+        "npm run campaigns:normalize": "every 5 min",
+        "npm run drafts:expire": "hourly",
+        "npm run retention:run": "daily",
+        "npm run tombstones:ship": "at least as often as the backup RPO (proposed 5 min)",
+        "npm run ops:check": "every 1-5 min; exit 2 = critical",
+        "npm run restore:reapply": "restore only"
+      },
+      "required": ["NODE_ENV", "MIGRATION_DATABASE_URL", "ANONYMOUS_MIGRATION_DATABASE_URL", "TOMBSTONE_LEDGER_DIRECTORY"],
+      "recommended": ["BACKUP_DIRECTORY", "OPS_DISK_PATH"],
+      "optional": ["CAMPAIGN_KEY_CUSTODY_DIRECTORY", "ATTACHMENT_LOCAL_DIRECTORY", "ATTACHMENT_S3_BUCKET", "ATTACHMENT_ENCRYPTION_KEY", "AWS_REGION", "ATTACHMENT_S3_ENDPOINT", "BOOTSTRAP_ISSUER", "BOOTSTRAP_SUBJECT", "BOOTSTRAP_EMAIL", "BOOTSTRAP_NAME"],
+      "forbidden": [
+        "DATABASE_URL", "AUTH_DATABASE_URL", "GATEWAY_DATABASE_URL", "PROCESSOR_DATABASE_URL", "ANONYMOUS_DATABASE_URL",
+        "REPORT_DATABASE_URL", "SCANNER_DATABASE_URL", "CAMPAIGN_KEY_CUSTODY_SECRET_KEY", "OIDC_CLIENT_SECRET",
+        "BOOTSTRAP_ADMIN_PASSWORD"
+      ]
+    }
+  },
+  "localStorageSweeps": { "npm run imports:expire": "staff environment, local storage only; a bucket uses a 1-day lifecycle rule", "npm run links:expire": "staff environment, local storage only; a bucket uses a 1-day lifecycle rule" },
+  "illustrativeOnly": ["instruments:seed"],
+  "neverInProduction": ["db:provision-dev", "db:bootstrap-dev-admin", "db:seed", "showcase"]
+}
