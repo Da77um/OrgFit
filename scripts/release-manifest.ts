@@ -18,6 +18,9 @@ import { migrationDigests } from "../src/preflight";
 // do not change the source digest.
 const git = (...a: string[]) => execFileSync("git", a, { encoding: "utf8" }).trim();
 const sha = (text: string | Buffer) => createHash("sha256").update(text).digest("hex");
+// Text files are hashed with LF line endings, so a Windows checkout (autocrlf)
+// and a Linux checkout of the same commit produce the same manifest.
+const textSha = (path: string) => sha(readFileSync(path, "utf8").replace(/\r\n/g, "\n"));
 const isDocumentation = (path: string) => path.startsWith("docs/") || /^[^/]+\.md$/.test(path);
 
 export function computeManifest(id: string) {
@@ -42,9 +45,9 @@ export function computeManifest(id: string) {
     packageVersion: JSON.parse(readFileSync("package.json", "utf8")).version as string,
     node: process.version,
     npm: execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["--version"], { encoding: "utf8", shell: process.platform === "win32" }).trim(),
-    lockfileSha256: sha(readFileSync("package-lock.json")),
-    processManifestSha256: sha(readFileSync("deploy/processes.json")),
-    rolesSha256: sha(readFileSync("db/roles.sql", "utf8")),
+    lockfileSha256: textSha("package-lock.json"),
+    processManifestSha256: textSha("deploy/processes.json"),
+    rolesSha256: textSha("db/roles.sql"),
     migrations: { core: migrationDigests("db/migrations"), anonymous: migrationDigests("db/anonymous") },
     builds: { staff: buildId("staff"), respondent: buildId("respondent") },
     createdAt: new Date().toISOString(),
