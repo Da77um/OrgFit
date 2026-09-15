@@ -1,5 +1,12 @@
-/* Full document navigation intentionally clears organization-scoped client state. */
-/* eslint-disable @next/next/no-html-link-for-pages */
+/* Navigation rule. A transition between sections of the SAME organization — the
+   rail entries built from `base` in Workspace — is client-side through
+   next/link: it stays inside one tenant and one access scope. Every link that
+   leaves organization scope (switch organization, questionnaires, workspace,
+   profile, the administration rail, sign-out) stays a full document
+   navigation, which intentionally clears organization-scoped client state.
+   @next/next/no-html-link-for-pages is therefore enforced down to the
+   same-organization rail and disabled only from the first link that leaves
+   organization scope. */
 // ---------------------------------------------------------------------------
 // The staff workspace shell.
 //
@@ -19,6 +26,7 @@
 //     landmark and the skip link always lands somewhere.
 // ---------------------------------------------------------------------------
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { Label, Lockup, Micro } from "../../../src/ui";
 import { messages, type Locale } from "../../../src/i18n";
 import { adminMessages } from "../../../src/admin-i18n";
@@ -136,11 +144,12 @@ export function Workspace({
       />
       <div className="shell">
         <nav className="rail" aria-label={m.workspaceNav}>
+          {/* Same organization: client-side. */}
           {groups.map((group) => (
             <div className="rail-group" key={group.label}>
               <Label className="rail-label">{group.label}</Label>
               {group.items.map((item) => (
-                <a
+                <Link
                   key={item.key}
                   className="rail-link"
                   href={item.href}
@@ -154,10 +163,12 @@ export function Workspace({
                   }
                 >
                   {item.text}
-                </a>
+                </Link>
               ))}
             </div>
           ))}
+          {/* Leaves organization scope: document navigation. */}
+          {/* eslint-disable @next/next/no-html-link-for-pages */}
           <div className="rail-group">
             <a className="rail-link" href="/organizations">
               {m.switchOrganization}

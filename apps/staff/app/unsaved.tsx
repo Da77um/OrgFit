@@ -220,10 +220,38 @@ export function UnsavedChangesGuard({ locale }: { locale: Locale }) {
         }
       });
     };
+    // Same-organization rail entries are client-side links. A click on one is
+    // intercepted above exactly like a document link (next/link does nothing
+    // with a click that is already default-prevented), but Back and Forward
+    // between two such screens are same-document history traversals: they
+    // raise popstate, never beforeunload. The entry the edits live on is
+    // remembered, and a traversal away from it is held here — this capture
+    // listener runs before the router's own — restored, and asked about.
+    let here = { href: location.href, state: history.state as unknown };
+    // Every registration change happens on the page the form is mounted on.
+    const remember = () => {
+      here = { href: location.href, state: history.state };
+    };
+    const pop = (e: PopStateEvent) => {
+      if (leaving || !entries.size) return remember();
+      e.stopImmediatePropagation();
+      const target = location.href;
+      history.pushState(here.state, "", here.href);
+      void confirmLeave("navigate", locale).then((d) => {
+        if (d.go) {
+          leaving = true;
+          location.assign(target);
+        }
+      });
+    };
+    const stopRemembering = subscribe(remember);
     window.addEventListener("beforeunload", unload);
+    window.addEventListener("popstate", pop, true);
     document.addEventListener("click", click, true);
     return () => {
+      stopRemembering();
       window.removeEventListener("beforeunload", unload);
+      window.removeEventListener("popstate", pop, true);
       document.removeEventListener("click", click, true);
     };
   }, [locale]);

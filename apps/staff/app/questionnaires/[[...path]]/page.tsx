@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { sessionCookie } from "../../../../../src/auth";
@@ -5,6 +6,7 @@ import { withStaff } from "../../../../../src/db";
 import { instrumentAccess } from "../../../../../src/instruments";
 import { uuid } from "../../../../../src/security";
 import { localeOf, messages } from "../../../../../src/i18n";
+import { QuestionnairesLoading } from "../../loading-ui";
 import { InstrumentWorkspace } from "../workspace";
 export default async function Page({
   params,
@@ -16,6 +18,28 @@ export default async function Page({
   const jar = await cookies(),
     { path = [] } = await params,
     { organization } = await searchParams;
+  // The chrome streams at once; the session check and every query resolve
+  // behind this boundary.
+  return (
+    <Suspense
+      key={[organization, ...path].join("/")}
+      fallback={
+        <QuestionnairesLoading locale={localeOf(jar.get("orgfit-locale")?.value)} />
+      }
+    >
+      <InstrumentScreen path={path} organization={organization} />
+    </Suspense>
+  );
+}
+
+async function InstrumentScreen({
+  path,
+  organization,
+}: {
+  path: string[];
+  organization?: string;
+}) {
+  const jar = await cookies();
   try {
     const org = organization ? uuid.parse(organization) : null;
     const data = await withStaff(

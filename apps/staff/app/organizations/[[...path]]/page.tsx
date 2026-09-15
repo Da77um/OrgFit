@@ -1,4 +1,5 @@
 /* Full document navigation intentionally clears organization-scoped client state. */
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { sessionCookie } from "../../../../../src/auth";
@@ -7,6 +8,7 @@ import { uuid } from "../../../../../src/security";
 import { sql } from "kysely";
 import { directoryGet } from "../../../../../src/directory";
 import { localeOf, messages } from "../../../../../src/i18n";
+import { OrganizationLoading } from "../../loading-ui";
 import { Directory } from "../directory-ui";
 import { Campaigns } from "../campaigns-ui";
 import { Results } from "../results-ui";
@@ -19,6 +21,8 @@ export default async function DirectoryPage({
 }) {
   const { path = [] } = await params,
     jar = await cookies();
+  // The address is validated before the boundary, so an unknown route still
+  // answers 404 instead of streaming a loading state first.
   if (path.length > 3 || (path[0] && !uuid.safeParse(path[0]).success))
     notFound();
   if (
@@ -44,6 +48,22 @@ export default async function DirectoryPage({
       (path[2] !== "import" && !uuid.safeParse(path[2]).success))
   )
     notFound();
+  // The chrome streams at once; the session check and every query resolve
+  // behind this boundary.
+  return (
+    <Suspense
+      key={path.join("/")}
+      fallback={
+        <OrganizationLoading locale={localeOf(jar.get("orgfit-locale")?.value)} />
+      }
+    >
+      <DirectoryScreen path={path} />
+    </Suspense>
+  );
+}
+
+async function DirectoryScreen({ path }: { path: string[] }) {
+  const jar = await cookies();
   try {
     const data = await withStaff(
       jar.get(sessionCookie())?.value,
