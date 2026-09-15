@@ -47,7 +47,7 @@ There is no address column, no message body, no send state and no outbound anyth
 
 ### What the scanner does, and who it is
 
-The verdict belongs to a **separate deployment identity**, `orgfit_scanner`: a login role with no table privilege anywhere, no `CONNECT` on the anonymous database, and `EXECUTE` on three routines — `claim_attachments`, `record_scan`, `expire_attachments`. It addresses a claim, never an organization, a visit or a path it chose. Check **V-11** asserts the empty privilege set and that direct reads of `core.field_visit`, `core.attachment`, `core.participant` and `access.staff_user` all fail under that credential.
+The verdict belongs to a **separate deployment identity**, `orgfit_scanner`: a login role with no table privilege anywhere, no `CONNECT` on the anonymous database, and `EXECUTE` on three routines — `claim_attachments`, `record_scan`, `expire_attachments` (since migration 024: `record_scan_result` and `release_scan_claim` instead of `record_scan`). It addresses a claim, never an organization, a visit or a path it chose. Check **V-11** asserts the empty privilege set and that direct reads of `core.field_visit`, `core.attachment`, `core.participant` and `access.staff_user` all fail under that credential.
 
 `src/attachment-scan.ts` is pure — no database, no clock, no network, no authorization — so the interesting cases are data rather than a deployment. It rejects:
 
@@ -59,8 +59,10 @@ The verdict belongs to a **separate deployment identity**, `orgfit_scanner`: a l
 | `TYPE_MISMATCH` / `EXTENSION_MISMATCH` | permitted bytes whose declared type or file extension disagrees with them |
 | `TYPE_NOT_ALLOWED` | anything outside the allowlist, including a bare zip that is not a Word or Excel document |
 | `TOO_LARGE` / `EMPTY` | outside `0 < size ≤ 20 MiB`, refused at the HTTP boundary, at the storage adapter and by a table constraint |
-| `MALWARE_SIGNATURE` | the EICAR test marker |
+| `MALWARE_SIGNATURE` | the EICAR test marker — **since Pass 4 reported by the malware engine (or the development heuristic), not by this file** |
 | `CHECKSUM_MISMATCH` | bytes that changed between upload and scan — the digest recorded at upload is recomputed over what actually came back |
+| `DOCUMENT_ACTIVE_CONTENT` | Pass 4 active-document policy: PDF JavaScript/Launch/embedded files/XFA/additional actions (raw or inside Flate object streams, hex-escaped names included); OOXML ActiveX, embedded OLE objects, external workbook links, DDE fields, external relationships other than hyperlinks |
+| `DOCUMENT_UNVERIFIABLE` | Pass 4: an encrypted PDF, one without `%%EOF`, an object stream that cannot be inflated within 64 MiB, or a container declaring more than that |
 
 Allowlist: PDF, PNG, JPEG, GIF, WEBP, DOCX, XLSX.
 
@@ -97,7 +99,16 @@ Staff screens live at `/organizations/:org/visits` and `/organizations/:org/visi
 
 ## What this phase does not claim
 
-1. **The bundled scanner is not an antivirus engine.** It is a magic-byte type verifier, an OOXML part inspector and an EICAR marker check. It will not recognize a novel malicious PDF or a crafted image decoder exploit. Replacing it with a maintained engine is **P-010**.
+1. **The bundled verifier is not an antivirus engine.** It is a magic-byte type verifier, an OOXML part inspector and (since Pass 4) an active-document policy; it is not full document validation. It will not recognize a novel malicious PDF or a crafted image decoder exploit. Pass 4 added the separate engine control below; which engine runs in production is still **P-010**.
+
+## Post-Audit Repair Pass 4 — two controls, engine provenance (D-157)
+
+* **Two separate controls decide a file.** `verifyAttachment` (type, size, container, active-document policy) and a malware engine (`src/malware-engine.ts`). CLEAN requires both: the type check passed **and** the engine answered `NO_THREAT_FOUND`. An engine detection is reported as `MALWARE_SIGNATURE` even if the type check also failed.
+* **Engines.** `clamd` — the INSTREAM protocol of ClamAV's daemon, a maintained open-source engine (adapter only; selecting it is P-010). `development-heuristic` — the old EICAR marker check, refused in production. `ATTACHMENT_SCAN_ENGINE`, `ATTACHMENT_SCAN_CLAMD_ADDRESS` (Unix socket or loopback TCP in production, because the protocol carries decrypted bytes in cleartext), `ATTACHMENT_SCAN_TIMEOUT_SECONDS`.
+* **Fail-closed outcomes.** Engine unreachable before a run: nothing is claimed, the job fails `SCAN_ENGINE_UNAVAILABLE`. Unreachable mid-run: the claim is released (`core.release_scan_claim`) without spending an attempt, so a long outage never turns uploads into FAILED rows that retention deletes. Timeout or a reply that is not a verdict: an attempt is spent; after three the row is FAILED. None of these is ever CLEAN.
+* **Provenance (migration 024).** `core.attachment.scan_engine` / `scan_engine_version`, written by `core.record_scan_result`; CLEAN without an engine is refused by the routine and by a table constraint; the scanner lost EXECUTE on the old `record_scan`. Rows scanned before 024 are labelled `development-heuristic`.
+* **Wording.** The CLEAN label now reads "Passed the file checks" / "اجتاز فحص الملف" instead of "Scanned and clean".
+* **Evidence.** `tests/adapters.test.ts` AP-1…AP-6 (policy; engine configuration; clamd adapter against a protocol double; a real-engine test that runs only with `ORGFIT_TEST_CLAMD_ADDRESS` and was **not run** — no engine was available); `tests/adapters-database.test.ts` AD-1 (through the database, with stub engines and the protocol double). No live malware was used; the only threat sample is the harmless EICAR test string.
 2. **Attachment limits, permitted types and retention are development defaults.** The type and size allowlist is **P-007**; the 365-day retention window is **P-004**.
 3. **Neither the store nor the lifecycle rule was exercised against S3.** Both ran on the local development adapter.
 4. **Preview is sandboxed, not proven safe.** A browser that renders a malicious PDF is still a browser rendering a malicious PDF; the sandbox policy limits what such a file could then reach, and does not stop it being opened.

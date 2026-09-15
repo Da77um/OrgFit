@@ -133,7 +133,7 @@ test("Arabic visit journey: record, complete, attach, scan, download", async ({
   expect(outcomes.some((o) => o.state === "CLEAN")).toBe(true);
 
   await page.reload();
-  await expect(page.getByRole("cell", { name: "مفحوص وسليم" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "اجتاز فحص الملف" })).toBeVisible();
   const download = page.getByRole("link", { name: "تنزيل" });
   await expect(download).toBeVisible();
   const href = (await download.getAttribute("href")) ?? "";
@@ -166,7 +166,7 @@ test("Arabic visit journey: record, complete, attach, scan, download", async ({
   });
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-  await expect(page.getByText("Scanned and clean")).toBeVisible();
+  await expect(page.getByText("Passed the file checks")).toBeVisible();
   await expect(
     page.getByText("They are not linked to survey answers", { exact: false }),
   ).toBeVisible();

@@ -45,6 +45,10 @@ function productionEnv(process: string): Record<string, string> {
   for (const kind of spec.storage ?? []) env[manifest.storage[kind][0]] = `private-${kind.toLowerCase().replace(/_/g, "-")}`;
   for (const key of spec.recommended ?? []) env[key] = "x-forwarded-for";
   if (process === "operator") env.BACKUP_DIRECTORY = env.OPS_DISK_PATH = "/var/backups/orgfit";
+  // Post-Audit Repair Pass 4: a maintained engine adapter for the scanner and an
+  // Object Lock retention for the operator's tombstone bucket.
+  if (process === "scanner") Object.assign(env, { ATTACHMENT_SCAN_ENGINE: "clamd", ATTACHMENT_SCAN_CLAMD_ADDRESS: "unix:/run/clamav/clamd.sock" });
+  if (process === "operator") env.TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS = "36";
   return env;
 }
 const failures = (findings: { outcome: string; check: string }[]) =>
@@ -54,10 +58,15 @@ test("R-1 the process manifest describes a complete, separated deployment and pr
   const manifest = loadManifest();
   assert.deepEqual(Object.keys(manifest.processes).sort(), ["operator", "processor", "report", "respondent", "scanner", "staff"]);
 
-  // A well-formed production environment passes for every process.
+  // A well-formed production environment passes for every process — except
+  // key custody. Changed deliberately in Post-Audit Repair Pass 4 (D-158): no
+  // managed custody provider is integrated (P-003), so the staff and processor
+  // environments FAIL "key-custody" until one is, and no deployment passes
+  // preflight on the development stand-in.
   for (const name of Object.keys(manifest.processes)) {
     const findings = checkEnvironment(name, productionEnv(name), { production: true, manifest });
-    assert.deepEqual(failures(findings), [], `${name}: ${JSON.stringify(findings.filter((f) => f.outcome === "FAIL"))}`);
+    const expected = ["staff", "processor"].includes(name) ? ["key-custody"] : [];
+    assert.deepEqual(failures(findings), expected, `${name}: ${JSON.stringify(findings.filter((f) => f.outcome === "FAIL"))}`);
   }
 
   // Trust boundaries: a web process holding another process's credential.
@@ -102,6 +111,8 @@ test("R-1 the process manifest describes a complete, separated deployment and pr
   delete respondent.RATE_LIMIT_CLIENT_IP_HEADER;
   const warned = checkEnvironment("respondent", respondent, { production: true, manifest });
   assert.ok(warned.some((f) => f.check === "recommended" && f.outcome === "WARN" && f.detail.includes("RATE_LIMIT_CLIENT_IP_HEADER")));
+  // …and, since Pass 4, refused in production: the operator must name the header or say `none`.
+  assert.ok(warned.some((f) => f.check === "trusted-proxy" && f.outcome === "FAIL"));
   // Development mode accepts local storage and http loopback origins.
   const dev = { ...staff, NODE_ENV: "development", STAFF_ORIGIN: "http://127.0.0.1:3000", RESPONDENT_ORIGIN: "http://localhost:3001", REPORT_S3_BUCKET: "", REPORT_LOCAL_DIRECTORY: "/tmp/r" };
   assert.deepEqual(failures(checkEnvironment("staff", dev, { production: false, manifest })), []);

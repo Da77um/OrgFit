@@ -1,6 +1,6 @@
 # OrgFit phase status
 
-Updated: 2026-09-14
+Updated: 2026-09-15
 
 ## Current position
 
@@ -17,6 +17,8 @@ Phase 12 adds a **new** production input: **P-010**, a maintained malware scanni
 **2026-09-14, after Checkpoint G:** Post-Audit Repair Pass 1 added the staff, audit, settings and profile screens and real pagination (migration 019) — see its entry near the end of this file. The production NO-GO is unchanged.
 
 **2026-09-15:** Post-Audit Repair Pass 3 added release withdrawal, a local job supervisor with job health, runtime TLS guards and repaired a report-queue crash-recovery defect (PR3-001), migrations 022–023 — see its entry near the end of this file. Still development only; the production NO-GO is unchanged.
+
+**2026-09-15, later:** Post-Audit Repair Pass 4 added the production-security adapters that can be built without provider choices — a malware-engine adapter with an active-document policy, a key-custody provider interface that production refuses to run on the development stand-in, staff-side rate limits with an explicit trusted-proxy decision, a sealed tombstone ledger with an Object Lock bucket sink, and an audited restore-incident intake erasure — and repaired a restore defect (PR4-001), migration 024. **No engine, key service, bucket, proxy or IdP was selected or verified; with no managed key custody, no production environment passes preflight.** See its entry near the end of this file. The production NO-GO is unchanged.
 
 Next step: **none in the phase sequence.** What remains is owner input (P-001 … P-008, P-010, itemized in checkpoint-g.md §6) and, only with explicit authorization, staging and deployment. Nothing may be deployed without explicit authorization. Earlier handoffs remain historical evidence, including the record of the Phase 06 request that was correctly blocked before Checkpoint B ran.
 
@@ -49,6 +51,7 @@ Next step: **none in the phase sequence.** What remains is owner input (P-001 �
 | G | Final go/no-go checkpoint | RUN — technical GO (implementation gate), production NO-GO; candidate `orgfit-0.3.0-rc.2` (`e801b9a`); checkpoint-g.md |
 | PR1 | Post-Audit Repair Pass 1: administration screens and pagination | COMPLETE (development) — entry below; D-128 … D-135 |
 | PR3 | Post-Audit Repair Pass 3: release revocation, supervised jobs, runtime safeguards | COMPLETE (development, local only) — entry below; D-145 … D-154 |
+| PR4 | Post-Audit Repair Pass 4: production-security adapters and remaining technical blockers | COMPLETE for in-repository work (development, local only); external integrations NOT DONE — entry below; D-157 … D-162 |
 
 ## Phase 00 handoff — 2026-09-08
 
@@ -1723,6 +1726,105 @@ Owner review of this pass. Then, with explicit authorization only: choose the ho
 - Unchanged residuals: the web processes (`src/config.ts`, `src/gateway-db.ts`) still check `sslmode` only at runtime (preflight now catches the override for them); everything listed under "Not run / unverified on real infrastructure" above still stands. Production NO-GO unchanged.
 
 **Next action:** unchanged from the Pass 3 entry above — owner review, then (with explicit authorization only) provider and monitoring destination, supervisor wiring, TLS rehearsal and rollback drill with 019–023, full Playwright suite, release manifest.
+## Post-Audit Repair Pass 4 — production-security adapters and remaining technical blockers — 2026-09-15
+
+- Step and status: **COMPLETE for the in-repository work (development, local only). The external integrations are NOT DONE** — no malware engine, managed key service, Object Lock bucket, proxy, IdP/MFA or hosting was selected, contacted, activated or verified. **Not production readiness; the Checkpoint G production NO-GO is unchanged, and with no managed key custody no production environment passes preflight.** Decisions D-157 … D-162; migration 024.
+- Starting point: clean tree at `2452213` (Pass 3 verification). Read before editing: AGENTS.md, blueprint, decisions (P-001 … P-010, D-086, D-145 … D-156), this file, the 14 September audit (`../OrgFit-Audit-2026-09-14.md`), security-review.md, privacy-verification.md, privacy-protocol.md §4–5, the runbooks, and the code of every finding below.
+
+### Findings verified against current code before repair
+
+| Finding | Verified how | Result |
+|---|---|---|
+| SEC-H2 / audit 7 — no malware engine; active PDF passed | `src/attachment-scan.ts`, `src/attachment-worker.ts`; the audit's `%PDF` + `/OpenAction /JavaScript` probe run against the `2452213` code | Confirmed: `{"verdict":"CLEAN"}` |
+| SEC-H1 — development file custody, preflight WARN only | `src/key-custody.ts`, `src/preflight.ts`, processor evidence string | Confirmed; no provider interface, production not refused, fixed evidence text |
+| SEC-M1 — no staff application limits | staff route, `src/local-auth.ts` (per-account lock only) | Confirmed |
+| SEC-M2 — trusted header optional; hop count | `src/rate-limit.ts` `clientBucket` | Confirmed, plus PR4-002: an unparseable hop count silently meant 0 and any string became a bucket |
+| SEC-M3 — local append-only ledger, no tamper evidence, no delivery signal | `src/operations.ts` ship/read/replay | Confirmed, plus **PR4-001** (below) |
+| SEC-M6 — no restore-incident erasure tool | incident-runbook §4.3 "Gap", code search | Confirmed |
+| Available engine on this machine | `clamscan`/`clamd` absent; Docker installed but daemon not running; Windows Defender present but not a deployable server engine and not used (its real-time protection and exclusions are system settings) | No maintained engine available to test; nothing downloaded |
+
+### Implemented
+
+- **Attachment scanning** (D-157): two separate controls — `verifyAttachment` (type, size, container, new active-document policy for PDF and OOXML, `DOCUMENT_ACTIVE_CONTENT` / `DOCUMENT_UNVERIFIABLE`) and `src/malware-engine.ts` (`clamd` INSTREAM adapter; `development-heuristic` = the old EICAR check, refused in production). Production without a maintained engine refuses before claiming; clamd only over a Unix socket or loopback. Engine outage before a run: nothing claimed; mid-run: claim released without spending an attempt; timeout / non-verdict: attempt spent, FAILED after three; never CLEAN. Migration 024: `scan_engine`, `scan_engine_version`, `core.record_scan_result`, `core.release_scan_claim`, CLEAN-requires-engine constraint, scanner's `record_scan` revoked, earlier verdicts labelled `development-heuristic`. CLEAN label → "Passed the file checks" / "اجتاز فحص الملف" (PR4-003).
+- **Key custody** (D-158): `CustodyProvider` interface, `CAMPAIGN_KEY_CUSTODY_PROVIDER`, production refusal of the development provider (rehearsal-only acknowledgement that preflight itself fails), unsupported names refused, provider-reported `DestructionEvidence` recorded by the processor ("not crypto-erasure"). Preflight `key-custody` is now FAIL for staff and processor in production. Integration plan, deletion/recovery-window questions and backup implications: [key-custody.md](key-custody.md). No other local implementation labelled managed.
+- **Staff rate limits and trusted proxy** (D-159): `src/staff-rate-limit.ts` + `access.staff_rate_hit` — per address for the five pre-session endpoints, per session for the signed-in API, 429 + `Retry-After`, `STAFF_SIGN_IN_ABUSE_SUSPECTED` / `STAFF_API_RATE_LIMITED`, retention. `trustedProxy()` shared with the gateway: production requires the header or `none`; malformed values fail closed; non-addresses ignored.
+- **Tombstone delivery** (D-160): `src/tombstone-ledger.ts` — sealed hash-chained batches verified on every read; `local-file` (development) and `s3` sinks (conditional create, SHA-256 checksum, COMPLIANCE Object Lock ≥ 36 days required in production); delivery record, `TOMBSTONE_SHIPPING_BEHIND` (critical); restore replay refuses an unverifiable ledger; **PR4-001 repaired**.
+- **Restore-incident intake erasure** (D-161): `npm run intake:erase` / `ops.erase_campaign_intake` — ledger-verified incident, restore gate, closed campaign, active Super Admin approver, incident reference, reason, exact envelope count; immutable record, `INTAKE_ERASED` audit row, tombstone kept; retry-safe. Incident runbook §10.
+- **Production prerequisites separated**: deployment-runbook §11 and release-checklist C5, D10, D12, D13, E7 now distinguish implemented code from missing hosting, IdP/MFA, storage, key-provider, engine, retention, approved content and independent-review inputs.
+
+### Defects found during this pass and repaired
+
+| ID | Found how | Repair |
+|---|---|---|
+| PR4-001 (High, restore integrity, released code 017) | Reading the restore replay against the tombstone identity sequence while designing durable delivery | A restored database's sequence restarts behind the ledger cursor, so deletions made after a restore were never shipped and a second restore would resurrect them; the reader also collapsed entries by sequence number. Replay advances the sequence first (`ops.advance_tombstone_sequence`), shipping refuses `TOMBSTONE_SEQUENCE_BEHIND_LEDGER`, reader deduplicates exact repeats only. AD-3 reproduces it and **fails with the advance removed** ("new tombstone 3 is past the ledger cursor 4") |
+| PR4-002 (Medium) | Reading `clientBucket` | Strict trusted-proxy parsing, fail-closed, `isIP` |
+| PR4-003 (Medium, wording) | Reading the visit screens against the scan model | CLEAN label no longer says "scanned and clean" |
+| Harness defects of my own | RG-3 failed ("printed a configured value": the engine name, deliberately printed); the rehearsal's preflight value check matched the provider name `development-file` in a finding's text; a PowerShell multi-replace silently skipped two R-1 edits | RG-3 exempts the engine name only; preflight text rephrased; edits re-applied with the editor and re-run |
+
+**Assertions changed deliberately (D-162):** R-1 expects `key-custody` FAIL for production staff and processor environments and a trusted-proxy FAIL for a production respondent without the header; RG-3 configures custody and engine settings so that the TLS guard is still what refuses `process-campaigns.ts` and `scan-attachments.ts`, and asserts no custody/engine code appears; the visits and Checkpoint F browser specs assert the new CLEAN label; the TLS rehearsal expects exactly the custody preflight failures, uses a clamd protocol double and an S3 ledger bucket on its test double (which gained ListObjectsV2 and `If-None-Match`).
+
+### Duplicate files removed (owner instruction in this session)
+
+`OrgFit-Master-Blueprint.md` (byte-identical to `docs/orgfit/blueprint.md`) and `OrgFit-Astra-6-Implementation-Prompts.md` (an older copy of `docs/orgfit/implementation-prompts.md`, lacking its session-continuity section) were deleted from the repository root; both remain in git history (`95c72fa`). The canonical copies under `docs/orgfit/` are unchanged and AGENTS.md already points to them. Other byte-identical tracked files (`apps/*/app/icon.svg`, `apps/*/next-env.d.ts`, `apps/*/proxy.ts`, `apps/*/tsconfig.json`) are per-application files each app needs and were kept.
+
+### Changed files and migrations
+
+New: `db/migrations/024_security_adapters.sql`; `src/malware-engine.ts`, `src/staff-rate-limit.ts`, `src/tombstone-ledger.ts`; `scripts/erase-intake.ts`; `tests/adapters.test.ts`, `tests/adapters-database.test.ts`, `tests/adapters/clamd-double.ts`, `tests/adapters/s3-double.ts`; `docs/orgfit/key-custody.md`.
+
+Modified: `src/attachment-scan.ts`, `src/attachment-worker.ts`, `src/key-custody.ts`, `src/processor.ts`, `src/operations.ts`, `src/preflight.ts`, `src/rate-limit.ts`, `src/visits-i18n.ts`; `apps/staff/app/api/v1/[...path]/route.ts`; `scripts/scan-attachments.ts`, `ship-tombstones.ts`, `restore-reapply.ts`, `process-campaigns.ts`, `check-boundaries.ts`; `deploy/processes.json` (storage kind `TOMBSTONE_LEDGER`; new optional/recommended variables; `intake:erase`); `package.json` (`intake:erase`, `test:adapters`, `test:adapters-db`); `.github/workflows/ci.yml`; `.env.example`, `.env.operator.example`; `tests/release.test.ts`, `tests/safeguards.test.ts`, `tests/release/rehearsal.ts`, `tests/browser/visits.spec.ts`, `tests/browser/checkpoint-f.spec.ts`; `README.md`; docs `decisions.md`, `security-review.md` (§8), `privacy-verification.md` (§7), `incident-runbook.md` (alerts, §4.3, §10), `retention-backup-runbook.md`, `deployment-runbook.md` (§2, §3, §4, §11), `release-checklist.md`, `visits.md`, this file. Deleted: the two root duplicates above. **Migrations 001–023 and anonymous 001–002 untouched** (R-2 lists 024 as the only addition since Pass 3).
+
+### Tests actually run
+
+Windows 11, Node 24.13.1, PostgreSQL 18.4 loopback cluster 127.0.0.1:55432 (fresh synthetic databases per suite; nothing reset or dropped), Chromium. Logs `work/pass4-*.log`.
+
+| Check | Result |
+|---|---|
+| `npm run test:adapters` | **9 passed, 1 skipped** — AP-1 PDF policy (audit probe, hex-escaped name, Launch, EmbeddedFiles, AA, XFA, encrypted, no `%%EOF`, JavaScript inside a Flate object stream, LZW object stream, corrupt stream, 70 MiB inflation bound; hyperlink, open action and image bytes spelling `/JS` pass); AP-2 OOXML policy; AP-3 separation of type check and engine; AP-4 engine configuration and preflight; **AP-5 [mocked-engine]** clamd adapter against a protocol double: version, 300 KiB byte-exact reassembly, EICAR, ERROR reply, garbage, dropped connection, timeout within deadline, closed port; AP-7 custody resolution, preflight and destruction evidence (a pre-destruction copy still opens the key); AP-8 trusted proxy; AP-9 ledger seals (changed, removed, reordered line detected; interrupted shipment repaired; legacy ledger sealed; production sink refusals); **AP-10 [mocked-storage]** S3 sink (conditional create, checksum, Object Lock headers ≥ 36 days, interrupted-shipment retry without overwrite, conflicting overwrite refused, tamper and deletion detected, outage beyond retries fails, transient failure retried). **AP-6 [real-engine] NOT RUN** — `ORGFIT_TEST_CLAMD_ADDRESS` unset, no engine available |
+| `npm run test:adapters-db` | **6 passed** — AD-1 provenance, pre-run outage (nothing claimed, attempts 0 after 5 runs), mid-run outage (released 5×, still QUARANTINED, bytes intact), timeouts through the real adapter and a hanging double → FAILED after 3 and not claimed again, EICAR rejected with `clamd` recorded and bytes removed, error reply spends an attempt, active PDF rejected end to end, type rejection without engine verdict records no engine, old `record_scan` permission denied, CLEAN without engine refused, scanner still 0 table privileges, constraint; AD-2 staff limits (20 then 429, other address/endpoint unaffected, forged header counts nothing, malformed hops 503, per-session 5 then 429, no identifier stored, keys differ per window, auth/staff cannot read, staff cannot count, both alerts, retention); AD-3 delivery alert raised and cleared, PR4-001 reproduced and repaired, tampered ledger keeps both readiness endpoints closed, post-restore deletion ships; AD-4 intake erasure negatives (not an incident, staff and disabled approvers, wrong count, short reason, blank reference, bystander campaign, restore gate NORMAL, open campaign, six application roles denied) then success (envelopes 6→0, invitations kept, bystander 5 kept, anonymous count unchanged, audit row, one tombstone, immutable to UPDATE/DELETE/TRUNCATE, replay same id, replay opens the environment, tombstone ships); AD-5 processor records provider evidence |
+| Falsification | audit PDF probe on `2452213` code → CLEAN; AD-3 with the sequence advance removed → fails |
+| All 32 node suites in one run (`work/pass4-node-summary.txt`) | test 5, localization 4, requests 8, integration 8, directory 6, instruments 8, scoring 15, scoring-db 5, checkpoint-b 3, campaigns 18, respondent 24, privacy 17, checkpoint-c 21, disclosure 16, publication 13, recommendations 13, checkpoint-d 18, comparison 13, history 8, reports 17, checkpoint-e 11, visits 14, access 8, operations 9, **release 4 passed / 1 failed**, administration 8, targets 16, revocation 12, supervisor 9, safeguards 11, adapters 9 (+1 not run), adapters-db 6 — **357 passed, 1 failed, 1 skipped** |
+| The one failure | R-3: the **baseline child process** (Checkpoint F code in its worktree) crashed natively (exit 3221226505) before any upgrade step — the same transient recorded in Pass 3. `test:release` run alone before the full run and again after it: **5 passed** both times (R-3 included) |
+| `npm run typecheck`, `npm run lint` | clean, clean |
+| `npm run build`, `npm run check:boundaries`, `npm run test:production` | exit 0, exit 0 (boundary check now also forbids the engine adapter and ledger in web builds and the staff limiter in the respondent build), exit 0 |
+| TLS release rehearsal `tests/release/rehearsal.ts` (production builds, TLS proxy, TLS-only PostgreSQL, synthetic OIDC, S3 test double, **clamd protocol double**) | **13/13 PASS**: preflight — report, respondent, scanner, operator pass; staff and processor fail exactly `key-custody` and `key-custody-rehearsal`; the scanner job ran through the clamd adapter; `tombstones:ship` shipped 2 to the **s3** sink and `restore:reapply` read and verified the bucket ledger and reopened the environment |
+| Browser, Chromium, `E2E_NEXT_DIST_DIR=.next-e2e` | Run 1 on ports 3100/3101 (`access`, `administration`, `reliability`, `revocation`, `visits`, `checkpoint-f`): **21 passed, 4 failed, 9 not run** — `visits.spec` and `checkpoint-f.spec` still hard-code port 3000 (connection refused; Checkpoint F serial tests then skipped), and `revocation.spec` found the results page in English after the administration spec had changed the shared Super Admin's language in the same run (the spec expects Arabic; test-order interference, not this pass). Run 2: `revocation.spec` alone on 3100/3101 **1 passed**. Run 3: `visits.spec` + `checkpoint-f.spec` on the now-free default ports 3000/3001 **12 passed** (new CLEAN label, attachment scanned through the development heuristic, F-1…F-10). All 34 selected tests passed in some run; the other browser specs were not run |
+
+### Not run / unverified on real infrastructure
+
+- **No maintained malware engine was run** (AP-6 not run). No ClamAV or other engine was installed, downloaded or started; no live malware was used — the only threat sample is the harmless EICAR string, and every engine test is labelled mocked.
+- **No managed key custody** exists or was contacted; no crypto-erasure is claimed; deletion/recovery windows are unknown.
+- **No real bucket**: Object Lock, versioning, deny-delete policy and lifecycle are unverified (S3 test doubles only).
+- **No real proxy, TLS terminator, WAF or IdP/MFA**; limits are untuned defaults.
+- Not re-run: the physical rollback and restore drills (`tests/ops/*.ts`) with migration 024; the remaining browser specs (the full Playwright suite was not run in one pass; the spec-order language interference above is unrepaired test tooling); `npm audit`; release manifest regeneration (019–024 are new; `orgfit-0.3.0-rc.2` no longer describes this tree); remote CI; real devices, WebKit/Firefox, screen readers.
+- No alert was delivered anywhere; nothing deployed, pushed or sent.
+
+### Open defects, assumptions and production prerequisites
+
+**Implementation work still open (can be done in the repository):** a correction/superseding-release workflow (Pass 3); the web processes' runtime TLS check is sslmode-only (preflight covers the override); the erasure tool leaves any restored processing-batch record as it is — erasure where the restored core also holds a batch for the campaign was **not exercised** (AD-4 covers a campaign closed before processing); SEC-M4 continuous logging enforcement; RC-005 caret ranges; manifest regeneration.
+
+**External inputs (cannot be completed without them, none approved):**
+
+| Input | Needed for | State |
+|---|---|---|
+| P-010 | selecting and hosting a maintained engine, update cadence, running AP-6 | open |
+| P-003 | managed key custody, custodian separation, deletion/recovery windows, custody backup policy | open — **blocking; no environment passes preflight** |
+| P-002 | hosting, region, TLS, proxy header, edge limits, network separation, Object Lock bucket, secret manager, monitoring destination | open |
+| P-005 | production IdP and MFA | open |
+| P-004 | retention durations, backup retention/RPO/RTO measured | open |
+| P-006 | approved Arabic/English questionnaire content, scoring, rules | open |
+| P-007 | data and attachment policy, including approval of the active-document policy (it refuses embedded objects such as pasted Excel charts) | open |
+| P-001 / P-008 | accepted threat model; independent privacy and security review, including CE-001; deployment authorization | open |
+
+**CE-001 preserved:** the owner's P-009 answer (accept and declare, D-086) is unchanged; no disclosure rule, caveat or output was altered; the caveat remains a declaration, not a prevention, and an independent reviewer has still not seen it.
+
+### Commit
+
+Committed on `main` on top of `2452213` as "Post-Audit Repair Pass 4: production-security adapters and remaining technical blockers". No remote, nothing pushed, deployed or sent; no service installed or activated.
+
+### Exact next action
+
+Owner input, in this order: P-003 (custodian and managed key service — the blocking one), P-010 (engine), P-002 (hosting, proxy, bucket with Object Lock, monitoring), P-005, P-004, P-007, then the independent review (P-001/P-008). In the repository, once any of those arrive: write the provider adapter against its staging account (key-custody.md §5), run AP-6 against the chosen engine, re-run the TLS rehearsal and physical rollback drill with 024, run the full Playwright suite, and regenerate the release manifest.
+
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

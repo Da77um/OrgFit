@@ -77,3 +77,27 @@ Recommended server settings are recorded in `retention-backup-runbook.md` §2; t
 3. The deployment's proxy/CDN/provider logging and network metadata (P-002).
 4. Backup and custody separation as actually configured by the operator.
 5. Whether the rate-limit HMAC design meets the jurisdiction's treatment of IP addresses as personal data.
+
+## 7. Post-Audit Repair Pass 4 additions (2026-09-15)
+
+Self-verification only; not a privacy approval. CE-001 is unchanged (accepted and declared under P-009, not prevented, not independently reviewed).
+
+### Staff rate limits store no identifier (AD-2)
+* `access.staff_rate_limit` holds bucket, keyed digest, window start, hits and a refused count. Keys are HMACs over the window and the client material (a trusted-proxy address bucket or a session digest) under a key derived from the invitation-digest key with a staff-specific label, so a staff counter can equal neither a gateway counter nor a stored digest. Asserted: no stored key contains the hex of the address, the session token or its SHA-256; one client's key differs between windows.
+* Only `orgfit_auth` may count (EXECUTE only); neither `orgfit_auth` nor `orgfit_staff` can read the table. Rows are removed on the `rate_limit_window` retention class. Alerts carry counts only.
+* Whether hashed address buckets are personal data in the deployment jurisdiction is §6 item 5, now for the staff side too.
+
+### Tombstone ledger (AP-9, AP-10, AD-3)
+* Ledger lines are unchanged: exactly `seq, class, organizationId, subjectId, recordedAt` — objects and campaigns, never people (re-asserted). Seals add counts, sequence bounds and hashes only.
+* The S3 sink's Object Lock and deletion protection are **not** verified (test double only). A restore replay refuses a ledger whose seals do not verify, keeping both readiness endpoints closed.
+* PR4-001 repaired: deletions made after a restore now reach the ledger, so a second restore cannot resurrect them.
+
+### Intake erasure after a restore incident (AD-4)
+* Erases one closed campaign's encrypted envelopes, drafts and respondent sessions, only after the ledger-verified incident, with a Super Admin approver and an incident reference. It reads no envelope, touches no invitation or completion record and nothing in the anonymous database (asserted by counts before and after), and records only identifiers, counts, the reference and the reason.
+* It does **not** erase backup copies; the ciphertext remains in core backups for their retention.
+
+### Key custody (AP-7, AD-5)
+* No change to the protocol or to who can open a campaign key. Destruction evidence now comes from the provider; the development provider states it is not crypto-erasure, and AP-7 demonstrates why (a copy taken before destruction plus the custodian secret still opens the key). §5 above stands in full; see [key-custody.md](key-custody.md).
+
+### Attachments (AP-1…AP-6, AD-1)
+* Visit attachments are identified consulting material, not respondent data; nothing here links them to survey answers. The engine adapter sends decrypted file bytes to the engine, so production requires a local socket or loopback address. No engine has been run.

@@ -1,9 +1,8 @@
-import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import pg from "pg";
 import { deleteAttachment } from "./attachment-storage";
 import { destroyCampaignKey } from "./key-custody";
-import { databaseUrl } from "./runtime-guard";
+import { RuntimeGuardError, databaseUrl } from "./runtime-guard";
+import { localFileSink, sealHash, type Tombstone, type TombstoneSink } from "./tombstone-ledger";
 
 // ---------------------------------------------------------------------------
 // Operations (Phase 14): retention, tombstone shipping, the restore replay and
@@ -15,22 +14,6 @@ import { databaseUrl } from "./runtime-guard";
 // answer, a draft's content, a token or a participant. Every value it moves is
 // a count, an object identifier or a campaign identifier.
 // ---------------------------------------------------------------------------
-
-type Tombstone = {
-  seq: number;
-  class:
-    | "ATTACHMENT"
-    | "REPORT_ARTIFACT"
-    | "PRIVATE_EXPORT"
-    | "CAMPAIGN_INTAKE"
-    | "CAMPAIGN_KEY"
-    | "ANONYMOUS_CAMPAIGN"
-    // Post-Audit Repair Pass 3 (022): a withdrawn release, subject = snapshot.
-    | "RELEASE_REVOCATION";
-  organizationId: string;
-  subjectId: string;
-  recordedAt: string;
-};
 
 // Login, password and — in production — verified TLS, checked before any
 // connection (RC-004; src/runtime-guard.ts).
@@ -71,39 +54,54 @@ export async function runRetention(coreUrl: string, anonUrl: string) {
     (await c.query("SELECT anonymous.purge_expired($1::interval, 50) AS data", [coreResult.retain])).rows[0]
       .data as { organizationId: string; campaignId: string }[],
   );
-  await core(coreUrl, async (c) => {
+  const staffRate = await core(coreUrl, async (c) => {
     for (const x of campaigns)
       await c.query("SELECT ops.record_anonymous_purge($1,$2)", [x.organizationId, x.campaignId]);
+    // Staff-side rate counters (024), on the same retention class.
+    return (await c.query("SELECT ops.purge_staff_rate_limit(5000) AS n")).rows[0].n as number;
   });
-  return { ...coreResult.purged, anonymous_campaigns: campaigns.length } as Record<string, number>;
+  return {
+    ...coreResult.purged,
+    rate_limit_window: (coreResult.purged.rate_limit_window ?? 0) + staffRate,
+    anonymous_campaigns: campaigns.length,
+  } as Record<string, number>;
 }
 
 // ---- tombstone ledger ---------------------------------------------------------
 //
 // The ledger lives OUTSIDE the database and outside database backups, so it
-// survives the very restore it exists to correct. It is append-only JSONL with
-// an fsync per batch and a cursor written by rename.
+// survives the very restore it exists to correct. Where and how it is kept —
+// a local directory in development, an S3-compatible bucket with conditional
+// creates and Object Lock in production — is src/tombstone-ledger.ts. A plain
+// directory path is accepted wherever a sink is, for the local drills.
 
-const ledgerFile = (dir: string) => join(resolve(dir), "tombstones.jsonl");
-const cursorFile = (dir: string) => join(resolve(dir), "cursor");
+const sinkOf = (target: string | TombstoneSink) => (typeof target === "string" ? localFileSink(target) : target);
 
-export async function readLedger(dir: string): Promise<Tombstone[]> {
-  const text = await readFile(ledgerFile(dir), "utf8").catch((e: NodeJS.ErrnoException) => {
-    if (e.code === "ENOENT") return "";
-    throw e;
-  });
-  const seen = new Map<number, Tombstone>();
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    const t = JSON.parse(line) as Tombstone;
-    seen.set(t.seq, t);
-  }
-  return [...seen.values()].sort((a, b) => a.seq - b.seq);
+/** Every tombstone in the ledger, after verifying its seals. */
+export async function readLedger(target: string | TombstoneSink): Promise<Tombstone[]> {
+  return (await sinkOf(target).read()).tombstones;
 }
 
-export async function shipTombstones(coreUrl: string, dir: string) {
-  await mkdir(resolve(dir), { recursive: true });
-  const after = Number((await readFile(cursorFile(dir), "utf8").catch(() => "0")).trim() || "0");
+/**
+ * Ship new tombstones to the ledger, batch by sealed batch, and record in the
+ * core database how far the ledger is known to reach (the TOMBSTONE_SHIPPING_
+ * BEHIND alert reads it). Refuses — without writing — when the database's
+ * tombstone sequence is behind what the ledger already holds (PR4-001): a
+ * restored database that has not been replayed would give new tombstones
+ * sequence numbers the cursor has already passed, and they would never ship.
+ */
+export async function shipTombstones(coreUrl: string, target: string | TombstoneSink) {
+  const sink = sinkOf(target);
+  const ledger = await sink.read();
+  let previous = await sink.repair(ledger);
+  const after = await sink.cursor(ledger);
+  const sequence = await core(coreUrl, async (c) =>
+    Number(
+      (await c.query("SELECT coalesce(pg_sequence_last_value(pg_get_serial_sequence('ops.deletion_tombstone','seq')::regclass),0) AS v"))
+        .rows[0].v,
+    ),
+  );
+  if (sequence < Math.max(after, ledger.maxSeq)) throw new RuntimeGuardError("TOMBSTONE_SEQUENCE_BEHIND_LEDGER");
   let cursor = after,
     shipped = 0;
   for (;;) {
@@ -111,20 +109,24 @@ export async function shipTombstones(coreUrl: string, dir: string) {
       (await c.query("SELECT ops.tombstones_after($1,1000) AS data", [cursor])).rows[0].data as Tombstone[],
     );
     if (!batch.length) break;
-    const handle = await open(ledgerFile(dir), "a");
-    try {
-      await handle.write(batch.map((t) => JSON.stringify(t)).join("\n") + "\n");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
+    previous = sealHash(await sink.append(batch, previous));
     cursor = batch[batch.length - 1].seq;
     shipped += batch.length;
-    await writeFile(cursorFile(dir) + ".tmp", String(cursor));
-    await rename(cursorFile(dir) + ".tmp", cursorFile(dir));
+    await sink.saveCursor(cursor);
   }
-  return { shipped, cursor };
+  await core(coreUrl, (c) => c.query("SELECT ops.record_tombstone_shipment($1,$2,$3)", [cursor, sink.kind, shipped]));
+  return { shipped, cursor, sink: sink.kind };
 }
+
+export type TombstoneDeliveryStatus = {
+  maxSeq: number;
+  shippedThrough: number;
+  lastShippedAt: string | null;
+  unshipped: number;
+  oldestUnshippedSeconds: number;
+};
+export const tombstoneDeliveryStatus = (coreUrl: string) =>
+  core(coreUrl, async (c) => (await c.query("SELECT ops.tombstone_delivery_status() AS data")).rows[0].data as TombstoneDeliveryStatus);
 
 // ---- restore -------------------------------------------------------------------
 
@@ -145,10 +147,16 @@ export type ReapplyReport = {
 export async function reapplyTombstones(
   coreUrl: string,
   anonUrl: string,
-  dir: string,
+  target: string | TombstoneSink,
   options: { openDespiteIncidents?: boolean } = {},
 ): Promise<ReapplyReport> {
-  const ledger = await readLedger(dir);
+  // A ledger whose seals do not verify is refused here: the environment stays
+  // closed rather than being opened on a ledger that may have lost entries.
+  const read = await sinkOf(target).read();
+  const ledger = read.tombstones;
+  // PR4-001: before anything below records a tombstone, move the restored
+  // database's sequence past every number the ledger already holds.
+  await core(coreUrl, (c) => c.query("SELECT ops.advance_tombstone_sequence($1)", [read.maxSeq]));
   const applied: ReapplyReport["applied"] = {
     ATTACHMENT: 0,
     REPORT_ARTIFACT: 0,
@@ -190,22 +198,9 @@ export async function reapplyTombstones(
       );
       if (changed) applied.PRIVATE_EXPORT++;
     } else if (t.class === "CAMPAIGN_INTAKE") {
-      // Intake may be erased again only where erasing it loses nothing the
-      // restore did not already lose: the anonymous marker exists, the campaign
-      // was below its threshold, or the anonymous output was itself purged.
-      const decision = await core(coreUrl, async (c) => {
-        const { rows } = await c.query(
-          `SELECT c.threshold,(SELECT count(*)::int FROM intake.submission_inbox e WHERE e.campaign_id=c.id) inbox
-             FROM core.campaign c WHERE c.id=$1 AND c.organization_id=$2`,
-          [t.subjectId, t.organizationId],
-        );
-        return rows[0] as { threshold: number; inbox: number } | undefined;
-      });
-      if (!decision || decision.inbox === 0) continue;
-      const marker = await anonymous(anonUrl, async (c) =>
-        (await c.query("SELECT 1 FROM anonymous.processed_batch WHERE organization_id=$1 AND campaign_id=$2", [t.organizationId, t.subjectId])).rowCount,
-      );
-      if (marker || decision.inbox < decision.threshold || purgedAnonymously.has(t.subjectId)) {
+      const decision = await intakeDecision(coreUrl, anonUrl, t, purgedAnonymously);
+      if (decision.kind === "NOTHING") continue;
+      if (decision.kind === "ERASE") {
         await core(coreUrl, async (c) => {
           await c.query("BEGIN");
           await c.query("DELETE FROM intake.submission_inbox WHERE campaign_id=$1", [t.subjectId]);
@@ -253,6 +248,115 @@ export async function reapplyTombstones(
   const opened = incidents.length === 0 || !!options.openDespiteIncidents;
   if (opened) await core(coreUrl, (c) => c.query("SELECT ops.set_restore_state('NORMAL')"));
   return { applied, incidents, retention, opened };
+}
+
+// Intake may be erased again only where erasing it loses nothing the restore
+// did not already lose: the anonymous marker exists, the campaign was below its
+// threshold, or the anonymous output was itself purged. Otherwise it is the
+// incident ANONYMOUS_OUTPUT_MISSING_FOR_ERASED_INTAKE, decided by a person.
+async function intakeDecision(
+  coreUrl: string,
+  anonUrl: string,
+  t: Pick<Tombstone, "organizationId" | "subjectId">,
+  purgedAnonymously: Set<string>,
+): Promise<{ kind: "NOTHING" } | { kind: "ERASE" | "INCIDENT"; inbox: number }> {
+  const found = await core(coreUrl, async (c) => {
+    const { rows } = await c.query(
+      `SELECT c.threshold,(SELECT count(*)::int FROM intake.submission_inbox e WHERE e.campaign_id=c.id) inbox
+         FROM core.campaign c WHERE c.id=$1 AND c.organization_id=$2`,
+      [t.subjectId, t.organizationId],
+    );
+    return rows[0] as { threshold: number; inbox: number } | undefined;
+  });
+  if (!found || found.inbox === 0) return { kind: "NOTHING" };
+  const marker = await anonymous(anonUrl, async (c) =>
+    (await c.query("SELECT 1 FROM anonymous.processed_batch WHERE organization_id=$1 AND campaign_id=$2", [t.organizationId, t.subjectId])).rowCount,
+  );
+  if (marker || found.inbox < found.threshold || purgedAnonymously.has(t.subjectId)) return { kind: "ERASE", inbox: found.inbox };
+  return { kind: "INCIDENT", inbox: found.inbox };
+}
+
+// ---- whole-campaign intake erasure for an approved restore incident (SEC-M6) ----
+
+export type IntakeErasureInput = {
+  organizationId: string;
+  campaignId: string;
+  approverEmail: string;
+  incidentReference: string;
+  reason: string;
+  /** The number of envelopes the operator saw in the incident report and
+   *  expects to erase; any other number refuses (CONFIRMATION_MISMATCH). */
+  expectedEnvelopes: number;
+};
+export type IntakeErasureResult = {
+  id: string;
+  campaignId: string;
+  replayed: boolean;
+  envelopesErased: number;
+  draftsErased: number;
+  sessionsErased: number;
+};
+
+/**
+ * Erase the encrypted intake a restore brought back for ONE campaign, after the
+ * owner has decided the incident. It refuses unless the verified ledger reports
+ * exactly ANONYMOUS_OUTPUT_MISSING_FOR_ERASED_INTAKE for that campaign right
+ * now; the database routine then requires the restore gate, a closed campaign,
+ * an active Super Admin approver, the incident reference, a reason and the
+ * expected envelope count, and records the erasure, its audit row and the
+ * CAMPAIGN_INTAKE tombstone. A retried command with the same incident
+ * reference returns the same record. Nothing anonymous is touched and no
+ * envelope is read.
+ */
+export async function eraseCampaignIntake(
+  coreUrl: string,
+  anonUrl: string,
+  target: string | TombstoneSink,
+  input: IntakeErasureInput,
+): Promise<IntakeErasureResult> {
+  const ledger = await readLedger(target);
+  const stone = ledger.find(
+    (t) => t.class === "CAMPAIGN_INTAKE" && t.subjectId === input.campaignId && t.organizationId === input.organizationId,
+  );
+  const purged = new Set(ledger.filter((x) => x.class === "ANONYMOUS_CAMPAIGN").map((x) => x.subjectId));
+  const replay = async () =>
+    core(coreUrl, async (c) => {
+      const { rows } = await c.query(
+        `SELECT id, campaign_id, envelopes_erased, drafts_erased, sessions_erased FROM ops.intake_erasure
+          WHERE organization_id=$1 AND campaign_id=$2 AND incident_reference=$3`,
+        [input.organizationId, input.campaignId, input.incidentReference.trim()],
+      );
+      return rows[0]
+        ? ({
+            id: rows[0].id,
+            campaignId: rows[0].campaign_id,
+            replayed: true,
+            envelopesErased: rows[0].envelopes_erased,
+            draftsErased: rows[0].drafts_erased,
+            sessionsErased: rows[0].sessions_erased,
+          } as IntakeErasureResult)
+        : null;
+    });
+  if (!stone) throw new Error("NOT_A_RESTORE_INCIDENT");
+  const decision = await intakeDecision(coreUrl, anonUrl, stone, purged);
+  if (decision.kind !== "INCIDENT") {
+    // Already erased by this same decision: the retry gets the record.
+    const earlier = await replay();
+    if (earlier) return earlier;
+    throw new Error("NOT_A_RESTORE_INCIDENT");
+  }
+  return core(coreUrl, async (c) =>
+    (
+      await c.query("SELECT ops.erase_campaign_intake($1,$2,$3,$4,$5,$6) AS data", [
+        input.organizationId,
+        input.campaignId,
+        input.approverEmail,
+        input.incidentReference,
+        input.reason,
+        input.expectedEnvelopes,
+      ])
+    ).rows[0].data as IntakeErasureResult,
+  );
 }
 
 // ---- cross-store reconciliation ------------------------------------------------
@@ -324,6 +428,11 @@ export type AlertInputs = {
   storeInconsistencies?: number;
   /** Per-job health from ops.job_health() (023); present when it was read. */
   jobs?: JobHealth[];
+  /** Pass 4 (024): age of the oldest tombstone not yet recorded as shipped. */
+  tombstoneOldestUnshippedSeconds?: number;
+  /** Pass 4 (024): staff requests refused by the application limits, last 10 min. */
+  staffPreSessionLimited?: number;
+  staffApiLimited?: number;
 };
 export type JobHealth = {
   job: string;
@@ -338,6 +447,9 @@ export type JobHealth = {
 export type Alert = { code: string; severity: "critical" | "warning"; value: number | string };
 
 export const ALERT_THRESHOLDS = {
+  // Three times the proposed 5-minute shipping cadence: past this, a restore
+  // could resurrect deletions no ledger knows about.
+  tombstoneUnshippedSeconds: 15 * 60,
   reportQueueSeconds: 15 * 60,
   attachmentQuarantineSeconds: 60 * 60,
   retentionStaleHours: 26,
@@ -364,6 +476,10 @@ export function evaluateAlerts(
   if (input.reportFailedLastDay > 0) add("EXPORT_FAILURES", "warning", input.reportFailedLastDay);
   if (input.attachmentQuarantineOldestSeconds > ALERT_THRESHOLDS.attachmentQuarantineSeconds) add("SCAN_BACKLOG", "warning", input.attachmentQuarantineOldestSeconds);
   if (input.rateLimitedLastWindow > 0) add("TOKEN_ABUSE_SUSPECTED", "warning", input.rateLimitedLastWindow);
+  if ((input.tombstoneOldestUnshippedSeconds ?? 0) > ALERT_THRESHOLDS.tombstoneUnshippedSeconds)
+    add("TOMBSTONE_SHIPPING_BEHIND", "critical", input.tombstoneOldestUnshippedSeconds!);
+  if ((input.staffPreSessionLimited ?? 0) > 0) add("STAFF_SIGN_IN_ABUSE_SUSPECTED", "warning", input.staffPreSessionLimited!);
+  if ((input.staffApiLimited ?? 0) > 0) add("STAFF_API_RATE_LIMITED", "warning", input.staffApiLimited!);
   if (!input.lastRetentionRun || now - Date.parse(input.lastRetentionRun) > ALERT_THRESHOLDS.retentionStaleHours * 3600_000)
     add("RETENTION_NOT_RUNNING", "warning", input.lastRetentionRun ?? "never");
   if (input.unapprovedRetentionClasses > 0) add("RETENTION_POLICY_UNAPPROVED", "warning", input.unapprovedRetentionClasses);
@@ -390,7 +506,17 @@ export function evaluateAlerts(
 export const JOB_FAILURES_CRITICAL = 3;
 
 export const alertInputs = (coreUrl: string) =>
-  core(coreUrl, async (c) => (await c.query("SELECT ops.alert_inputs() AS data")).rows[0].data as AlertInputs);
+  core(coreUrl, async (c) => {
+    const base = (await c.query("SELECT ops.alert_inputs() AS data")).rows[0].data as AlertInputs;
+    const delivery = (await c.query("SELECT ops.tombstone_delivery_status() AS data")).rows[0].data as TombstoneDeliveryStatus;
+    const staff = (await c.query("SELECT ops.staff_rate_limited_recent() AS data")).rows[0].data as { preSession: number; api: number };
+    return {
+      ...base,
+      tombstoneOldestUnshippedSeconds: delivery.oldestUnshippedSeconds,
+      staffPreSessionLimited: Number(staff.preSession),
+      staffApiLimited: Number(staff.api),
+    } as AlertInputs;
+  });
 
 export const jobHealth = (coreUrl: string) =>
   core(coreUrl, async (c) =>

@@ -38,6 +38,12 @@ import { historyRoute } from "../../../../../../src/history";
 import { reportRoute } from "../../../../../../src/reports";
 import { visitRoute } from "../../../../../../src/visits";
 import { administrationRoute } from "../../../../../../src/administration";
+import {
+  StaffRateLimited,
+  isPreSessionPath,
+  limitPreSession,
+  limitSession,
+} from "../../../../../../src/staff-rate-limit";
 type Context = { params: Promise<{ path: string[] }> };
 // The one route that carries bytes rather than JSON.
 const attachmentContent =
@@ -57,6 +63,11 @@ async function handle(req: Request, ctx: Context) {
         config.STAFF_ORIGIN,
         req.method === "PUT" && attachmentContent.test(path),
       );
+    // Application rate limits (Post-Audit Repair Pass 4, SEC-M1): per client
+    // address before a session exists, per session after. Counted before any
+    // authentication work, and a limit changes nothing but its own counter.
+    if (isPreSessionPath(path)) await limitPreSession(path, req.headers);
+    else if (path !== "locale") await limitSession(jar.get(sessionCookie())?.value);
     if (req.method === "GET" && path === "auth/start") {
       const { url, flow } = await beginLogin();
       const res = NextResponse.redirect(url);
@@ -230,10 +241,13 @@ async function handle(req: Request, ctx: Context) {
       },
     );
   } catch (e) {
-    return safeError(
+    const res = safeError(
       e instanceof z.ZodError ? new AppError("VALIDATION_FAILED", 422) : e,
       locale,
     );
+    if (e instanceof StaffRateLimited)
+      res.headers.set("Retry-After", String(e.retryAfter));
+    return res;
   }
 }
 export {

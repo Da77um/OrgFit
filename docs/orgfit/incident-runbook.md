@@ -30,6 +30,11 @@
 | `JOB_FAILING` | critical for the same jobs after 3 consecutive failures; warning otherwise | The named job's last run failed (failure code on the Settings screen) | Read the code; run preflight for that process; §9 |
 | `JOB_NEVER_RUN` | warning | The named job has no recorded run | Expected on a new environment for hourly/daily jobs; otherwise the supervisor is not running it |
 | `SUPERVISED_JOB_FAILING` | critical for processor jobs; warning otherwise | Supervisor-side: the job exhausted its bounded retries | §9 |
+| `TOMBSTONE_SHIPPING_BEHIND` | critical | The oldest deletion tombstone not recorded as shipped is older than 15 min (Pass 4) | Check `tombstones:ship` (failure code `TOMBSTONE_SEQUENCE_BEHIND_LEDGER` means a restored database was not replayed — §4; `TOMBSTONE_LEDGER_INTEGRITY_FAILED` means the ledger's seals do not verify — treat as §2 and do not restore from it until explained); a restore meanwhile could resurrect those deletions |
+| `STAFF_SIGN_IN_ABUSE_SUSPECTED` | warning | Staff pre-session requests (sign-in, callback, invitation) were refused by the application limit in the last 10 min (Pass 4) | §5; check the edge limits and the trusted proxy header |
+| `STAFF_API_RATE_LIMITED` | warning | A signed-in session exceeded its per-session API limit | Identify the session through the Audit/Profile screens only if a person reports it; an automated client or a stuck browser tab is the usual cause |
+
+Scanner job failure codes (Pass 4): `SCAN_ENGINE_UNAVAILABLE` (engine unreachable; nothing claimed; files stay quarantined — restore the engine), `SCAN_ENGINE_NO_VERDICT` (timeouts or error replies for specific files; they spend attempts and end FAILED — ask the uploader to re-upload once the engine is healthy). A scanner that refuses to start with `SCAN_ENGINE_REQUIRED` or `SCAN_ENGINE_DEVELOPMENT_IN_PRODUCTION` has no maintained engine configured (P-010); never "fix" it by allowing the heuristic.
 
 Alert inputs contain counts, ages and states only (asserted by `tests/operations.test.ts` O-6). Every alert was drilled by inducing its condition (O-6); none is wired to a paging system in this repository.
 
@@ -65,7 +70,7 @@ The ledger says the campaign's intake was erased after processing, but the resto
 ### 4.3 Unrecoverable accepted payloads
 1. Record campaign id, number of accepted envelopes, and why (e.g., anonymous backup older than intake erasure, keys destroyed).
 2. The owner decides between: releasing nothing for the campaign; or a documented partial state that is **never** presented as a complete analysis. The product has no path that silently drops envelopes.
-3. Only after that decision: `npm run restore:reapply -- --open-despite-incidents`, which opens the environment. **It does not erase the retained envelopes**; they stay (undecryptable if the keys are destroyed) until the owner approves their erasure. **Gap:** there is no product tool for that erasure yet; it is a reviewed operator transaction deleting the campaign's `intake.submission_inbox` rows and recording a `CAMPAIGN_INTAKE` tombstone (SEC-M6).
+3. Only after that decision: either erase the retained intake with the audited tool (§10) and re-run `npm run restore:reapply`, which then opens the environment by itself; or `npm run restore:reapply -- --open-despite-incidents`, which opens it **without** erasing anything — the envelopes stay (undecryptable if the keys are destroyed) until an erasure is approved. There is no other supported erasure path; do not delete intake rows by hand.
 
 ## 5. Token abuse or scraping
 
@@ -112,3 +117,20 @@ Use when a released result must not be read any more: a privacy incident (a smal
 2. Run `npm run release:preflight -- --process <process> --env-file <that process's file> --check-database`. A job refuses a foreign credential or a non-TLS production URL by name (`Refused by runtime guard: …`).
 3. Re-run the job once in the foreground with its own file (`node --env-file=<file> --import tsx <script>`) to read its safe output. Do not merge environment files to "make it work".
 4. Waiting work is kept: quarantined attachments stay undownloadable, queued reports wait, closed campaigns wait for processing. Nothing is lost by a stopped job except time; retention and tombstone shipping, however, protect deletions — treat `tombstones:ship` failures as urgent (SEC-M3).
+## 10. Erasing restored intake after an approved restore incident (Post-Audit Repair Pass 4, SEC-M6)
+
+Use only after §4.3 step 2: the owner has decided that the envelopes a restore brought back for **one** campaign are to be erased rather than recovered. Erasure is final — the accepted answers in those envelopes are gone for good.
+
+1. **Preconditions the tool enforces.** The environment is still closed (`REAPPLY_PENDING`); the verified tombstone ledger reports `ANONYMOUS_OUTPUT_MISSING_FOR_ERASED_INTAKE` for exactly this campaign right now; the campaign is `CLOSED` and not being processed; the approver is an **active Super Admin**; an incident reference and a written reason (≥ 10 characters) are given; the envelope count you type equals the count in the database. Any other state refuses and changes nothing.
+2. **Run it** with the operator environment (the same ledger settings as `restore:reapply`):
+
+   ```bash
+   npm run intake:erase -- --organization <uuid> --campaign <uuid> --approver <super-admin email> --incident <reference> --reason "<owner decision summary>" --expected-envelopes <n>
+   ```
+3. **What it does.** Deletes that campaign's encrypted envelopes, drafts and respondent sessions in one transaction. It does not touch invitations or completion records, participants, the batch record, other campaigns or anything in the anonymous database. It writes an immutable `ops.intake_erasure` record (reference, reason, approver, counts), an `INTAKE_ERASED` audit row under the approver, and keeps (or recreates) the `CAMPAIGN_INTAKE` tombstone so a later restore erases the intake again automatically. It prints identifiers and counts only.
+4. **Retry.** The same command with the same incident reference returns the same record (`replayed=true`) and erases nothing further.
+5. **Then** run `npm run restore:reapply`; with no incident left it opens the environment. Ship tombstones (`tombstones:ship`) before routing traffic.
+6. **Not exercised:** a restored core database that also holds a processing batch for the campaign. The tool leaves any batch record exactly as it is; expect `ops:check` to keep reporting that campaign (count mismatch or blocked publication) — the truthful state once its answers are gone — and do not edit the batch to silence it.
+7. **Record** the erasure in the incident report. The erased envelopes also remain in core database backups until those backups age out (retention-backup-runbook §5); erasure in the live environment is not erasure from backup media.
+
+Refusal codes: `NOT_A_RESTORE_INCIDENT`, `RESTORE_INCIDENT_REQUIRED`, `APPROVER_REQUIRED`, `CONFIRMATION_MISMATCH`, `STATE_CONFLICT`, `NOT_FOUND`, `VALIDATION_FAILED`, `TOMBSTONE_LEDGER_INTEGRITY_FAILED`. Evidence: `tests/adapters-database.test.ts` AD-4 (synthetic data only).

@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { corePool, anonymousPool, processCampaign, reconcile } from "../src/processor";
-import { loadCustodianSecretFromEnvironment } from "../src/key-custody";
+import { custodyProviderName, loadCustodianSecretFromEnvironment } from "../src/key-custody";
 import { runJob } from "../src/job-run";
 
 // Operator entry point for the privacy processor. It runs under the processor's
@@ -11,6 +11,9 @@ import { runJob } from "../src/job-run";
 // identifier and counts. It never prints an envelope, an answer, a participant,
 // an invitation or a response identifier.
 export async function processDueCampaigns(limit = 20) {
+  // An unconfigured, unsupported or (in production) development custody
+  // provider is refused before any connection or decryption (Pass 4).
+  custodyProviderName();
   // The processor is the only component that holds the custodian secret.
   loadCustodianSecretFromEnvironment();
   const core = corePool(),

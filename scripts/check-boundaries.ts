@@ -20,7 +20,7 @@ async function files(dir: string): Promise<string[]> {
 // custody secret is present in its environment, and src/instrument-records.ts is
 // permitted because the gateway must render the pinned questionnaire.
 const forbidden =
-  /node_modules[/\\](kysely|openid-client|exceljs|csv-parse|jszip|playwright|playwright-core|@aws-sdk)[/\\]|src[/\\](auth|db|directory|imports|import-storage|import-parser|instruments|instrument-templates|campaigns|link-storage|key-custody|processor|publication|results|reports|report-db|report-storage|report-worker|report-pdf|report-xlsx|participation-storage|visits|attachment-storage|attachment-scan|attachment-worker|scanner-db|operations|preflight|supervisor|job-run|alert-delivery|revocation)\./;
+  /node_modules[/\\](kysely|openid-client|exceljs|csv-parse|jszip|playwright|playwright-core|@aws-sdk)[/\\]|src[/\\](auth|db|directory|imports|import-storage|import-parser|instruments|instrument-templates|campaigns|link-storage|key-custody|processor|publication|results|reports|report-db|report-storage|report-worker|report-pdf|report-xlsx|participation-storage|visits|attachment-storage|attachment-scan|attachment-worker|scanner-db|operations|preflight|supervisor|job-run|alert-delivery|revocation|staff-rate-limit|malware-engine|tombstone-ledger)\./;
 const traces = await files(resolve("apps/respondent/.next/server"));
 if (!traces.length) throw new Error("Build the respondent app first");
 for (const f of traces) {
@@ -43,7 +43,9 @@ for (const f of staffTraces) {
   // under the migrator credential and must never be bundled into a web app.
   // Post-Audit Repair Pass 3: the job supervisor, the job-run recorder and the
   // alert adapter are operator tooling and never part of a web build.
-  if (/src[/\\](processor|gateway-db|respondent|publication|operations|preflight|supervisor|job-run|alert-delivery)\./.test(text))
+  // Post-Audit Repair Pass 4: the malware engine adapter belongs to the scanner
+  // and the tombstone ledger to the operator; neither is ever in a web build.
+  if (/src[/\\](processor|gateway-db|respondent|publication|operations|preflight|supervisor|job-run|alert-delivery|malware-engine|tombstone-ledger)\./.test(text))
     throw new Error(
       "Staff build contains gateway, processor or publication module",
     );

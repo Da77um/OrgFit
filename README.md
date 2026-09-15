@@ -193,3 +193,11 @@ npm run test:revocation
 npm run test:supervisor
 npx playwright test tests/browser/revocation.spec.ts
 ```
+## Post-Audit Repair Pass 4 — production-security adapters
+
+Apply migration **024**. Attachments are decided by two separate controls: type, container and an active-document policy (PDF scripts, launch actions, embedded files; OOXML ActiveX, OLE objects, remote templates, DDE), and a malware engine through a `clamd` adapter. Production refuses to scan without a maintained engine and never falls back to the development EICAR heuristic; outages keep files quarantined, and every verdict records the engine that gave it. Key custody is an explicit provider choice: the only implemented provider is the development file stand-in, which production refuses and preflight fails — **no managed custody exists, so no production environment passes preflight** ([key-custody.md](docs/orgfit/key-custody.md)). The staff application enforces per-address and per-session rate limits; the trusted proxy header is a required production decision. The tombstone ledger is sealed and can ship to an Object Lock bucket, with a delivery alert, and a restored database can no longer strand new tombstones (PR4-001). `npm run intake:erase` erases one campaign's restored intake after an approved restore incident, audited and retry-safe. No engine, key service, bucket or proxy was selected, contacted or verified. See D-157 … D-162, [deployment runbook §11](docs/orgfit/deployment-runbook.md), [incident runbook §10](docs/orgfit/incident-runbook.md) and the pass entry in [phase status](docs/orgfit/phase-status.md).
+
+```bash
+npm run test:adapters
+npm run test:adapters-db
+```

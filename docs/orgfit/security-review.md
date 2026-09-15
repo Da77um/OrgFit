@@ -119,3 +119,34 @@ Still a self-review by the implementer, not an independent assessment. Decisions
 - New trust note: the supervisor host can read the four job environment files (it validates them). It never merges them or places their values in its own environment, but anyone who controls that host controls every job credential — the same as any scheduler of these jobs. Keep the files in a secret manager readable by the supervisor's service identity only.
 
 SEC-H1, SEC-H2, SEC-M1, SEC-M2, SEC-M3, SEC-M4, SEC-M6, SEC-M7, SEC-L1, SEC-L2, SEC-L4, RC-005 and CE-001 are unchanged.
+
+## 8. Post-Audit Repair Pass 4 addendum — production-security adapters (2026-09-15)
+
+Still a self-review by the implementer, not an independent assessment, not a penetration test. Decisions D-157 … D-162; migration 024. No external service was contacted, no provider selected or activated, nothing deployed, no alert sent.
+
+### Closed or narrowed in code, development evidence only
+
+| ID | Was | Now | Evidence | What stays unverified |
+|---|---|---|---|---|
+| SEC-H2 | Type verification with an EICAR marker; a PDF carrying an OpenAction JavaScript dictionary was CLEAN (audit finding 7) | Two separate controls: type/container/**active-document policy**, and a malware-engine adapter (`clamd` INSTREAM) with fail-closed outage/timeout handling and per-verdict engine provenance; production refuses no engine or the development heuristic | AP-1…AP-5, AD-1; the audit probe is CLEAN on the previous code and rejected now | **No maintained engine was run** (AP-6 not run). Engine selection, hosting, signature updates and the engine's own failure policy: P-010. The policy is a bounded byte-level inspection, not a PDF/OOXML parser; image-decoder exploits and novel malicious documents depend entirely on the engine |
+| SEC-H1 | File custody with a warning in preflight | Provider interface, explicit `CAMPAIGN_KEY_CUSTODY_PROVIDER`, production refusal at runtime and FAIL at preflight, provider-reported destruction evidence that never claims crypto-erasure; integration plan in [key-custody.md](key-custody.md) | AP-7, AD-5, R-1 | **Still open and blocking (P-003).** No managed custody, no crypto-erasure, deletion/recovery windows unknown |
+| SEC-M1 | No application limit on staff endpoints | Per-address limits on the five pre-session endpoints, per-session limit on the signed-in API, 429 + `Retry-After`, alerts | AD-2 | Edge limits and the real proxy (P-002); limits are untuned defaults |
+| SEC-M2 | Per-IP limit silently off without a header; an unparseable hop count read as 0 | Production requires an explicit header or `none`; malformed values fail closed; non-address values ignored; preflight checks both web processes | AP-8, R-1 | That the chosen proxy overwrites the header (P-002) |
+| SEC-M3 | Local append-only file, no tamper evidence, no delivery signal | Sealed hash-chained batches verified on read; S3 sink with conditional creates, checksums and Object Lock retention (required in production); delivery record and `TOMBSTONE_SHIPPING_BEHIND`; restore replay refuses an unverifiable ledger | AP-9, AP-10 `[mocked-storage]`, AD-3 | A real bucket with Object Lock, versioning and a deny-delete policy (P-002). The hash chain is tamper evidence, not a signature |
+| SEC-M6 | No supported erasure of restored intake | `intake:erase`: ledger-verified incident only, restore gate, closed campaign, Super Admin approver, reference, reason, exact count; immutable record, audit row, tombstone kept; retry-safe | AD-4 | Backup media still hold the ciphertext for their retention |
+
+### Found and fixed in this pass
+
+| ID | Severity | Defect | Repair | Evidence |
+|---|---|---|---|---|
+| PR4-001 | High (restore integrity) | **Deletions made after a restore were never shipped to the tombstone ledger.** A restored database's tombstone identity restarts at the backup's value while the ledger's cursor is ahead; new tombstones received numbers at or below the cursor, `tombstones_after(cursor)` skipped them, and a later restore would have resurrected those deletions. The ledger reader also kept only one entry per sequence number | `restore:reapply` advances the sequence past the ledger first; `tombstones:ship` refuses `TOMBSTONE_SEQUENCE_BEHIND_LEDGER`; the reader deduplicates exact repeats only | AD-3 fails without the repair |
+| PR4-002 | Medium | An unparseable `RATE_LIMIT_TRUSTED_PROXY_HOPS` silently selected the rightmost entry, and any string in the trusted header (not only an IP address) became a rate bucket | Strict parsing, fail-closed, `isIP` check | AP-8 |
+| PR4-003 | Medium (wording) | The attachment state CLEAN was labelled "Scanned and clean" although no malware engine had scanned anything | "Passed the file checks" in both languages; engine provenance recorded per file | `visits.spec`, `checkpoint-f.spec` (12 passed) |
+
+### Residual, unchanged or new
+
+- **P-010** engine selection and a real-engine test; **P-003** managed custody (blocking; no environment passes preflight); **P-002** proxy, bucket Object Lock/policy, network; **P-007** approval of the active-document policy (the embedded-object refusal will reject some ordinary documents); **P-004** retention and backup windows; **P-005** IdP/MFA; **P-006** instruments; **P-001/P-008** independent review.
+- SEC-M4, SEC-M7, SEC-L1, SEC-L2, SEC-L3 (alert destination), SEC-L4, RC-003, RC-005 unchanged. The web processes' runtime TLS check (sslmode only) is unchanged; preflight covers the override.
+- **CE-001** unchanged: accepted and declared under P-009; the caveat is a disclosure, not a prevention; still not independently reviewed.
+
+No critical implementation defect is known to remain open in what was inspected and tested; the remaining High production blockers are missing external inputs, not code that can be completed without them.

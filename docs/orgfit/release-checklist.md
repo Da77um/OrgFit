@@ -35,7 +35,7 @@
 | C2 | Preflight refuses unsafe environments without printing values | DONE | R-1 (11 failure classes, 9 boundary crossings), R-1b; rehearsal mixed file refused |
 | C3 | Secrets stored in a secret manager | OWNER INPUT | P-002 — no provider |
 | C4 | Distinct production keys generated and escrowed | OWNER INPUT | P-002/P-003 |
-| C5 | Managed key custody with measured deletion | OWNER INPUT | P-003, SEC-H1 — file custody is a development stand-in |
+| C5 | Managed key custody with measured deletion | OWNER INPUT — BLOCKING | P-003, SEC-H1. Pass 4: provider interface and production refusal in code; preflight `key-custody` FAILs for staff and processor until a managed adapter exists ([key-custody.md](key-custody.md)) |
 | C6 | Development password path off | DONE | preflight `local-password-path` PASS (off) in the rehearsal; migration 016 default |
 
 ## D. Services, storage, jobs and health
@@ -51,8 +51,8 @@
 | D7 | Readiness closes on a pending restore | DONE | rehearsal stage 12 (both https endpoints 503, then 200) |
 | D8 | TLS certificates and domains | OWNER INPUT | P-002 — rehearsal used a local CA |
 | D9 | Proxy overwrites client address; per-IP limit on | DONE locally | rehearsal: `exchange_ip` bucket counted. Real proxy: P-002 (SEC-M2) |
-| D10 | Staff-side rate limiting at the edge | NOT DONE | SEC-M1 |
-| D11 | Alerts wired to paging | NOT DONE (adapter prepared) | `ops:check` now also judges job health; `src/alert-delivery.ts` can write a file or post to a webhook when explicitly enabled. No destination or credentials exist and nothing has been sent (SEC-L3) |
+| D10 | Staff-side rate limiting | DONE in the application / NOT DONE at the edge | Pass 4: per-address pre-session and per-session API limits (`tests/adapters-database.test.ts` AD-2). Edge limits at the real proxy: P-002 |
+| D12 | Maintained malware engine for attachments | NOT DONE (adapter prepared) | Pass 4: `clamd` adapter, production refusal without an engine, fail-closed outage handling, engine provenance (AP-1…AP-5, AD-1). No engine selected or run; AP-6 not run (P-010) | NOT DONE (adapter prepared) | `ops:check` now also judges job health; `src/alert-delivery.ts` can write a file or post to a webhook when explicitly enabled. No destination or credentials exist and nothing has been sent (SEC-L3) |
 
 ## E. Verification of the candidate
 
@@ -64,7 +64,7 @@
 | E4 | Rollback/restore cannot reopen consumed invitations | DONE | rollback drill checks 4, 7; R-3 |
 | E5 | … duplicate accepted submissions | DONE | rollback drill checks 5, 8 (`MARKER_MISMATCH`, no duplicate rows) |
 | E6 | … lose committed intake silently | DONE after RC-001 repair | rollback drill checks 3, 8; R-4 |
-| E7 | … expose expired data | DONE | rollback drill check 2 (tombstoned and time-expired exports). Limit: deletions after the last ship (SEC-M3) |
+| E7 | … expose expired data | DONE | rollback drill check 2 (tombstoned and time-expired exports). Limit: deletions after the last ship (SEC-M3). Pass 4 repaired PR4-001 (post-restore deletions were never shipped; AD-3); the physical rollback drill was not re-run with 024 |
 | E8 | Staging in an authorized non-production environment | NOT DONE | none exists (P-002); local rehearsal only (D-126) |
 | E9 | Load and restore on production hardware | NOT DONE | Phase 14 figures are one developer machine |
 | E10 | Real iOS/Android, WebKit/Firefox, screen reader | NOT DONE | unavailable (Phase 13, Checkpoint F) |

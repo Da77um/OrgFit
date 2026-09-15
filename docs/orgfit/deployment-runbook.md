@@ -45,9 +45,9 @@ The anonymous database accepts connections only from `orgfit_anon_migrator` and 
 
 ### Network (UNREHEARSED beyond one host)
 
-- Staff and respondent on **different hostnames**, each behind a TLS-terminating proxy that **overwrites** `X-Forwarded-For` (then set `RATE_LIMIT_CLIENT_IP_HEADER=x-forwarded-for` on the respondent process; SEC-M2).
+- Staff and respondent on **different hostnames**, each behind a TLS-terminating proxy that **overwrites** `X-Forwarded-For` (then set `RATE_LIMIT_CLIENT_IP_HEADER=x-forwarded-for` on **both** web processes; since Pass 4 production requires the variable on both, as a header name or `none`; SEC-M2).
 - The proxy must not log request bodies, cookies or query strings. Survey links carry the token in the URL fragment, which browsers never send.
-- Staff-side rate limiting (OIDC start/callback, staff API) belongs at the proxy (SEC-M1).
+- Staff-side rate limiting (OIDC start/callback, staff API) belongs at the proxy first (SEC-M1); since Pass 4 the staff application also enforces its own per-address and per-session limits (§11), which depend on the same trusted header.
 - Databases reachable only from their processes, with TLS certificates the processes verify (`sslmode=verify-full`, `sslrootcert` where a private CA is used).
 - Only the processor reaches the key custody store.
 
@@ -66,7 +66,7 @@ Store every value in the platform's secret manager (UNREHEARSED). Then, **for ev
 npm run release:preflight -- --process staff --env-file /secure/staff.env --production --check-database
 ```
 
-Preflight prints names and outcomes only, never a value, and exits 1 on any failure. It checks required and forbidden variables, placeholder values, key format and reuse, database identities and TLS, origins, storage, cluster privileges of each credential, the server logging settings (SEC-M4), and for the operator the migration ledgers, restore state, retention approval and the development password switch. Expected warnings until the production inputs exist: `key-custody` (P-003), `retention-approval` (P-004).
+Preflight prints names and outcomes only, never a value, and exits 1 on any failure. It checks required and forbidden variables, placeholder values, key format and reuse, database identities and TLS, origins, storage, cluster privileges of each credential, the server logging settings (SEC-M4), and for the operator the migration ledgers, restore state, retention approval and the development password switch. Expected warnings until the production inputs exist: `retention-approval` (P-004). **Since Post-Audit Repair Pass 4 `key-custody` is a FAIL, not a warning, for the staff and processor processes (P-003): no production environment passes preflight until a managed custody adapter exists** (§11).
 
 ## 4. First installation
 
@@ -88,7 +88,7 @@ Preflight prints names and outcomes only, never a value, and exits 1 on any fail
    ```
 
 4. Do **not** run `db:seed`, `db:provision-dev`, `db:bootstrap-dev-admin` or `showcase` in any shared environment. `instruments:seed` installs illustrative templates only (P-006).
-5. **Key custody**: generate the custodian key pair once per environment (`.env.example` shows the command). The public half goes to staff; the secret half only to the processor. The file-directory custody adapter is a development stand-in (P-003, SEC-H1) — a managed key service must replace it before real data.
+5. **Key custody**: generate the custodian key pair once per environment (`.env.example` shows the command). The public half goes to staff; the secret half only to the processor. The file-directory custody adapter is a development stand-in (P-003, SEC-H1) — a managed key service must replace it before real data; since Pass 4 production refuses it at start and preflight fails it ([key-custody.md](key-custody.md)).
 6. **Preflight** all six processes (§3), then start respondent and staff, then start the job supervisor (§9) or the provider's scheduler with the cadences from `deploy/processes.json` → `schedule`.
 7. **Health**: `GET /health/live` (process up) and `GET /health/ready` on both hosts must return 200 before traffic is routed. Readiness fails closed on a missing configuration, a misgranted database role or a pending restore.
 8. **Smoke** (§6).
@@ -165,3 +165,18 @@ npm run jobs:supervise -- --env-dir /secure/orgfit-jobs --state-dir /var/lib/org
 ## 10. Runtime guards that no longer depend on preflight
 
 The processor, publication, operator, migration, restore and revocation entry points now refuse, before connecting: a production database URL without `sslmode=verify-full` (or with TLS verification disabled), a wrong login, a placeholder password, and any variable the manifest forbids for their process (RC-004 closed in code; D-151). Since the Pass 3 verification (D-156) the report renderer and attachment scanner use the same guard, and preflight fails a production environment that sets `NODE_TLS_REJECT_UNAUTHORIZED=0` (the installed `pg` would otherwise honour it and skip certificate verification even with `verify-full`); never set it in any OrgFit environment file. The staff and respondent web processes still check `sslmode` only at runtime, so for them preflight is what catches the override. Preflight is still required: it checks cluster privileges, logging settings, ledgers, storage and more than a single process can see.
+
+## 11. Production-security adapters (Post-Audit Repair Pass 4)
+
+Each item below is enforced at process start **and** by preflight, with the same resolver, so the two cannot disagree. Values are never printed.
+
+| Process | Requirement in production | Refusal code | Status of the external input |
+|---|---|---|---|
+| scanner | `ATTACHMENT_SCAN_ENGINE=clamd` and `ATTACHMENT_SCAN_CLAMD_ADDRESS` as `unix:<socket>` or loopback `tcp://127.0.0.1:<port>` (a sidecar: clamd receives decrypted consulting files in cleartext); optional `ATTACHMENT_SCAN_TIMEOUT_SECONDS` (default 60) | `SCAN_ENGINE_REQUIRED`, `SCAN_ENGINE_DEVELOPMENT_IN_PRODUCTION`, `SCAN_ENGINE_ADDRESS_NOT_LOCAL`, … | **P-010 open.** No engine selected, installed or run against these adapters; signature update cadence and the engine's own failure policy are operator inputs. The job checks engine reachability before claiming any file |
+| staff, processor | `CAMPAIGN_KEY_CUSTODY_PROVIDER` naming a managed provider | `KEY_CUSTODY_PROVIDER_REQUIRED`, `KEY_CUSTODY_DEVELOPMENT_IN_PRODUCTION`, `KEY_CUSTODY_PROVIDER_UNSUPPORTED` | **P-003 open — blocking.** Only `development-file` is implemented and it is refused. [key-custody.md](key-custody.md) is the integration plan. `CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY` exists for the local rehearsal and preflight fails it |
+| staff, respondent | `RATE_LIMIT_CLIENT_IP_HEADER` = the header the trusted proxy **overwrites**, or `none`; `RATE_LIMIT_TRUSTED_PROXY_HOPS` 0–10 | limited endpoints answer 503 on a malformed value | **P-002 open.** Choose with the proxy; per-address limits need a header clients cannot set. Staff limits: `STAFF_RATE_LIMIT_*` (defaults in `.env.example`). Edge limits at the proxy remain the first line |
+| operator | `TOMBSTONE_LEDGER_S3_BUCKET` (+ `_S3_ENDPOINT`, `_S3_PREFIX`) and `TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS` ≥ 36; a local ledger directory is refused | `TOMBSTONE_LEDGER_LOCAL_IN_PRODUCTION`, `TOMBSTONE_LEDGER_OBJECT_LOCK_REQUIRED` | **P-002 open.** Create the bucket with Object Lock enabled, versioning on, and a policy that denies object deletion and lock changes to the operator identity; none of this can be verified from the repository |
+
+Operator command added: `npm run intake:erase` — restore incidents only, after the owner's decision (incident-runbook §10).
+
+Migration 024 must be applied (`db:migrate`) before the new code runs: the scanner needs `core.record_scan_result` (it no longer holds `core.record_scan`), the staff process needs `access.staff_rate_hit`, and the operator jobs need the tombstone delivery routines. The release manifest must be regenerated for this tree (migrations 019–024 are new since `orgfit-0.3.0-rc.2`).

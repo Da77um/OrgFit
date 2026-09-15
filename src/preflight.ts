@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import pg from "pg";
+import { custodyProviderName } from "./key-custody";
+import { engineFromEnvironment } from "./malware-engine";
+import { trustedProxy } from "./rate-limit";
+import { RuntimeGuardError } from "./runtime-guard";
+import { AppError } from "./security";
+import { tombstoneSinkFromEnvironment } from "./tombstone-ledger";
 
 // ---------------------------------------------------------------------------
 // Release preflight (Phase 15). Validates one process's environment against
@@ -102,8 +108,47 @@ export function checkEnvironment(
   add("key-separation", reused.length ? "FAIL" : "PASS", reused.length ? `same value reused: ${reused.join(", ")}` : "distinct");
   if (present("CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY") && !/^[A-Za-z0-9+/=_-]{40,}$/.test(env.CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY!))
     add("custody-public-key", "FAIL", "CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY is not an encoded key");
-  if (present("CAMPAIGN_KEY_CUSTODY_DIRECTORY") && options.production)
-    add("key-custody", "WARN", "file-directory custody is the development stand-in without crypto-erasure (P-003, SEC-H1)");
+  // Post-Audit Repair Pass 4: production-security adapters. Each check uses the
+  // same resolver the process itself runs at start, so preflight and runtime
+  // cannot disagree about what is acceptable.
+  const refusal = (fn: () => unknown) => {
+    try {
+      fn();
+      return null;
+    } catch (e) {
+      return e instanceof RuntimeGuardError ? e.code : e instanceof AppError ? "TRUSTED_PROXY_CONFIG_INVALID" : "INVALID";
+    }
+  };
+  if (spec.required.includes("CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY")) {
+    // The rehearsal acknowledgement is ignored here on purpose: no deployment
+    // passes preflight with development custody (P-003, SEC-H1).
+    const code = refusal(() => custodyProviderName({ ...env, CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY: undefined }));
+    if (code) add("key-custody", "FAIL", `${code}: no managed key custody provider is integrated (P-003); the file-directory stand-in has no crypto-erasure`);
+    else add("key-custody", "WARN", "file-directory stand-in custody: not managed custody, no crypto-erasure (development only)");
+    if (options.production && present("CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY"))
+      add("key-custody-rehearsal", "FAIL", "CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY is for a local release rehearsal and must never be in a deployment");
+  }
+  if (processName === "scanner") {
+    const code = refusal(() => engineFromEnvironment(env));
+    if (code) add("scan-engine", "FAIL", `${code}: a maintained malware engine is required (P-010)`);
+    else if (!env.ATTACHMENT_SCAN_ENGINE || env.ATTACHMENT_SCAN_ENGINE === "development-heuristic")
+      add("scan-engine", "WARN", "development heuristic: recognizes the EICAR test string only; NOT a malware scan");
+    else add("scan-engine", "PASS", `${env.ATTACHMENT_SCAN_ENGINE} adapter configured (engine reachability is checked by the job before each run)`);
+  }
+  if (processName === "staff" || processName === "respondent") {
+    const code = refusal(() => trustedProxy(env));
+    if (code || (options.production && !present("RATE_LIMIT_CLIENT_IP_HEADER")))
+      add("trusted-proxy", "FAIL", "RATE_LIMIT_CLIENT_IP_HEADER must name the header the trusted proxy overwrites, or be `none`; hops 0–10 (SEC-M2)");
+    else if (env.RATE_LIMIT_CLIENT_IP_HEADER === "none")
+      add("trusted-proxy", "WARN", "no trusted proxy header: per-address limits are off; rely on edge limits (SEC-M1)");
+    else if (present("RATE_LIMIT_CLIENT_IP_HEADER")) add("trusted-proxy", "PASS", "per-address limits keyed on the trusted proxy header");
+  }
+  if (processName === "operator") {
+    const code = refusal(() => tombstoneSinkFromEnvironment(options.production ? { ...env, NODE_ENV: "production" } : env));
+    if (code) add("tombstone-ledger", "FAIL", `${code}: production needs TOMBSTONE_LEDGER_S3_BUCKET with TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS ≥ 36 (SEC-M3)`);
+    else if (present("TOMBSTONE_LEDGER_S3_BUCKET"))
+      add("tombstone-ledger", "PASS", "bucket ledger with conditional creates; Object Lock on the bucket itself is not verifiable from here");
+  }
 
   // 6. Database URLs: identity, password, TLS.
   for (const [key, role] of Object.entries(manifest.databaseUrls)) {

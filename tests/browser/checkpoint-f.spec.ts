@@ -766,7 +766,7 @@ test("F-8 a field visit with a follow-up and a scanned attachment", async () => 
     configureScanner(undefined);
   }
   await admin.reload();
-  await expect(admin.getByRole("cell", { name: "مفحوص وسليم" })).toBeVisible();
+  await expect(admin.getByRole("cell", { name: "اجتاز فحص الملف" })).toBeVisible();
   await admin.screenshot({ path: "work/cf-visit-ar.png", fullPage: true });
   S.attachmentHref = (await admin.getByRole("link", { name: "تنزيل" }).getAttribute("href"))!;
   const r = await admin.request.get(`${STAFF}${S.attachmentHref}`, { headers: { Origin: STAFF } });

@@ -5,7 +5,8 @@ import {
   scannerReadiness,
   closeScannerPool,
 } from "../src/scanner-db";
-import { scanDueAttachments } from "../src/attachment-worker";
+import { scanDueAttachments, ScanEngineUnavailable } from "../src/attachment-worker";
+import { engineFromEnvironment, type MalwareEngine } from "../src/malware-engine";
 import { runJob } from "../src/job-run";
 
 // The attachment scanner process. It runs under orgfit_scanner, which holds no
@@ -16,10 +17,10 @@ import { runJob } from "../src/job-run";
 // Nothing is printed but counts and verdict codes. A file name, a note or a
 // driver message could quote confidential consulting content, so none of them
 // reaches the operator log.
-export async function scanAttachments(limit = 4) {
+export async function scanAttachments(limit = 4, engine: MalwareEngine = engineFromEnvironment()) {
   await scannerReadiness();
   try {
-    return await scanDueAttachments(scannerPool(), limit);
+    return await scanDueAttachments(scannerPool(), limit, engine);
   } finally {
     await closeScannerPool();
   }
@@ -33,7 +34,23 @@ if (
     "attachments:scan",
     "Attachment scanning unavailable. Check the scanner credential and attachment storage configuration.",
     async () => {
-      const outcomes = await scanAttachments();
+      // Resolved first: in production an unset engine or the development
+      // heuristic is refused here, before any database connection or claim.
+      const engine = engineFromEnvironment();
+      console.log(
+        engine.assurance === "maintained-engine"
+          ? `Scan engine: ${engine.name}.`
+          : `Scan engine: ${engine.name} — NOT a malware scan (development only).`,
+      );
+      let outcomes;
+      try {
+        outcomes = await scanAttachments(4, engine);
+      } catch (e) {
+        if (!(e instanceof ScanEngineUnavailable)) throw e;
+        // Nothing was claimed; every waiting file is still quarantined.
+        console.log(`Scan engine unavailable (${e.code}); nothing claimed.`);
+        return { outcome: "FAILURE" as const, failureCode: "SCAN_ENGINE_UNAVAILABLE", counts: { scanned: 0 } as Record<string, number> };
+      }
       const counted = outcomes.reduce<Record<string, number>>((acc, o) => {
         acc[o.state] = (acc[o.state] ?? 0) + 1;
         return acc;
@@ -46,14 +63,17 @@ if (
                 .join(", ")})`
             : ""),
       );
-      for (const o of outcomes)
+      for (const o of outcomes) {
         if (o.rejectionCode) console.log(`Rejected: ${o.rejectionCode}`);
+        if (o.engineCode) console.log(`No engine verdict: ${o.engineCode}`);
+      }
       // A rejected file is the scanner working; only an inability to decide is
       // a failure of the job.
       const failed = counted.FAILED ?? 0;
+      const undecided = outcomes.filter((o) => o.engineCode).length;
       return {
-        outcome: failed ? "FAILURE" : "SUCCESS",
-        failureCode: "SCAN_FAILED",
+        outcome: failed || undecided ? "FAILURE" : "SUCCESS",
+        failureCode: undecided ? "SCAN_ENGINE_NO_VERDICT" : "SCAN_FAILED",
         counts: {
           scanned: outcomes.length,
           clean: counted.CLEAN ?? 0,

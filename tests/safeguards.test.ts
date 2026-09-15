@@ -27,6 +27,7 @@ import {
   SupervisorError,
 } from "../src/supervisor";
 import { checkEnvironment, loadManifest } from "../src/preflight";
+import { REHEARSAL_ACKNOWLEDGEMENT } from "../src/key-custody";
 
 // ---------------------------------------------------------------------------
 // Post-Audit Repair Pass 3: runtime safeguards that need no database.
@@ -148,10 +149,11 @@ test(`RG-3 every job, operator and migration entry point refuses a production un
     ["scripts/ship-tombstones.ts", [], { MIGRATION_DATABASE_URL: at("orgfit_migrator"), TOMBSTONE_LEDGER_DIRECTORY: ledger }],
     ["scripts/ops-check.ts", [], { MIGRATION_DATABASE_URL: at("orgfit_migrator") }],
     ["scripts/restore-reapply.ts", ["--mark"], { MIGRATION_DATABASE_URL: at("orgfit_migrator"), TOMBSTONE_LEDGER_DIRECTORY: ledger }],
-    ["scripts/process-campaigns.ts", [], { PROCESSOR_DATABASE_URL: at("orgfit_processor"), ANONYMOUS_DATABASE_URL: at("orgfit_processor", "orgfit_anonymous"), CAMPAIGN_KEY_CUSTODY_SECRET_KEY: randomBytes(32).toString("base64") }],
+    // Pass 4: a custody provider and a scan engine are configured so that the refusal below is still the TLS guard, not the newer custody or engine guard that runs first.
+    ["scripts/process-campaigns.ts", [], { PROCESSOR_DATABASE_URL: at("orgfit_processor"), ANONYMOUS_DATABASE_URL: at("orgfit_processor", "orgfit_anonymous"), CAMPAIGN_KEY_CUSTODY_SECRET_KEY: randomBytes(32).toString("base64"), CAMPAIGN_KEY_CUSTODY_PROVIDER: "development-file", CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY: REHEARSAL_ACKNOWLEDGEMENT }],
     ["scripts/publish-campaigns.ts", [], { PROCESSOR_DATABASE_URL: at("orgfit_processor"), ANONYMOUS_DATABASE_URL: at("orgfit_processor", "orgfit_anonymous") }],
     ["scripts/generate-reports.ts", [], { REPORT_DATABASE_URL: at("orgfit_report"), REPORT_ENCRYPTION_KEY: "c".repeat(64) }],
-    ["scripts/scan-attachments.ts", [], { SCANNER_DATABASE_URL: at("orgfit_scanner"), ATTACHMENT_ENCRYPTION_KEY: "e".repeat(64) }],
+    ["scripts/scan-attachments.ts", [], { SCANNER_DATABASE_URL: at("orgfit_scanner"), ATTACHMENT_ENCRYPTION_KEY: "e".repeat(64), ATTACHMENT_SCAN_ENGINE: "clamd", ATTACHMENT_SCAN_CLAMD_ADDRESS: `tcp://127.0.0.1:${db.port}` }],
     ["scripts/revoke-release.ts", ["--organization", "00000000-0000-4000-8000-000000000001", "--campaign", "00000000-0000-4000-8000-000000000002", "--approver", "a@example.invalid", "--reason-code", "PRIVACY_INCIDENT", "--reason", "synthetic test reason", "--incident", "RG-3", "--confirm", "abcdef01"], { MIGRATION_DATABASE_URL: at("orgfit_migrator") }],
   ];
   try {
@@ -162,8 +164,11 @@ test(`RG-3 every job, operator and migration entry point refuses a production un
       const run = await runAsync(script, args, { ...ambient, NODE_ENV: "production", ...variant.env, ...env });
       assert.equal(run.status, 1, `${script} exits 1: ${run.stdout}${run.stderr}`);
       const output = run.stdout + run.stderr;
-      for (const value of Object.values(env)) assert.ok(!output.includes(value), `${script} printed a configured value`);
+      // The engine NAME is printed on purpose ("Scan engine: clamd."); it is a
+      // choice, not a secret. Every other configured value must stay unprinted.
+      for (const [key, value] of Object.entries(env)) if (key !== "ATTACHMENT_SCAN_ENGINE") assert.ok(!output.includes(value), `${script} printed a configured value`);
       assert.equal(db.connections(), 0, `${script} opened no connection`);
+      assert.doesNotMatch(output, /SCAN_ENGINE_|KEY_CUSTODY_/, `${script} was refused by the TLS guard, not an earlier guard`);
     }
   } finally {
     await db.close();

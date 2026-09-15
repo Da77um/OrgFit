@@ -29,7 +29,8 @@ import { join, resolve } from "node:path";
 import pg from "pg";
 import { chromium } from "playwright";
 import { parseEnvFile } from "../../src/preflight";
-import { generateCustodianKeypair } from "../../src/key-custody";
+import { generateCustodianKeypair, REHEARSAL_ACKNOWLEDGEMENT } from "../../src/key-custody";
+import { startClamdDouble } from "../adapters/clamd-double";
 import { testProvider } from "../oidc-provider";
 
 const ROOT = resolve("work/release-rehearsal");
@@ -157,7 +158,9 @@ await sql(superUrl("orgfit_anonymous"), "GRANT CREATE,USAGE ON SCHEMA public TO 
 // ---- 4. one environment file per process ---------------------------------------------
 const hex = () => randomBytes(32).toString("hex");
 const custodian = await generateCustodianKeypair();
-const dirs = { custody: join(ROOT, "custody"), ledger: join(ROOT, "tombstones"), backups: join(ROOT, "backups") };
+const dirs = { custody: join(ROOT, "custody"), backups: join(ROOT, "backups") };
+const clamd = await startClamdDouble();
+servers.push(clamd);
 for (const d of Object.values(dirs)) await mkdir(d, { recursive: true });
 await writeFile(join(dirs.backups, "base-latest.marker"), "synthetic");
 const keys = { import: hex(), digest: hex(), link: hex(), report: hex(), participation: hex(), attachment: hex() };
@@ -181,6 +184,12 @@ const envs: Record<string, Record<string, string>> = {
     LINK_EXPORT_ENCRYPTION_KEY: keys.link,
     CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY: custodian.publicKey,
     CAMPAIGN_KEY_CUSTODY_DIRECTORY: dirs.custody,
+    // Pass 4: the development custody stand-in is refused in production unless a
+    // local rehearsal says so explicitly; preflight still FAILs it (asserted below).
+    CAMPAIGN_KEY_CUSTODY_PROVIDER: "development-file",
+    CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY: REHEARSAL_ACKNOWLEDGEMENT,
+    RATE_LIMIT_CLIENT_IP_HEADER: "x-forwarded-for",
+    RATE_LIMIT_TRUSTED_PROXY_HOPS: "0",
     REPORT_ENCRYPTION_KEY: keys.report,
     PARTICIPATION_EXPORT_ENCRYPTION_KEY: keys.participation,
     ATTACHMENT_ENCRYPTION_KEY: keys.attachment,
@@ -209,14 +218,23 @@ const envs: Record<string, Record<string, string>> = {
     CAMPAIGN_KEY_CUSTODY_SECRET_KEY: custodian.secretKey,
     CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY: custodian.publicKey,
     CAMPAIGN_KEY_CUSTODY_DIRECTORY: dirs.custody,
+    CAMPAIGN_KEY_CUSTODY_PROVIDER: "development-file",
+    CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY: REHEARSAL_ACKNOWLEDGEMENT,
   },
   report: { NODE_ENV: "production", REPORT_DATABASE_URL: core("orgfit_report"), REPORT_ENCRYPTION_KEY: keys.report, AWS_REGION: "us-east-1", ...bucket("REPORT", "reports") },
-  scanner: { NODE_ENV: "production", SCANNER_DATABASE_URL: core("orgfit_scanner"), ATTACHMENT_ENCRYPTION_KEY: keys.attachment, AWS_REGION: "us-east-1", ...bucket("ATTACHMENT", "attachments") },
+  // Pass 4: the scanner requires a maintained engine in production. There is none
+  // here: a clamd PROTOCOL DOUBLE on loopback stands in, so this proves the adapter
+  // path starts and interoperates, not that anything was malware-scanned.
+  scanner: { NODE_ENV: "production", SCANNER_DATABASE_URL: core("orgfit_scanner"), ATTACHMENT_ENCRYPTION_KEY: keys.attachment, AWS_REGION: "us-east-1", ...bucket("ATTACHMENT", "attachments"), ATTACHMENT_SCAN_ENGINE: "clamd", ATTACHMENT_SCAN_CLAMD_ADDRESS: clamd.address },
   operator: {
     NODE_ENV: "production",
     MIGRATION_DATABASE_URL: core("orgfit_migrator"),
     ANONYMOUS_MIGRATION_DATABASE_URL: anonymous("orgfit_anon_migrator"),
-    TOMBSTONE_LEDGER_DIRECTORY: dirs.ledger,
+    // Pass 4: production needs a bucket ledger with Object Lock retention; the
+    // S3 double records the headers and enforces nothing.
+    TOMBSTONE_LEDGER_S3_BUCKET: "orgfit-tombstones",
+    TOMBSTONE_LEDGER_S3_ENDPOINT: S3,
+    TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS: "36",
     BACKUP_DIRECTORY: dirs.backups,
     OPS_DISK_PATH: ROOT,
     CAMPAIGN_KEY_CUSTODY_DIRECTORY: dirs.custody,
@@ -276,7 +294,12 @@ for (const name of Object.keys(envs)) {
   const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/release-preflight.ts", "--process", name, "--env-file", envFile(name), "--production", "--check-database", "--json"], { env: ambient as unknown as NodeJS.ProcessEnv, encoding: "utf8", windowsHide: true });
   const report = JSON.parse(r.stdout);
   preflight[name] = report.findings.filter((f: { outcome: string }) => f.outcome !== "PASS");
-  assert.equal(r.status, 0, `${name} preflight: ${JSON.stringify(preflight[name])}`);
+  // Pass 4 (D-158): with no managed custody provider (P-003), staff and processor
+  // FAIL exactly the custody checks and nothing else; every other process passes.
+  const failed = report.findings.filter((f: { outcome: string }) => f.outcome === "FAIL").map((f: { check: string }) => f.check).sort();
+  const expectedFail = ["staff", "processor"].includes(name) ? ["key-custody", "key-custody-rehearsal"] : [];
+  assert.deepEqual(failed, expectedFail, `${name} preflight: ${JSON.stringify(preflight[name])}`);
+  assert.equal(r.status, expectedFail.length ? 1 : 0, `${name} preflight exit`);
   const raw = readFileSync(envFile(name), "utf8");
   for (const value of Object.values(parseEnvFile(raw)).filter((v) => v.length >= 16 && !v.startsWith("https://")))
     assert.ok(!r.stdout.includes(value), `${name} preflight printed a value`);
@@ -285,7 +308,7 @@ results.preflightNonPass = preflight;
 // A deliberately mixed environment is refused before anything starts.
 await writeFile(join(ROOT, "mixed.env"), readFileSync(envFile("staff"), "utf8") + `GATEWAY_DATABASE_URL=${core("orgfit_gateway")}\n`);
 assert.equal(spawnSync(process.execPath, ["--import", "tsx", "scripts/release-preflight.ts", "--process", "staff", "--env-file", join(ROOT, "mixed.env"), "--production"], { env: ambient as unknown as NodeJS.ProcessEnv, encoding: "utf8" }).status, 1);
-ok("preflight: all six processes pass in production mode with database checks; a staff environment holding the gateway credential is refused");
+ok("preflight: in production mode with database checks, report/respondent/scanner/operator pass and staff/processor fail only key custody (P-003); a staff environment holding the gateway credential is refused");
 
 // ---- 6. object storage double, identity provider and TLS proxy --------------------------
 const objects = new Map<string, Buffer>();
@@ -307,7 +330,19 @@ const s3 = http.createServer(async (req, res) => {
     }
     body = Buffer.concat(out);
   }
-  const key = decodeURIComponent(new URL(req.url ?? "/", "http://s3").pathname);
+  const requestUrl = new URL(req.url ?? "/", "http://s3");
+  const key = decodeURIComponent(requestUrl.pathname);
+  if (req.method === "GET" && requestUrl.searchParams.get("list-type") === "2") {
+    // ListObjectsV2 for the tombstone ledger (Pass 4). No pagination needed here.
+    const prefix = requestUrl.searchParams.get("prefix") ?? "";
+    const names = [...objects.keys()].filter((k) => k.startsWith(`${key}/${prefix}`)).map((k) => k.slice(key.length + 1)).sort();
+    res.writeHead(200, { "Content-Type": "application/xml" }).end(`<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>${key.slice(1)}</Name><Prefix>${prefix}</Prefix><KeyCount>${names.length}</KeyCount><IsTruncated>false</IsTruncated>${names.map((n) => `<Contents><Key>${n}</Key></Contents>`).join("")}</ListBucketResult>`);
+    return;
+  }
+  if (req.method === "PUT" && req.headers["if-none-match"] === "*" && objects.has(key)) {
+    res.writeHead(412, { "Content-Type": "application/xml" }).end("<Error><Code>PreconditionFailed</Code></Error>");
+    return;
+  }
   if (req.method === "PUT") {
     objects.set(key, body);
     res.writeHead(200, { ETag: `"${createHash("md5").update(body).digest("hex")}"` }).end();

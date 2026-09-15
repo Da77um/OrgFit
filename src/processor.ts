@@ -311,20 +311,24 @@ export async function processCampaign(
     `anonymous marker ${marker.id} count ${marker.response_count}`,
   ]);
   await fault("afterIntakeCleanup");
-  await destroyKeys(batch);
+  const evidence = await destroyKeys(batch);
   const state = await core.query<{ keys_destroyed: string }>(
     "SELECT intake.keys_destroyed($1,$2,$3) AS keys_destroyed",
-    [batch.batchId, lease, "development custody adapter: wrapped key files unlinked"],
+    [batch.batchId, lease, evidence],
   );
   return finish(state.rows[0].keys_destroyed, processed);
 }
 
 // Destruction of the sealed private-key copies for this campaign. It is
 // campaign-granular, so it never affects another campaign's material, and it
-// deliberately makes no claim about backups, replicas or WAL.
+// deliberately makes no claim about backups, replicas or WAL. The evidence
+// recorded is what the custody provider itself reports (Pass 4), so a local
+// file removal can never be written down as crypto-erasure.
 async function destroyKeys(batch: BatchInfo) {
+  const summaries = new Set<string>();
   for (const reference of batch.keyReferences)
-    await destroyCampaignKey(reference);
+    summaries.add((await destroyCampaignKey(reference)).summary);
+  return [...summaries].join(" | ") || "no campaign key references";
 }
 
 type AnonymousRow = {
