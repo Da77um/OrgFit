@@ -93,3 +93,27 @@ test("errors never echo SQL, credentials, providers or request bodies", async ()
   assert.equal(r.status, 503);
   assert.doesNotMatch(await r.text(), /password|SELECT|token_digest/);
 });
+test("file bytes, including a report opened for printing, are served under the file policy", async () => {
+  const { ATTACHMENT_ROUTE, ATTACHMENT_CSP, secureResponse } = await import("../src/csp");
+  const { NextRequest } = await import("next/server");
+  const org = "/api/v1/organizations/5f8f1c2e-0000-4000-8000-000000000001";
+  for (const path of [
+    `${org}/reports/5f8f1c2e-0000-4000-8000-000000000002/view`,
+    `${org}/visits/v1/attachments/a1/download`,
+    `${org}/visits/v1/attachments/a1/preview`,
+  ]) {
+    assert.ok(ATTACHMENT_ROUTE.test(path), path);
+    const res = secureResponse(new NextRequest(`https://staff.test${path}`));
+    assert.equal(res.headers.get("Content-Security-Policy"), ATTACHMENT_CSP, path);
+  }
+  for (const path of [
+    `${org}/reports`,
+    `${org}/reports/5f8f1c2e-0000-4000-8000-000000000002`,
+    `${org}/reports/5f8f1c2e-0000-4000-8000-000000000002/view/x`,
+    `/organizations/${org}/reports/x/viewer`,
+  ])
+    assert.equal(ATTACHMENT_ROUTE.test(path), false, path);
+  // The file policy still permits nothing: no script, no same-origin access.
+  assert.match(ATTACHMENT_CSP, /^sandbox; /);
+  assert.doesNotMatch(ATTACHMENT_CSP, /allow-|script-src/);
+});

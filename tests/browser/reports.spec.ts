@@ -69,6 +69,23 @@ test("Arabic report journey: request, render under the report credential, downlo
   expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   expect(bytes.length).toBeGreaterThan(20_000);
 
+  // Print opens the same file inline in a new tab, under the file policy the
+  // proxy asserts for file bytes — never the application's own.
+  const print = page.getByRole("link", { name: "طباعة" });
+  await expect(print).toBeVisible();
+  await expect(print).toHaveAttribute("target", "_blank");
+  const printHref = (await print.getAttribute("href")) ?? "";
+  expect(printHref).toBe(href.replace(/\/download$/, "/view"));
+  const inline = await page.request.get(`${STAFF}${printHref}`, {
+    headers: { Origin: STAFF },
+  });
+  expect(inline.status()).toBe(200);
+  expect(inline.headers()["content-type"]).toBe("application/pdf");
+  expect(inline.headers()["content-disposition"]).toMatch(/^inline; /);
+  expect(inline.headers()["content-security-policy"]).toMatch(/^sandbox; default-src 'none'/);
+  expect(inline.headers()["content-security-policy"]).not.toContain("nonce");
+  expect(Buffer.from(await inline.body()).equals(bytes)).toBe(true);
+
   await page.setViewportSize({ width: 320, height: 720 });
   const overflow = await page.evaluate(
     () =>

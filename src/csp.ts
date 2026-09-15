@@ -10,9 +10,12 @@ import { NextRequest, NextResponse } from "next/server";
 // in error still cannot act as a page against this origin.
 export const ATTACHMENT_CSP =
   "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
-// The only routes that carry file bytes rather than JSON or a page.
-const ATTACHMENT_ROUTE =
-  /^\/api\/v1\/organizations\/[\w-]+\/visits\/[\w-]+\/attachments\/[\w-]+\/(download|preview)$/;
+// The only routes that carry file bytes rather than JSON or a page: a visit
+// attachment, and a rendered report opened inline in the browser's viewer to be
+// printed. Empirically (Chrome and Edge, 2026-09-15) the built-in PDF viewer
+// renders and prints under this policy, so the viewer needs no allowance.
+export const ATTACHMENT_ROUTE =
+  /^\/api\/v1\/organizations\/[\w-]+\/(visits\/[\w-]+\/attachments\/[\w-]+\/(download|preview)|reports\/[\w-]+\/view)$/;
 
 export function secureResponse(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");

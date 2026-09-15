@@ -283,12 +283,31 @@ export function ReportsPanel({
                         endpoint re-authorizes on click; the link's presence is
                         not the permission. */}
                     {job.state === "READY" ? (
-                      <a
-                        className="button button-secondary button-small"
-                        href={`/api/v1/organizations/${org}/reports/${job.id}/download`}
-                      >
-                        {m.download}
-                      </a>
+                      <>
+                        <a
+                          className="button button-secondary button-small"
+                          href={`/api/v1/organizations/${org}/reports/${job.id}/download`}
+                        >
+                          {m.download}
+                        </a>
+                        {/* Print opens the same authorized file inline, in the
+                            browser's own PDF viewer. A workbook has no view. */}
+                        {job.format === "PDF" ? (
+                          <>
+                            {" "}
+                            <a
+                              className="button button-secondary button-small"
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              title={m.printHint}
+                              href={`/api/v1/organizations/${org}/reports/${job.id}/view`}
+                              data-testid="print-report"
+                            >
+                              {m.print}
+                            </a>
+                          </>
+                        ) : null}
+                      </>
                     ) : (
                       ""
                     )}

@@ -8,6 +8,7 @@ import { response } from "./http";
 import { seriesHistory, comparisonView } from "./history";
 import { resolveCampaign } from "./results";
 import { getReport } from "./report-storage";
+import { ATTACHMENT_CSP } from "./csp";
 import {
   putParticipationExport,
   getParticipationExport,
@@ -205,17 +206,28 @@ export async function reportRoute(
   }
 
   const id = report![2] ? uuid.parse(report![2]) : null;
-  if (req.method === "GET" && id && report![3] === "download") {
+  const action = report![3];
+  if (req.method === "GET" && id && (action === "download" || action === "view")) {
+    // `view` is the same authorized download, served inline so the browser's
+    // PDF viewer opens it for printing. The routine stays the authority for
+    // both, and runs before the format is even known.
     const { rows } = await sql<{
       data: { storageKey: string; format: "PDF" | "XLSX"; locale: string; roundId: string };
     }>`select core.report_download(${org}::uuid,${id}::uuid) as data`.execute(tx);
     const artifact = rows[0].data;
+    const inline = action === "view" && artifact.format === "PDF";
+    // A workbook is never rendered inline: a view of one is a 404, not a
+    // silent download.
+    if (action === "view" && !inline) throw new AppError("NOT_FOUND", 404);
     const bytes = await getReport(org, id);
     return new Response(new Uint8Array(bytes), {
       status: 200,
       headers: {
         "Content-Type": CONTENT_TYPE[artifact.format],
-        "Content-Disposition": `attachment; filename="orgfit-report-${artifact.locale}-${id}.${EXTENSION[artifact.format]}"`,
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="orgfit-report-${artifact.locale}-${id}.${EXTENSION[artifact.format]}"`,
+        // Inline bytes are rendered by the browser, so they carry the file
+        // policy; the proxy re-asserts it for this route.
+        ...(inline ? { "Content-Security-Policy": ATTACHMENT_CSP } : {}),
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
       },

@@ -23,6 +23,7 @@ import { releaseCampaign } from "../src/publication";
 import { resultsRoute } from "../src/results";
 import { historyRoute } from "../src/history";
 import { reportRoute, participationCsv } from "../src/reports";
+import { ATTACHMENT_CSP } from "../src/csp";
 import { recommendationActionRoute } from "../src/recommendations";
 import { configureReport, reportPool, reportReadiness, closeReportPool, assertNoForeignCredentials } from "../src/report-db";
 import { renderDueReports, claimReportJobs } from "../src/report-worker";
@@ -526,6 +527,22 @@ test("PostgreSQL Phase 11: report jobs, PDF and XLSX artifacts", async (t) => {
     );
     assert.equal(arabic.headers.get("cache-control"), "no-store");
     assert.equal(arabic.bytes.subarray(0, 5).toString("latin1"), "%PDF-");
+    // The print view is the same authorized file, inline, under the file policy.
+    const view = await bytesOf(`organizations/${f.orgA}/reports/${jobs["pdf-ar"]}/view`);
+    assert.equal(view.status, 200);
+    assert.equal(view.headers.get("content-type"), "application/pdf");
+    assert.match(
+      view.headers.get("content-disposition") ?? "",
+      /^inline; filename="orgfit-report-ar-[0-9a-f-]{36}\.pdf"$/,
+    );
+    assert.equal(view.headers.get("content-security-policy"), ATTACHMENT_CSP);
+    assert.equal(view.headers.get("cache-control"), "no-store");
+    assert.ok(view.bytes.equals(arabic.bytes));
+    // A workbook is never rendered inline.
+    assert.match(
+      await deny(`organizations/${f.orgA}/reports/${jobs["xlsx-ar"]}/view`),
+      /NOT_FOUND/,
+    );
     await mkdir("work", { recursive: true });
     await writeFile("work/report-ar.pdf", arabic.bytes);
 
@@ -1185,6 +1202,11 @@ test("PostgreSQL Phase 11: report jobs, PDF and XLSX artifacts", async (t) => {
       ),
       /NOT_FOUND/,
     );
+    // The print view is the same authorization, not a second way in.
+    assert.match(
+      await deny(`organizations/${f.orgA}/reports/${jobs["pdf-ar"]}/view`, undefined, otherToken),
+      /NOT_FOUND/,
+    );
 
     // A staff member who loses the capability after the job was created loses
     // the download with it, even though the artifact is still READY.
@@ -1199,6 +1221,10 @@ test("PostgreSQL Phase 11: report jobs, PDF and XLSX artifacts", async (t) => {
         undefined,
         reduced,
       ),
+      /FORBIDDEN/,
+    );
+    assert.match(
+      await deny(`organizations/${f.orgA}/reports/${jobs["pdf-ar"]}/view`, undefined, reduced),
       /FORBIDDEN/,
     );
     await f.operator.query(
@@ -1246,6 +1272,10 @@ test("PostgreSQL Phase 11: report jobs, PDF and XLSX artifacts", async (t) => {
     );
     assert.match(
       await deny(`organizations/${f.orgA}/reports/${jobs["pdf-ar"]}/download`),
+      /RESULTS_UNAVAILABLE/,
+    );
+    assert.match(
+      await deny(`organizations/${f.orgA}/reports/${jobs["pdf-ar"]}/view`),
       /RESULTS_UNAVAILABLE/,
     );
   });
