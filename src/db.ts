@@ -88,7 +88,7 @@ export async function readiness() {
   await sql`select access.actor()`.execute(database("staff"));
   const { rows } = await sql<{
     ready: boolean;
-  }>`select to_regclass('core.participant') is not null and to_regclass('core.department') is not null and to_regprocedure('core.import_receipt(uuid,uuid,uuid,bytea)') is not null and to_regclass('instrument.questionnaire_version') is not null as ready`.execute(
+  }>`select to_regclass('core.participant') is not null and to_regclass('core.department') is not null and to_regprocedure('core.import_receipt(uuid,uuid,uuid,bytea)') is not null and to_regclass('instrument.questionnaire_version') is not null and to_regprocedure('access.staff_rate_hit(text,bytea,timestamptz,integer,integer)') is not null as ready`.execute(
     database("staff"),
   );
   if (!rows[0]?.ready) throw new Error("Unready");

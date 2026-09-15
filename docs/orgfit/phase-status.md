@@ -1825,6 +1825,12 @@ Committed on `main` on top of `2452213` as "Post-Audit Repair Pass 4: production
 
 Owner input, in this order: P-003 (custodian and managed key service — the blocking one), P-010 (engine), P-002 (hosting, proxy, bucket with Object Lock, monitoring), P-005, P-004, P-007, then the independent review (P-001/P-008). In the repository, once any of those arrive: write the provider adapter against its staging account (key-custody.md §5), run AP-6 against the chosen engine, re-run the TLS rehearsal and physical rollback drill with 024, run the full Playwright suite, and regenerate the release manifest.
 
+### Follow-up — development console errors and slow signed-in screens (2026-09-15)
+
+- **Cause of the 503s and the lag after sign-in:** the development database (`orgfit_dev`) was still at migration 021 while the code needed 022–024; every signed-in API call runs the Pass 4 session limiter (`access.staff_rate_hit`), which did not exist, so screens such as Departments and Participants failed with 503. Repaired by `node --env-file=.env.bootstrap --import tsx scripts/provision-dev.ts` (idempotent; nothing reset). Staff readiness now also requires `access.staff_rate_hit`, so a database behind the code shows as unready instead of failing every request.
+- **CSP console errors:** Next's development overlay and CSS hot reload inject style elements and attributes without a nonce, and a nonce makes browsers ignore `'unsafe-inline'`. Development now uses `style-src 'self' 'unsafe-inline'`; **production is unchanged** (nonce-only styles). Changed: `src/csp.ts`, `src/db.ts`.
+- **Checked:** signed-in timings against the running dev server (session issued in the dev database, then logged out): APIs 35–56 ms, pages 68–124 ms warm, all 200; pre-sign-in pages 21–230 ms; password sign-in about 140 ms, which is the deliberate scrypt cost. Fresh browser tab on `/login` and `/`: no console errors. `tsc`, eslint, `test` 5, `test:integration` 8, `test:operations` 9 passed. **Not run:** a production rebuild and `test:production` (the dev server was using the app directory), and signed-in screens in the browser.
+
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

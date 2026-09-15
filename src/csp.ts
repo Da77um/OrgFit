@@ -17,7 +17,12 @@ const ATTACHMENT_ROUTE =
 export function secureResponse(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const dev = process.env.NODE_ENV !== "production";
-  const csp = `default-src 'self'; script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}; style-src 'self' 'nonce-${nonce}'; img-src 'self' data:; font-src 'self'; connect-src 'self'${dev ? " ws:" : ""}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`;
+  // Development only: Next's dev overlay and CSS hot reload inject <style>
+  // elements and style attributes without a nonce. A nonce in the list makes
+  // browsers ignore 'unsafe-inline', so dev uses 'unsafe-inline' alone.
+  // Production keeps nonce-only styles (asserted by tests/production-smoke.ts).
+  const styles = dev ? "'self' 'unsafe-inline'" : `'self' 'nonce-${nonce}'`;
+  const csp = `default-src 'self'; script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}; style-src ${styles}; img-src 'self' data:; font-src 'self'; connect-src 'self'${dev ? " ws:" : ""}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`;
   const attachment = ATTACHMENT_ROUTE.test(request.nextUrl.pathname);
   const headers = new Headers(request.headers);
   headers.set("x-nonce", nonce);
