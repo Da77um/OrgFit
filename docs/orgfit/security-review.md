@@ -100,7 +100,7 @@ Still a self-review by the implementer, not an independent assessment. Decisions
 | ID | Was | Now | Evidence |
 |---|---|---|---|
 | SEC-M5 | No routine or tool to revoke a published release | Super Admin screen and route, operator command with a named Super Admin approver; one immutable revocation record; dependent reports (own release, comparison sides, whole-series trends) revoked; row-lock ordering for concurrent download, request and render; purge of stored bytes; restore replay; downloaded copies counted and stated as unrecallable | `tests/revocation.test.ts` RV-1 … RV-11, `tests/browser/revocation.spec.ts` |
-| RC-004 | Processor, publication, operator and migration scripts relied on preflight for TLS | Entry points refuse a production URL without `verify-full` (or with verification disabled) before connecting, and refuse forbidden variables by name | `tests/safeguards.test.ts` RG-1 … RG-4 (13 entry points, 0 connections) |
+| RC-004 | Processor, publication, operator and migration scripts relied on preflight for TLS | Entry points refuse a production URL without `verify-full` (or with verification disabled) before connecting, and refuse forbidden variables by name | `tests/safeguards.test.ts` RG-1 … RG-4 (13 entry points, 0 connections — this count became trustworthy only with the PR3-006 repair below) |
 | CG-003 | Browser harness needed `work/` in a fresh clone | The harness creates its scratch directories | RG-5; clean-clone browser start (phase-status.md) |
 
 ### Found and fixed in this pass
@@ -109,6 +109,8 @@ Still a self-review by the implementer, not an independent assessment. Decisions
 |---|---|---|---|---|
 | PR3-001 | High (availability) | **One crashed renderer blocked every report thereafter.** `claim_report_jobs` reclaimed an expired lease with a RUNNING→RUNNING update the lifecycle trigger forbids, so every later claim raised and nothing was drawn | Restated in 023: requeue elapsed leases (or fail with `LEASE_EXPIRED` after `max_attempts`), then claim | Found by the supervised end-to-end run SV-9; RV-11 |
 | PR3-002 | Low | A revoked report download answered 503 instead of 409 (`RESULTS_UNAVAILABLE` unmapped) | Code mapping in `src/http.ts` | browser revocation spec |
+| PR3-005 | Medium (found in the verification of this pass) | **Report and scanner jobs connected without certificate verification** when their environment held `NODE_TLS_REJECT_UNAUTHORIZED=0`: their URL checks tested `sslmode` only, and preflight did not check the variable, so the supervisor's validation accepted such a file | Both pools use `databaseUrl` from the runtime guard; preflight FAILs the variable in production (D-156) | RG-3 second variant, RG-6 |
+| PR3-006 | Medium (evidence) | The RG-3 "0 connections" assertion could not fail (`spawnSync` blocked the in-process listener), so the recorded RC-004 evidence overstated what was proven | Asynchronous spawn, per-entry-point assertion; shown to fail on the unfixed pools | RG-3 |
 
 ### Changed residuals
 

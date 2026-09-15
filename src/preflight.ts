@@ -125,6 +125,11 @@ export function checkEnvironment(
       add(`db-host:${key}`, "WARN", "loopback database host in a production-mode environment");
   }
 
+  // pg passes an empty TLS options object for sslmode=verify-full, so Node's
+  // global override would silently disable certificate verification.
+  if (options.production && env.NODE_TLS_REJECT_UNAUTHORIZED === "0")
+    add("tls-verification", "FAIL", "NODE_TLS_REJECT_UNAUTHORIZED=0 disables certificate verification");
+
   // 7. Origins and identity provider.
   const originOk = (k: string) => {
     if (!present(k)) return;

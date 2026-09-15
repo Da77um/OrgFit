@@ -26,7 +26,7 @@ import {
   validateEnvironmentFiles,
   SupervisorError,
 } from "../src/supervisor";
-import { loadManifest } from "../src/preflight";
+import { checkEnvironment, loadManifest } from "../src/preflight";
 
 // ---------------------------------------------------------------------------
 // Post-Audit Repair Pass 3: runtime safeguards that need no database.
@@ -108,9 +108,36 @@ async function listener() {
 
 const ambient = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP };
 
-test("RG-3 every job, operator and migration entry point refuses a production non-TLS URL without connecting", async () => {
+function runAsync(script: string, args: string[], env: Record<string, string | undefined>) {
+  return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolveRun, reject) => {
+    const child = spawn(process.execPath, ["--import", "tsx", script, ...args], {
+      env: env as NodeJS.ProcessEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));
+    child.stderr.setEncoding("utf8").on("data", (d: string) => (stderr += d));
+    const timer = setTimeout(() => child.kill(), 60_000);
+    child.on("error", reject);
+    child.on("close", (status) => {
+      clearTimeout(timer);
+      resolveRun({ status, stdout, stderr });
+    });
+  });
+}
+
+// Two unverified variants: a weaker sslmode, and verify-full with Node's global
+// verification override (pg honours it; see src/runtime-guard.ts). The second
+// variant caught the renderer and scanner pools, which checked sslmode only.
+for (const variant of [
+  { label: "sslmode=require", query: "?sslmode=require", env: {} as Record<string, string> },
+  { label: "verify-full with NODE_TLS_REJECT_UNAUTHORIZED=0", query: "?sslmode=verify-full", env: { NODE_TLS_REJECT_UNAUTHORIZED: "0" } },
+]) {
+test(`RG-3 every job, operator and migration entry point refuses a production unverified URL without connecting (${variant.label})`, async () => {
   const db = await listener();
-  const at = (role: string, name = "orgfit") => `postgresql://${role}:${secret()}@127.0.0.1:${db.port}/${name}?sslmode=require`;
+  const at = (role: string, name = "orgfit") => `postgresql://${role}:${secret()}@127.0.0.1:${db.port}/${name}${variant.query}`;
   const ledger = await mkdtemp(join(tmpdir(), "orgfit-rg3-"));
   const cases: [string, string[], Record<string, string>][] = [
     ["scripts/migrate.ts", [], { MIGRATION_DATABASE_URL: at("orgfit_migrator") }],
@@ -129,20 +156,33 @@ test("RG-3 every job, operator and migration entry point refuses a production no
   ];
   try {
     for (const [script, args, env] of cases) {
-      const run = spawnSync(process.execPath, ["--import", "tsx", script, ...args], {
-        env: { ...ambient, NODE_ENV: "production", ...env },
-        encoding: "utf8",
-        windowsHide: true,
-        timeout: 60_000,
-      });
+      // Asynchronous on purpose: spawnSync blocks this process's event loop, so
+      // the listener above could never count a connection and the assertion
+      // below could not fail (found in the Pass 3 verification).
+      const run = await runAsync(script, args, { ...ambient, NODE_ENV: "production", ...variant.env, ...env });
       assert.equal(run.status, 1, `${script} exits 1: ${run.stdout}${run.stderr}`);
       const output = run.stdout + run.stderr;
       for (const value of Object.values(env)) assert.ok(!output.includes(value), `${script} printed a configured value`);
+      assert.equal(db.connections(), 0, `${script} opened no connection`);
     }
-    assert.equal(db.connections(), 0, "no refused entry point opened a connection");
   } finally {
     await db.close();
   }
+});
+}
+
+test("RG-6 release preflight fails a production environment that disables certificate verification", () => {
+  const manifest = loadManifest();
+  const env = { NODE_ENV: "production", REPORT_DATABASE_URL: url("orgfit_report", "?sslmode=verify-full"), REPORT_ENCRYPTION_KEY: "c".repeat(64), REPORT_S3_BUCKET: "reports" };
+  const tls = (extra: Record<string, string>) =>
+    checkEnvironment("report", { ...env, ...extra }, { production: true, manifest }).find((f) => f.check === "tls-verification");
+  assert.equal(tls({ NODE_TLS_REJECT_UNAUTHORIZED: "0" })?.outcome, "FAIL");
+  assert.equal(tls({}), undefined);
+  // Nonproduction keeps loopback testing unaffected.
+  assert.equal(
+    checkEnvironment("report", { ...env, NODE_ENV: "development", NODE_TLS_REJECT_UNAUTHORIZED: "0" }, { production: false, manifest }).some((f) => f.check === "tls-verification"),
+    false,
+  );
 });
 
 test("RG-4 job entry points refuse a foreign credential by name, never by value", () => {

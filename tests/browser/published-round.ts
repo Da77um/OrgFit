@@ -19,9 +19,11 @@ import {
   type Instrument,
 } from "../../src/instrument-input";
 
-// The Playwright harness owns 3000. scripts/showcase.ts brings the same product
-// up on its own port pair for hand review and sets this variable.
-export const STAFF = process.env.SHOWCASE_STAFF_ORIGIN ?? "http://127.0.0.1:3000";
+// The Playwright harness owns 3000 unless E2E_STAFF_PORT moves it (D-134).
+// scripts/showcase.ts brings the same product up on its own port pair for hand
+// review and sets SHOWCASE_STAFF_ORIGIN.
+export const STAFF =
+  process.env.SHOWCASE_STAFF_ORIGIN ?? `http://127.0.0.1:${process.env.E2E_STAFF_PORT ?? 3000}`;
 
 // The published-results journey, driven end to end: a real campaign is
 // collected through the real gateway, mixed by the real privacy processor,

@@ -1696,6 +1696,33 @@ Committed as "Post-Audit Repair Pass 3: release revocation, supervised jobs and 
 ### Exact next action
 
 Owner review of this pass. Then, with explicit authorization only: choose the hosting provider and monitoring destination (P-002), wire the supervisor (deployment-runbook §9), re-run the TLS rehearsal and physical rollback drill with migrations 019–023, run the full Playwright suite, and regenerate the release manifest.
+
+### Independent verification of this pass — 2026-09-15 (second session)
+
+- Step and status: **VERIFIED (development, local only); three defects repaired (D-156).** The pass was re-read against the owner's brief, code and migrations 022–023 reviewed (lock order of revocation, download, report request and render; purge keys; supervisor credential handling, overlap, retries, shutdown), and the evidence suites re-run.
+- Housekeeping: decision ID D-145 had been used twice; another session renumbered the role-password decision to D-155 in `c05ad8f` while this verification ran. No further renumbering.
+
+| Check (Windows 11, Node 24.13.1, loopback PostgreSQL 18.4 :55432) | Result |
+|---|---|
+| `npm run test:revocation` on `7bb9936` code | **12 passed** (RV-1 … RV-11, incl. RV-7/8/9 concurrency, RV-10 restore replay, RV-11 crash recovery) |
+| `npm run test:supervisor` on `7bb9936` code | **9 passed** (SV-1 … SV-9; SV-9 real supervised run published a campaign, cleaned an attachment, drew reports incl. an abandoned lease) |
+| `npm run test:safeguards` on `7bb9936` code | 9 passed — but see PR3-006: RG-3's connection count could not fail |
+| Probe with an asynchronous listener (`verify-full` + `NODE_TLS_REJECT_UNAUTHORIZED=0`, production) | committed `generate-reports.ts` and `scan-attachments.ts` **opened 1 connection each** (PR3-005); after the repair 0; a valid URL connects (2), proving the probe counts |
+| `npm run test:safeguards` after the repair | **11 passed** (RG-3 now two variants with per-entry-point assertion, RG-6 preflight); the same suite against the unrepaired pools **fails** (`generate-reports.ts opened no connection`) |
+| `npm run typecheck`, eslint on changed files, `npm run test:reports` after the repair | clean, clean, **17 passed** |
+| Clean clone (`git clone` of `c05ad8f` + the four changed source/test files, no `work/`, `npm ci`) | `typecheck`, `lint`, `build`, `check:boundaries`, `test:production` exit 0; `test:safeguards` **11 passed** |
+| After the cluster recovered, on the repaired code: `test:supervisor`, `test:visits`, `test:checkpoint-e`, `test:release` | **9, 14, 11, 5 passed**, 0 failed (SV-9 ran the real report and scanner scripts through the changed pools) |
+| Clean-clone browser start: `npx playwright test tests/browser/access.spec.ts tests/browser/revocation.spec.ts` with `E2E_STAFF_PORT=3100`, `E2E_RESPONDENT_PORT=3101`, `E2E_NEXT_DIST_DIR=.next-e2e`, existing role password passed in | Harness created `work/` and `work/e2e-fixture.json` itself (CG-003 confirmed). First run: access **4 passed**, revocation **failed** — `published-round.ts` went to `127.0.0.1:3000` (PR3-007). After the repair: revocation **1 passed** (withdrawal through the UI, 409 on results/download, ordinary-staff view, Settings job section, axe) |
+
+**Defects found and repaired (D-156):** PR3-007 (test tooling) — `tests/browser/published-round.ts` fixed the staff origin to port 3000 unless `SHOWCASE_STAFF_ORIGIN` was set, ignoring `E2E_STAFF_PORT` (D-134), so the revocation spec could not run on the override ports the Pass 3 entry records; it now honours `E2E_STAFF_PORT`. PR3-005 (Medium) — the renderer and scanner pools checked `sslmode` only, so `NODE_TLS_REJECT_UNAUTHORIZED=0` (honoured by `pg`) disabled certificate verification, and preflight — the supervisor's validation of each job file — did not check the variable; both pools now use `databaseUrl`, preflight FAILs the variable in production. PR3-006 (evidence) — RG-3 used `spawnSync` beside an in-process listener, so "0 connections" was unfalsifiable; now asynchronous. Changed: `src/report-db.ts`, `src/scanner-db.ts`, `src/preflight.ts`, `tests/safeguards.test.ts`, `tests/browser/published-round.ts`, `docs/orgfit/decisions.md`, `security-review.md`, `deployment-runbook.md` §10, this file. No migration.
+
+**Environment events and what was not run:**
+- The shared loopback cluster was terminated externally at 03:00:25 (exception 0x40010004, not a command of this session); restarted with `scripts/local-postgres.ps1`, crash recovery completed at 10:15:37 with no data loss reported. Suites attempted during the outage failed only with `ECONNREFUSED` and were re-run above.
+- Not run: the other browser specs, the full node suite set, `npm audit`, release manifest regeneration, the TLS rehearsal and physical rollback drill, anything on real infrastructure.
+- Incident in this session: a clone step failed ("dubious ownership") and the script continued, so `npm ci` ran in the main checkout and removed part of `node_modules` before stopping on a locked file (EPERM). Restored with `npm install` from the unchanged lockfile (`npm ls` clean, lockfile bytes restored with `git checkout`). A dev server of another session on port 3000 may have been affected during that window.
+- Unchanged residuals: the web processes (`src/config.ts`, `src/gateway-db.ts`) still check `sslmode` only at runtime (preflight now catches the override for them); everything listed under "Not run / unverified on real infrastructure" above still stands. Production NO-GO unchanged.
+
+**Next action:** unchanged from the Pass 3 entry above — owner review, then (with explicit authorization only) provider and monitoring destination, supervisor wiring, TLS rehearsal and rollback drill with 019–023, full Playwright suite, release manifest.
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

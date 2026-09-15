@@ -1,5 +1,6 @@
 import pg from "pg";
 import { AppError } from "./security";
+import { databaseUrl } from "./runtime-guard";
 
 // The attachment scanner's own database identity.
 //
@@ -12,28 +13,15 @@ import { AppError } from "./security";
 // correctly.
 let pool: pg.Pool | undefined;
 
+// The shared runtime guard (Post-Audit Repair Pass 3): besides login, password
+// and sslmode=verify-full it refuses NODE_TLS_REJECT_UNAUTHORIZED=0, which pg
+// would otherwise honour and connect without verifying the certificate.
 export function scannerUrl() {
-  const value = process.env.SCANNER_DATABASE_URL;
-  if (!value) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
-  let url: URL;
   try {
-    url = new URL(value);
+    return databaseUrl(process.env.SCANNER_DATABASE_URL, "orgfit_scanner");
   } catch {
     throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
   }
-  if (
-    !["postgres:", "postgresql:"].includes(url.protocol) ||
-    url.username !== "orgfit_scanner" ||
-    !url.password ||
-    url.password === "CHANGE_ME"
-  )
-    throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
-  if (
-    process.env.NODE_ENV === "production" &&
-    url.searchParams.get("sslmode") !== "verify-full"
-  )
-    throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
-  return value;
 }
 
 // A scanner process holding a staff, operator, processor, gateway, renderer or
