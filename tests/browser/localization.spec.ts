@@ -19,12 +19,16 @@ test("the app bar switches language on an organization screen and on the library
   });
   await page.goto(`${STAFF}/organizations/${ids.orgA}/overview`);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  // The loading chrome streams first and carries its own app bar; until the
+  // resolved screen replaces it, a second (hidden) switch is in the document.
   const toggle = page.getByTestId("appbar-locale");
+  await expect(toggle).toHaveCount(1);
   await expect(toggle).toHaveText("English");
   await expect(toggle).toHaveAttribute("lang", "en");
   await toggle.click();
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
   await expect(page.getByRole("link", { name: "Overview" })).toBeVisible();
+  await expect(page.getByTestId("appbar-locale")).toHaveCount(1);
   await expect(page.getByTestId("appbar-locale")).toHaveText("العربية");
 
   // The preference is the profile's, so another screen opens in it.

@@ -82,12 +82,25 @@ test("the default campaign audience is everyone the questionnaire targets, enfor
   await expect(page.getByText(problem).last()).toBeVisible();
   await expect(page.getByText("Invited: 0", { exact: false })).toBeVisible();
 
-  // Entire organization again: both people are invited at launch.
+  // Entire organization again: every active participant is invited at launch,
+  // including the person without a department. The browser specs share one
+  // database, so the organization's size is counted here, not assumed.
   const again = await call(`${org}/questionnaires/${draft.questionnaire_id}`, "GET");
   await call(`${org}/questionnaires/${draft.questionnaire_id}/target`, "POST", { mode: "ORGANIZATION" }, again.revision);
+  let active = 0;
+  for (let cursor: string | null = null, first = true; first || cursor; first = false) {
+    const listed: { items: unknown[]; nextCursor: string | null } = await call(
+      `${org}/participants?status=ACTIVE&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      "GET",
+    );
+    active += listed.items.length;
+    cursor = listed.nextCursor;
+  }
+  expect(active).toBeGreaterThanOrEqual(2);
   await page.reload();
   await expect(page.getByTestId("campaign-questionnaire-target")).toContainText("Entire organization");
+  await expect(page.getByText(`Invited: ${active}`, { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Launch campaign" }).click();
-  await expect(page.getByText("Outstanding: 2", { exact: false })).toBeVisible();
+  await expect(page.getByText(`Outstanding: ${active}`, { exact: false })).toBeVisible();
   await page.screenshot({ path: "work/campaign-target-launched-en.png", fullPage: true });
 });

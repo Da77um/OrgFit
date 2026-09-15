@@ -65,6 +65,10 @@ test("a Super Admin withdraws a release through the results page; every dependen
   expect(status.canRevoke).toBe(true);
 
   // ---- the Super Admin screen, in Arabic ----
+  // The page opens in the profile's language, which an earlier spec may have
+  // left in English; set the one this check reads.
+  const arabic = await page.request.patch(`${STAFF}/api/v1/profile`, { headers: { Origin: STAFF, "Idempotency-Key": randomUUID() }, data: { locale: "ar" } });
+  expect(arabic.status()).toBe(200);
   await page.goto(`${STAFF}/organizations/${org}/results/${roundId}`);
   await expect(page.getByText("النتيجة العامة").first()).toBeVisible({ timeout: 30_000 });
   const panel = page.locator("details.release-revoke");

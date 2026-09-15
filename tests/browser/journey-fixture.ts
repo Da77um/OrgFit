@@ -16,8 +16,9 @@ import {
   type Question,
 } from "../../src/instrument-input";
 
-export const STAFF = "http://127.0.0.1:3000";
-export const SURVEY = "http://localhost:3001";
+// The harness ports, overridable like published-round.ts (defaults unchanged).
+export const STAFF = `http://127.0.0.1:${process.env.E2E_STAFF_PORT ?? 3000}`;
+export const SURVEY = `http://localhost:${process.env.E2E_RESPONDENT_PORT ?? 3001}`;
 
 export async function signIn(page: Page) {
   await page.goto(`${STAFF}/login`);
