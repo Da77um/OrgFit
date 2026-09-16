@@ -8,7 +8,7 @@ import pg from "pg";
 import { setupDatabase } from "./database";
 import { ids } from "../scripts/seed";
 import { withStaff } from "../src/db";
-import { digest, secret, AppError } from "../src/security";
+import { checkMutation, digest, secret, AppError } from "../src/security";
 import { configureGateway, gatewayReadiness } from "../src/gateway-db";
 import { messageContext, sendMessage, rateLimit, RateLimited } from "../src/respondent";
 import { messageRoute } from "../src/employee-messages";
@@ -67,10 +67,23 @@ async function fixture() {
       "insert into core.department(id,organization_id,code,name_ar,status) values($1,$2,$3,$4,$5)",
       [id, org, code, name, status],
     );
+  // Requests are built the way apps/staff/app/staff-request.ts builds them and
+  // pass the same checkMutation the catch-all route applies first.
   const call = (token: string, method: string, path: string, headers: Record<string, string> = {}) =>
     withStaff(token, async (tx) => {
+      const body = method === "POST" ? JSON.stringify({}) : undefined;
+      const request = new Request(`http://127.0.0.1:3000/api/v1/${path}`, {
+        method,
+        body,
+        headers: {
+          origin: "http://127.0.0.1:3000",
+          ...(body ? { "content-type": "application/json" } : {}),
+          ...headers,
+        },
+      });
+      if (method !== "GET") checkMutation(request, "http://127.0.0.1:3000");
       const res = await messageRoute(
-        new Request(`http://127.0.0.1:3000/api/v1/${path}`, { method, headers }),
+        request,
         // The catch-all route hands over the path without its query string.
         path.split("?")[0],
         tx,

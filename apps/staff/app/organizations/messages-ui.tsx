@@ -104,6 +104,8 @@ export function Inbox({
     try {
       const result = await client.mutate<{ replayed: boolean; url: string | null }>(scope, `${root}/link`, {
         method: "POST",
+        // A mutation must be JSON (checkMutation); the issue takes no fields.
+        body: {},
       });
       if (result.url) setIssuedUrl(result.url);
       else setLinkNote(m.linkReplayed);

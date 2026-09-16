@@ -1,6 +1,7 @@
 import { sql } from "kysely";
+import { z } from "zod";
 import { type Tx, requireAccess } from "./db";
-import { AppError, digest, uuid } from "./security";
+import { AppError, digest, jsonInput, uuid } from "./security";
 import { preconditions } from "./directory";
 import { response } from "./http";
 import { readConfig } from "./config";
@@ -85,6 +86,8 @@ export async function messageRoute(req: Request, path: string, tx: Tx): Promise<
   }
   if (req.method === "POST") {
     const { idem } = preconditions(req, false);
+    // An explicit empty JSON body: the organization comes from the path only.
+    await jsonInput(req, z.object({}).strict());
     // Shown once. Only the keyed digest is stored; a retry of the same request
     // is answered "replayed" without a link, because the first token is gone.
     const token = invitationToken();
