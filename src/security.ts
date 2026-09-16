@@ -9,6 +9,7 @@ export const capabilities = [
   "results.read",
   "reports.manage",
   "visits.manage",
+  "messages.read",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 export const uuid = z.uuid();
@@ -18,7 +19,7 @@ export const accessInput = z
     status: z.enum(["ACTIVE", "DISABLED"]),
     capabilities: z
       .array(z.enum(capabilities))
-      .max(8)
+      .max(capabilities.length)
       .refine((a) => new Set(a).size === a.length),
     organizationIds: z
       .array(uuid)
@@ -37,7 +38,7 @@ export const invitationInput = z
     role: z.enum(["SUPER_ADMIN", "STAFF"]),
     capabilities: z
       .array(z.enum(capabilities))
-      .max(8)
+      .max(capabilities.length)
       .refine((a) => new Set(a).size === a.length),
     organizationIds: z
       .array(uuid)

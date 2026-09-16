@@ -63,6 +63,7 @@
     "tombstones:ship": "tsx scripts/ship-tombstones.ts",
     "restore:reapply": "tsx scripts/restore-reapply.ts",
     "ops:check": "tsx scripts/ops-check.ts",
+    "test:messages": "tsx --test --test-concurrency=1 tests/employee-messages.test.ts",
     "test:operations": "tsx --test --test-concurrency=1 tests/operations.test.ts",
     "release:manifest": "tsx scripts/release-manifest.ts",
     "release:preflight": "tsx scripts/release-preflight.ts",

@@ -24,6 +24,7 @@ const sections: Record<string, Section> = {
   results: "results",
   history: "history",
   visits: "visits",
+  messages: "messages",
 };
 
 export function OrganizationLoading({ locale }: { locale: Locale }) {
@@ -43,6 +44,7 @@ export function OrganizationLoading({ locale }: { locale: Locale }) {
       organization={{ id: path[0] }}
       section={sections[path[1] ?? "overview"] ?? "overview"}
       canManage={false}
+      canReadMessages={false}
     >
       {status}
     </Workspace>

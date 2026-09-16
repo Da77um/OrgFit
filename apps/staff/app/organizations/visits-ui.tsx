@@ -528,6 +528,10 @@ export function Visits({
         profile.role === "SUPER_ADMIN" ||
         profile.capabilities.includes("directory.manage")
       }
+      canReadMessages={
+        profile.role === "SUPER_ADMIN" ||
+        profile.capabilities.includes("messages.read")
+      }
     >
       {children}
     </Workspace>

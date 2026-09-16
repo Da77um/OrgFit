@@ -16,6 +16,8 @@ import {
   draftStartOver,
   review,
   finalize,
+  messageContext,
+  sendMessage,
   rateLimit,
   RateLimited,
 } from "../../../../../../src/respondent";
@@ -36,6 +38,9 @@ export const runtime = "nodejs";
 //  * there is no idempotency-key cache, because such a cache would be exactly
 //    the identity-to-answer bridge the blueprint forbids.
 const MAX_BODY = 2 * 1024 * 1024;
+// Employee messages carry at most a 2,000-character body and a 120-character
+// department; 16 KB is room for that in any script, and nothing more.
+const MAX_MESSAGE_BODY = 16 * 1024;
 
 function localeFrom(request: Request): Locale {
   const cookie = request.headers
@@ -78,8 +83,12 @@ function checkOrigin(request: Request) {
   if (!request.headers.get("content-type")?.startsWith("application/json"))
     throw publicError("MALFORMED");
 }
-async function body<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
-  if (Number(request.headers.get("content-length")) > MAX_BODY)
+async function body<T>(
+  request: Request,
+  schema: z.ZodType<T>,
+  max = MAX_BODY,
+): Promise<T> {
+  if (Number(request.headers.get("content-length")) > max)
     throw publicError("MALFORMED");
   const reader = request.body?.getReader();
   if (!reader) throw publicError("MALFORMED");
@@ -89,7 +98,7 @@ async function body<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > MAX_BODY) {
+    if (size > max) {
       await reader.cancel();
       throw publicError("MALFORMED");
     }
@@ -192,6 +201,26 @@ async function handle(
       // Generic acceptance only. No response identifier, no submission time and
       // no indication of whether this attempt or an earlier one wrote the row.
       return ok({ access: result.access });
+    }
+    // Employee messages (025). No session and no cookie: the organization link
+    // travels in the body of each request and is never echoed back.
+    if (req.method === "POST" && path === "messages/context") {
+      const input = await body(
+        req,
+        respondentInput.messageContextInput,
+        MAX_MESSAGE_BODY,
+      );
+      await rateLimit("message_open", req.headers, { token: input.token });
+      return ok(await messageContext(input.token));
+    }
+    if (req.method === "POST" && path === "messages") {
+      const input = await body(
+        req,
+        respondentInput.messageSendInput,
+        MAX_MESSAGE_BODY,
+      );
+      await rateLimit("message_send", req.headers, { token: input.token });
+      return ok(await sendMessage(input), 201);
     }
     if (req.method === "POST" && path === "locale") {
       const input = await body(

@@ -41,7 +41,8 @@ export type Section =
   | "assessments"
   | "results"
   | "history"
-  | "visits";
+  | "visits"
+  | "messages";
 
 export type ShellOrganization = {
   id: string;
@@ -93,6 +94,7 @@ export function Workspace({
   organization,
   section,
   canManage,
+  canReadMessages,
   meta,
   children,
 }: {
@@ -100,6 +102,8 @@ export function Workspace({
   organization: ShellOrganization | null;
   section: Section;
   canManage: boolean;
+  /** messages.read or Super Admin. Required, so no screen can forget to decide. */
+  canReadMessages: boolean;
   meta?: ReactNode;
   children: ReactNode;
 }) {
@@ -127,6 +131,10 @@ export function Workspace({
         { key: "assessments", href: `${base}/assessments`, text: m.navAssessments },
         { key: "history", href: `${base}/history`, text: m.navHistory },
         { key: "visits", href: `${base}/visits`, text: m.navVisits },
+        // An entry the viewer cannot open is not rendered at all.
+        ...(canReadMessages
+          ? ([{ key: "messages", href: `${base}/messages`, text: m.navMessages }] as const)
+          : []),
       ],
     },
   ];

@@ -215,6 +215,10 @@ export function Directory({
       organization={organization}
       section={sectionKey}
       canManage={manage}
+      canReadMessages={
+        profile.role === "SUPER_ADMIN" ||
+        profile.capabilities.includes("messages.read")
+      }
     >
       <PageHeader
         eyebrow={<Label accent>{m[sectionKey as "overview"]}</Label>}

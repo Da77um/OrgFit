@@ -63,6 +63,7 @@ const ar = {
   "results.read": "قراءة النتائج الآمنة",
   "reports.manage": "إنتاج التقارير",
   "visits.manage": "إدارة الزيارات والمرفقات",
+  "messages.read": "قراءة رسائل الموظفين",
   adminHasAll: "المسؤول العام يملك كل الصلاحيات وكل المنظمات؛ لا تغيّر الاختيارات أدناه ذلك.",
   // staff list
   staffTitle: "الموظفون والصلاحيات",
@@ -363,6 +364,7 @@ const en: Record<AdminMessageKey, string> = {
   "results.read": "Read safe results",
   "reports.manage": "Produce reports",
   "visits.manage": "Manage visits and attachments",
+  "messages.read": "Read employee messages",
   adminHasAll: "A Super Admin holds every capability and every organization; the selections below do not change that.",
   staffTitle: "Staff and access",
   staffLead: "Internal accounts, their roles, capabilities and assigned organizations. There is no self-registration.",

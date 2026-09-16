@@ -121,6 +121,40 @@ export const respondentAr = {
   invalidSummary: "إجابات تحتاج إلى تصحيح:",
   rateLimited:
     "محاولات كثيرة خلال وقت قصير. انتظر دقيقة ثم أعد المحاولة؛ لم يتغير شيء في رابطك أو إجاباتك.",
+  // Employee messages (025). The notice never calls the channel anonymous:
+  // it says what is attached, what is not stored, and what the text itself
+  // can reveal.
+  msgAppTitle: "رسالة إلى فريق OrgFit",
+  msgOrganizationLabel: "هذا الرابط خاص بجهة العمل",
+  msgOrganizationConfirm:
+    "إن لم تكن هذه جهة عملك فلا ترسل شيئًا من خلال هذا الرابط.",
+  msgNoticeTitle: "قبل أن تكتب",
+  msgNoticeBody:
+    "ستُعرض رسالتك على مستشاري OrgFit مع اسم الشركة واسم الإدارة التي تختارها. لا نطلب اسمك أو بريدك، ولا نحفظ عنوان جهازك، ولا نسجّل وقت الإرسال بدقة أكبر من اليوم.",
+  msgNoticeLimits:
+    "في إدارة صغيرة قد يكشف مضمون الرسالة وحده هوية كاتبها. لا تكتب اسمك أو اسم غيرك أو أي تفاصيل تدل عليك. لا تضمن هذه القناة بقاء هويتك غير معروفة.",
+  msgDepartment: "الإدارة",
+  msgDepartmentChoose: "اختر الإدارة",
+  msgDepartmentOther: "أخرى / غير مدرجة",
+  msgOtherDepartment: "اسم الإدارة",
+  msgOtherHint: "حتى {max} حرف.",
+  msgBody: "الرسالة",
+  msgBodyHint: "{count} من {max} حرف.",
+  msgDepartmentRequired: "اختر إدارة أو اكتب اسمها.",
+  msgBodyRequired: "اكتب نص رسالتك.",
+  msgReview: "مراجعة وإرسال",
+  msgConfirmTitle: "تأكيد الإرسال",
+  msgConfirmBody:
+    "ستصل هذه الرسالة إلى مستشاري OrgFit مع اسم الشركة والإدارة: {department}. لا يمكن تعديلها أو حذفها بعد الإرسال.",
+  msgSend: "إرسال الرسالة",
+  msgSending: "جارٍ الإرسال…",
+  msgSentTitle: "تم استلام رسالتك",
+  msgSentBody: "شكرًا لك. لا يمكن فتح الرسالة أو تعديلها من هذا الرابط.",
+  msgWriteAnother: "كتابة رسالة أخرى",
+  msgUnavailable: "رابط الرسائل هذا غير صالح أو لم يعد متاحًا.",
+  msgSendUncertain:
+    "لم يصل رد من الخادم، لذلك لا نعرف إن كانت الرسالة قد وصلت. أعد الإرسال فقط إن كنت تقبل احتمال وصولها مرتين.",
+  msgInvalid: "تحقّق من الإدارة ونص الرسالة ثم حاول مرة أخرى.",
 } as const;
 export type RespondentKey = keyof typeof respondentAr;
 export const respondentEn: Record<RespondentKey, string> = {
@@ -236,6 +270,38 @@ export const respondentEn: Record<RespondentKey, string> = {
   invalidSummary: "Answers that need correcting:",
   rateLimited:
     "Too many attempts in a short time. Wait a minute and try again; nothing about your link or your answers has changed.",
+  // Employee messages (025).
+  msgAppTitle: "Message to the OrgFit team",
+  msgOrganizationLabel: "This link belongs to the organization",
+  msgOrganizationConfirm:
+    "If this is not your organization, do not send anything through this link.",
+  msgNoticeTitle: "Before you write",
+  msgNoticeBody:
+    "Your message will be shown to OrgFit consultants together with the company name and the department you choose. We do not ask for your name or email, we do not keep your device's address, and we record the sending time no more precisely than the day.",
+  msgNoticeLimits:
+    "In a small department the content alone may reveal who wrote it. Do not include your name, anyone else's name, or details that point to you. This channel cannot guarantee that you stay unidentified.",
+  msgDepartment: "Department",
+  msgDepartmentChoose: "Choose a department",
+  msgDepartmentOther: "Other / not listed",
+  msgOtherDepartment: "Department name",
+  msgOtherHint: "Up to {max} characters.",
+  msgBody: "Message",
+  msgBodyHint: "{count} of {max} characters.",
+  msgDepartmentRequired: "Choose a department or type its name.",
+  msgBodyRequired: "Write your message.",
+  msgReview: "Review and send",
+  msgConfirmTitle: "Confirm sending",
+  msgConfirmBody:
+    "This message will reach OrgFit consultants with the company name and the department: {department}. It cannot be edited or deleted after it is sent.",
+  msgSend: "Send message",
+  msgSending: "Sending…",
+  msgSentTitle: "Your message was received",
+  msgSentBody: "Thank you. The message cannot be opened or changed from this link.",
+  msgWriteAnother: "Write another message",
+  msgUnavailable: "This message link is not valid or is no longer available.",
+  msgSendUncertain:
+    "No answer arrived from the server, so we cannot tell whether the message was received. Send again only if you accept that it may arrive twice.",
+  msgInvalid: "Check the department and the message text, then try again.",
 };
 /** Fill {name} placeholders. Values are inserted as text, never as markup. */
 export const fill = (template: string, values: Record<string, string | number>) =>

@@ -1125,23 +1125,27 @@ function hintFor(m: Messages, q: Question) {
   return "";
 }
 
-function Shell({
+export function Shell({
   children,
   locale,
   setLocale,
   dir,
+  title,
 }: {
   children: React.ReactNode;
   locale: Locale;
   setLocale: (l: Locale) => void;
   dir: "rtl" | "ltr";
+  /** The document title; the questionnaire's own when omitted. */
+  title?: string;
 }) {
   const m = respondentMessages(locale);
+  const heading = title ?? m.appTitle;
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = dir;
-    document.title = m.appTitle;
-  }, [locale, dir, m.appTitle]);
+    document.title = heading;
+  }, [locale, dir, heading]);
   return (
     <>
       <a className="skip" href="#main">
@@ -1154,7 +1158,7 @@ function Shell({
             <span className="appbar-word" aria-hidden="true">
               ORGFIT
             </span>
-            <strong className="visually-hidden">{m.appTitle}</strong>
+            <strong className="visually-hidden">{heading}</strong>
           </span>
           <button
             type="button"
@@ -1177,7 +1181,7 @@ function Shell({
 // A modal dialog that behaves like one: focus moves in when it opens (to the
 // element marked data-autofocus, else the first control), Tab stays inside,
 // Escape asks to cancel, and focus returns to where it was when it closes.
-function Dialog({
+export function Dialog({
   titleId,
   title,
   onCancel,

@@ -69,7 +69,8 @@ test("O-1 fresh install and a populated upgrade from 016 apply 017 once, with st
     const after = await db.query("select count(*)::int n from core.organization");
     assert.equal(after.rows[0].n, before.rows[0].n, "the upgrade keeps existing rows");
     const policy = await db.query("select count(*)::int n, count(*) filter (where approved)::int approved from ops.retention_policy");
-    assert.deepEqual(policy.rows[0], { n: 16, approved: 0 });
+    // 16 classes from 017, plus employee_message (025).
+    assert.deepEqual(policy.rows[0], { n: 17, approved: 0 });
     const ledger = await db.query("select count(*)::int n from public.orgfit_migrations where name='017_operations.sql'");
     assert.equal(ledger.rows[0].n, 1);
     console.log(`O-1 populated upgrade 016->017: ${upgradeMs} ms`);
@@ -435,7 +436,8 @@ test("Phase 14 operations against a live campaign", async (t) => {
       const codes = evaluateAlerts(live, host).map((a) => a.code);
       for (const code of ["RESTORE_REAPPLY_PENDING", "TOKEN_ABUSE_SUSPECTED", "RETENTION_POLICY_UNAPPROVED", "CLOSED_CAMPAIGN_UNPROCESSED"])
         assert.ok(codes.includes(code), `${code} in ${codes.join(",")}`);
-      assert.equal(live.unapprovedRetentionClasses, 16);
+      // 16 classes from 017, plus employee_message (025).
+      assert.equal(live.unapprovedRetentionClasses, 17);
       await f.operator.query("select ops.set_restore_state('NORMAL')");
       // Alert inputs carry counts, ages and states only.
       assert.ok(Object.values(live).every((v) => v === null || typeof v === "number" || typeof v === "string"));

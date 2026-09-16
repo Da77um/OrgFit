@@ -20,6 +20,7 @@
 | attachment | 365 days | clean visit files | `attachments:expire` (tombstoned) |
 | insufficient_intake | 30 days | below-threshold intake after closure | purged by the processor at once; **alert** if any remains past 30 days — never deleted by retention, because unprocessed intake of an eligible campaign is accepted data |
 | anonymous_response | 365 days | answers and scores after batch commit; published aggregates remain | `anonymous.purge_expired` — **whole campaign only**; tombstoned |
+| employee_message | 365 days | employee messages by received day (migration 025); the link record is kept | `ops.purge_employee_messages`, run by `runRetention`; a revoked message link is tombstoned (`MESSAGE_LINK`) and revoked again by the restore replay |
 | audit_log | 365 days | administrative audit | `ops.purge_core` |
 | retention_run | 365 days | this ledger | `ops.purge_core` |
 | deletion_tombstone | 36 days | must outlive the oldest restorable backup (35 days) by one day | `ops.purge_core` |

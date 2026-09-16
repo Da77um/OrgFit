@@ -14,6 +14,7 @@ import { Campaigns } from "../campaigns-ui";
 import { Results } from "../results-ui";
 import { History } from "../history-ui";
 import { Visits } from "../visits-ui";
+import { Inbox } from "../messages-ui";
 export default async function DirectoryPage({
   params,
 }: {
@@ -37,6 +38,7 @@ export default async function DirectoryPage({
       "results",
       "history",
       "visits",
+      "messages",
     ].includes(path[1])
   )
     notFound();
@@ -74,7 +76,9 @@ async function DirectoryScreen({ path }: { path: string[] }) {
             path[0],
             ["departments", "participants"].includes(path[1])
               ? "directory.manage"
-              : undefined,
+              : path[1] === "messages"
+                ? "messages.read"
+                : undefined,
           );
         // Global defaults (migration 019) prefill the campaign form only; the
         // server still validates every submitted value and freezes it on the
@@ -93,7 +97,9 @@ async function DirectoryScreen({ path }: { path: string[] }) {
         };
       },
     );
-    return path[1] === "visits" ? (
+    return path[1] === "messages" ? (
+      <Inbox key={path.join("/")} path={path} {...data} />
+    ) : path[1] === "visits" ? (
       <Visits key={path.join("/")} path={path} {...data} />
     ) : path[1] === "history" ? (
       <History key={path.join("/")} path={path} {...data} />

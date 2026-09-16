@@ -100,6 +100,7 @@ export const CAPABILITIES = [
   "results.read",
   "reports.manage",
   "visits.manage",
+  "messages.read",
 ] as const;
 
 const toggle = (list: string[], value: string, on: boolean) =>

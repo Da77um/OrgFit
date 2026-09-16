@@ -250,6 +250,10 @@ export function Campaigns({
       organization={organization}
       section="assessments"
       canManage={manage}
+      canReadMessages={
+        profile.role === "SUPER_ADMIN" ||
+        profile.capabilities.includes("messages.read")
+      }
     >
       {children}
     </Workspace>

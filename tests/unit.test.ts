@@ -117,3 +117,80 @@ test("file bytes, including a report opened for printing, are served under the f
   assert.match(ATTACHMENT_CSP, /^sandbox; /);
   assert.doesNotMatch(ATTACHMENT_CSP, /allow-|script-src/);
 });
+
+// ---- employee messages (migration 025) ---------------------------------------
+test("employee messages: the send input cannot name an organization and is bounded", async () => {
+  const { respondentInput, MESSAGE_MAX_CHARS } = await import("../src/respondent");
+  const token = "a".repeat(43);
+  const dept = "00000000-0000-4000-8000-000000000001";
+  const ok = (v: unknown) => respondentInput.messageSendInput.safeParse(v).success;
+  assert.ok(ok({ token, departmentId: dept, otherDepartment: null, body: "hello" }));
+  assert.ok(ok({ token, departmentId: null, otherDepartment: "Night shift", body: "hello" }));
+  // exactly one of a real department or the sender's own text
+  assert.ok(!ok({ token, departmentId: dept, otherDepartment: "x", body: "hello" }));
+  assert.ok(!ok({ token, departmentId: null, otherDepartment: "   ", body: "hello" }));
+  assert.ok(!ok({ token, departmentId: null, otherDepartment: "x".repeat(121), body: "hello" }));
+  assert.ok(!ok({ token, departmentId: dept, otherDepartment: null, body: "   " }));
+  assert.ok(!ok({ token, departmentId: dept, otherDepartment: null, body: "x".repeat(MESSAGE_MAX_CHARS + 1) }));
+  assert.ok(ok({ token, departmentId: dept, otherDepartment: null, body: "x".repeat(MESSAGE_MAX_CHARS) }));
+  // nothing that could carry identity or an organization is accepted
+  for (const extra of ["organizationId", "participantId", "campaignId", "invitationId", "email", "name"])
+    assert.ok(!ok({ token, departmentId: dept, otherDepartment: null, body: "hi", [extra]: "x" }), extra);
+  assert.ok(!ok({ token: "short", departmentId: dept, otherDepartment: null, body: "hi" }));
+});
+
+test("employee messages: message buckets are counted with their own limits", async () => {
+  const { limitFor } = await import("../src/rate-limit");
+  const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
+  assert.equal(limitFor("message_ip", env({})), 60);
+  assert.equal(limitFor("message_link_open", env({})), 300);
+  assert.equal(limitFor("message_link_send", env({})), 30);
+  assert.equal(limitFor("message_link_send", env({ RATE_LIMIT_MESSAGE_SEND_PER_LINK: "5" })), 5);
+  assert.throws(() => limitFor("message_ip", env({ RATE_LIMIT_MESSAGE_PER_IP: "0" })));
+});
+
+test("employee messages: catalogs are complete in both languages", async () => {
+  const { respondentAr, respondentEn } = await import("../src/respondent-i18n");
+  assert.deepEqual(Object.keys(respondentAr).sort(), Object.keys(respondentEn).sort());
+  const { inboxCatalogs } = await import("../src/inbox-i18n");
+  assert.deepEqual(Object.keys(inboxCatalogs.ar).sort(), Object.keys(inboxCatalogs.en).sort());
+  for (const [k, v] of [...Object.entries(inboxCatalogs.ar), ...Object.entries(inboxCatalogs.en)])
+    assert.ok(v.trim().length > 0, k);
+  // The notice must not promise anonymity it cannot keep.
+  assert.doesNotMatch(respondentEn.msgNoticeBody + respondentEn.msgNoticeLimits, /\banonymous\b/i);
+  assert.doesNotMatch(respondentAr.msgNoticeBody + respondentAr.msgNoticeLimits, /مجهول/);
+});
+
+test("employee messages: capability and inbox query", async () => {
+  const { capabilities, accessInput } = await import("../src/security");
+  assert.ok(capabilities.includes("messages.read"));
+  assert.ok(
+    accessInput.safeParse({ role: "STAFF", status: "ACTIVE", capabilities: [...capabilities], organizationIds: [] }).success,
+  );
+  const { messageQuery } = await import("../src/employee-messages");
+  const u = (q: string) => new URL(`https://staff.test/api/v1/organizations/x/messages${q}`);
+  assert.deepEqual(messageQuery(u("")).filters, {});
+  assert.deepEqual(messageQuery(u("?department=OTHER")).filters, { department: "OTHER" });
+  assert.throws(() => messageQuery(u("?department=sales")));
+  assert.throws(() => messageQuery(u("?participant=1")));
+  assert.throws(() => messageQuery(u("?after=2026-09-01")));
+  assert.equal(
+    messageQuery(u("?after=2026-09-01&afterId=00000000-0000-4000-8000-000000000001")).after,
+    "2026-09-01",
+  );
+});
+
+test("employee messages: the stored row has no identity, correlation or instant column", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile("db/migrations/025_employee_messages.sql", "utf8");
+  const table = source.match(/CREATE TABLE core\.employee_message \(([\s\S]*?)\n\);/)?.[1];
+  assert.ok(table, "table definition found");
+  const columns = table
+    .split("\n")
+    .map((l) => l.trim().match(/^([a-z_]+) (uuid|text|date|timestamptz|bytea|inet|jsonb|bigint|integer)\b/)?.[1])
+    .filter(Boolean);
+  assert.deepEqual(columns, ["id", "organization_id", "department_id", "other_department", "body", "received_on"]);
+  assert.doesNotMatch(table, /participant|invitation|campaign|token|session|ip_|user_agent|timestamptz|link/i);
+  // The anonymous store is never touched.
+  assert.doesNotMatch(source, /\banonymous\./);
+});

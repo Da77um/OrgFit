@@ -54,15 +54,21 @@ export async function runRetention(coreUrl: string, anonUrl: string) {
     (await c.query("SELECT anonymous.purge_expired($1::interval, 50) AS data", [coreResult.retain])).rows[0]
       .data as { organizationId: string; campaignId: string }[],
   );
-  const staffRate = await core(coreUrl, async (c) => {
+  const { staffRate, employeeMessages } = await core(coreUrl, async (c) => {
     for (const x of campaigns)
       await c.query("SELECT ops.record_anonymous_purge($1,$2)", [x.organizationId, x.campaignId]);
-    // Staff-side rate counters (024), on the same retention class.
-    return (await c.query("SELECT ops.purge_staff_rate_limit(5000) AS n")).rows[0].n as number;
+    return {
+      // Staff-side rate counters (024), on the same retention class.
+      staffRate: (await c.query("SELECT ops.purge_staff_rate_limit(5000) AS n")).rows[0].n as number,
+      // Employee messages (025), by the day they were received. Core only: a
+      // message was never in the anonymous store.
+      employeeMessages: (await c.query("SELECT ops.purge_employee_messages(5000) AS n")).rows[0].n as number,
+    };
   });
   return {
     ...coreResult.purged,
     rate_limit_window: (coreResult.purged.rate_limit_window ?? 0) + staffRate,
+    employee_message: employeeMessages,
     anonymous_campaigns: campaigns.length,
   } as Record<string, number>;
 }
@@ -165,6 +171,7 @@ export async function reapplyTombstones(
     CAMPAIGN_KEY: 0,
     ANONYMOUS_CAMPAIGN: 0,
     RELEASE_REVOCATION: 0,
+    MESSAGE_LINK: 0,
   };
   const incidents: ReapplyReport["incidents"] = [];
 
@@ -237,6 +244,15 @@ export async function reapplyTombstones(
           .rows[0].changed as boolean,
       );
       if (changed) applied.RELEASE_REVOCATION++;
+    } else if (t.class === "MESSAGE_LINK") {
+      // An organization message link revoked after the backup was taken is
+      // active again in the restored database; it is revoked again so the
+      // channel it closed cannot reopen.
+      const changed = await core(coreUrl, async (c) =>
+        (await c.query("SELECT core.reapply_message_link_revocation($1,$2) AS changed", [t.organizationId, t.subjectId]))
+          .rows[0].changed as boolean,
+      );
+      if (changed) applied.MESSAGE_LINK++;
     }
   }
 

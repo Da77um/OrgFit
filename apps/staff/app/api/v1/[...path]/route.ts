@@ -37,6 +37,7 @@ import { recommendationActionRoute } from "../../../../../../src/recommendations
 import { historyRoute } from "../../../../../../src/history";
 import { reportRoute } from "../../../../../../src/reports";
 import { visitRoute } from "../../../../../../src/visits";
+import { messageRoute } from "../../../../../../src/employee-messages";
 import { administrationRoute } from "../../../../../../src/administration";
 import {
   StaffRateLimited,
@@ -214,6 +215,7 @@ async function handle(req: Request, ctx: Context) {
           (await historyRoute(req, path, tx)) ??
           (await reportRoute(req, path, tx)) ??
           (await visitRoute(req, path, tx)) ??
+          (await messageRoute(req, path, tx)) ??
           (await instrumentRoute(req, path, tx)) ??
           (await invitationRoute(req, path, tx)) ??
           (await campaignRoute(req, path, tx)) ??

@@ -70,6 +70,35 @@ const answersInput = z
   })
   .strict();
 
+// Employee messages (025). The organization is never an input: it is resolved
+// from the link. Bounds are restated in the database routine, which is the
+// authority; these refuse an oversized request before any database work.
+export const MESSAGE_MAX_CHARS = 2000;
+export const OTHER_DEPARTMENT_MAX_CHARS = 120;
+const messageContextInput = z
+  .object({ token: z.string().regex(tokenPattern) })
+  .strict();
+const messageSendInput = z
+  .object({
+    token: z.string().regex(tokenPattern),
+    departmentId: z.uuid().nullable(),
+    otherDepartment: z.string().max(OTHER_DEPARTMENT_MAX_CHARS * 2).nullable(),
+    body: z.string().max(MESSAGE_MAX_CHARS * 2),
+  })
+  .strict()
+  .refine(
+    (v) => {
+      const other = v.otherDepartment?.trim() ?? "";
+      const body = v.body.trim();
+      return (
+        (v.departmentId === null) !== (other === "") &&
+        other.length <= OTHER_DEPARTMENT_MAX_CHARS &&
+        body.length >= 1 &&
+        body.length <= MESSAGE_MAX_CHARS
+      );
+    },
+  );
+
 // The public error vocabulary. It is intentionally coarse: an unknown token, a
 // revoked invitation, a rotated generation and a cancelled campaign all look
 // identical to a link holder.
@@ -83,6 +112,8 @@ const publicStatus: Record<string, number> = {
   VALIDATION_FAILED: 422,
   MALFORMED: 400,
   RATE_LIMITED: 429,
+  // An unknown, revoked or archived organization message link: one answer.
+  MESSAGE_LINK_UNAVAILABLE: 404,
   TEMPORARILY_UNAVAILABLE: 503,
 };
 export function publicError(code: string) {
@@ -365,6 +396,58 @@ async function finalizeInner(
 }
 
 // ---------------------------------------------------------------------------
+// Employee messages (025).
+//
+// Not a survey answer and not part of intake: no session is created, no cookie
+// is set, nothing is sealed, and nothing here reads or writes a participant,
+// invitation or campaign. The link token is posted with each request, looked
+// up by its keyed digest (current key, then the previous one during a
+// rotation, exactly as an invitation is opened), and never stored or logged.
+// ---------------------------------------------------------------------------
+type MessageContext =
+  | { access: "UNAVAILABLE" }
+  | {
+      access: "OPEN";
+      organization: { nameAr: string; nameEn: string | null };
+      departments: { id: string; nameAr: string; nameEn: string | null }[];
+    };
+async function messageContextInner(token: string) {
+  return withGateway(async (client) => {
+    let context: MessageContext = { access: "UNAVAILABLE" };
+    for (const candidate of openingDigests(token)) {
+      context = await call<MessageContext>(
+        client,
+        "SELECT core.gateway_message_context($1) AS data",
+        [candidate],
+      );
+      if (context.access !== "UNAVAILABLE") break;
+    }
+    return context;
+  });
+}
+async function sendMessageInner(body: z.infer<typeof messageSendInput>) {
+  const other = body.otherDepartment?.trim() || null;
+  return withGateway(async (client) => {
+    const digests = openingDigests(body.token);
+    for (const [i, candidate] of digests.entries()) {
+      try {
+        await client.query(
+          "SELECT core.gateway_submit_message($1,$2,$3,$4)",
+          [candidate, body.departmentId, other, body.body.trim()],
+        );
+        // Acceptance only: no identifier, no time.
+        return { accepted: true as const };
+      } catch (e) {
+        const last = i === digests.length - 1;
+        if (last || !(e instanceof Error) || !e.message.endsWith("MESSAGE_LINK_UNAVAILABLE"))
+          throw e;
+      }
+    }
+    throw publicError("MESSAGE_LINK_UNAVAILABLE");
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Rate limits. Called by the route BEFORE the routine it protects, and changing
 // nothing but a counter: a limited request never reaches exchange, draft or
 // acceptance, so it can never consume or rotate an invitation.
@@ -386,10 +469,20 @@ async function hit(bucket: Bucket, material: Buffer | string) {
   if (!result.allowed) throw new RateLimited(result.retryAfter);
 }
 async function limitInner(
-  kind: "exchange" | "draft" | "final",
+  kind: "exchange" | "draft" | "final" | "message_open" | "message_send",
   headers: Headers,
   material: { token?: string; session?: string },
 ) {
+  if (kind === "message_open" || kind === "message_send") {
+    const ip = clientBucket(headers);
+    if (ip) await hit("message_ip", ip);
+    if (material.token && tokenPattern.test(material.token))
+      await hit(
+        kind === "message_open" ? "message_link_open" : "message_link_send",
+        tokenDigest(material.token),
+      );
+    return;
+  }
   if (kind === "exchange") {
     const ip = clientBucket(headers);
     if (ip) await hit("exchange_ip", ip);
@@ -404,7 +497,7 @@ async function limitInner(
   await hit(kind === "draft" ? "draft_session" : "final_session", digest(material.session));
 }
 export const rateLimit = (
-  kind: "exchange" | "draft" | "final",
+  kind: "exchange" | "draft" | "final" | "message_open" | "message_send",
   headers: Headers,
   material: { token?: string; session?: string },
 ) =>
@@ -420,6 +513,8 @@ export const respondentInput = {
   resumeInput,
   startOverInput,
   answersInput,
+  messageContextInput,
+  messageSendInput,
 };
 export { translate as translateRespondentError };
 
@@ -433,3 +528,5 @@ export const draftRead = guarded(draftReadInner);
 export const draftStartOver = guarded(draftStartOverInner);
 export const review = guarded(reviewInner);
 export const finalize = guarded(finalizeInner);
+export const messageContext = guarded(messageContextInner);
+export const sendMessage = guarded(sendMessageInner);

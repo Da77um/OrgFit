@@ -20,7 +20,7 @@ async function files(dir: string): Promise<string[]> {
 // custody secret is present in its environment, and src/instrument-records.ts is
 // permitted because the gateway must render the pinned questionnaire.
 const forbidden =
-  /node_modules[/\\](kysely|openid-client|exceljs|csv-parse|jszip|playwright|playwright-core|@aws-sdk)[/\\]|src[/\\](auth|db|directory|imports|import-storage|import-parser|instruments|instrument-templates|campaigns|link-storage|key-custody|processor|publication|results|reports|report-db|report-storage|report-worker|report-pdf|report-xlsx|participation-storage|visits|attachment-storage|attachment-scan|attachment-worker|scanner-db|operations|preflight|supervisor|job-run|alert-delivery|revocation|staff-rate-limit|malware-engine|tombstone-ledger)\./;
+  /node_modules[/\\](kysely|openid-client|exceljs|csv-parse|jszip|playwright|playwright-core|@aws-sdk)[/\\]|src[/\\](auth|db|directory|imports|import-storage|import-parser|instruments|instrument-templates|campaigns|link-storage|key-custody|processor|publication|results|reports|report-db|report-storage|report-worker|report-pdf|report-xlsx|participation-storage|visits|employee-messages|attachment-storage|attachment-scan|attachment-worker|scanner-db|operations|preflight|supervisor|job-run|alert-delivery|revocation|staff-rate-limit|malware-engine|tombstone-ledger)\./;
 const traces = await files(resolve("apps/respondent/.next/server"));
 if (!traces.length) throw new Error("Build the respondent app first");
 for (const f of traces) {
