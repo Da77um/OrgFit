@@ -95,6 +95,9 @@ export default function EmployeeMessage() {
   const [error, setError] = useState<string | null>(null);
   const token = useRef<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const departmentRef = useRef<HTMLSelectElement | null>(null);
+  const otherRef = useRef<HTMLInputElement | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const bootstrapped = useRef(false);
 
   const name = (value: { nameAr: string; nameEn: string | null }) =>
@@ -134,6 +137,16 @@ export default function EmployeeMessage() {
     headingRef.current?.focus({ preventScroll: true });
   }, [stage]);
 
+  // Leaving with a written, unsent message asks first, as the survey does. The
+  // text exists only in this page; nothing is saved anywhere.
+  const unsent = stage === "form" && body.trim() !== "";
+  useEffect(() => {
+    if (!unsent) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsent]);
+
   const changeLocale = useCallback((next: Locale) => {
     setLocale(next);
     void api("locale", { locale: next }).catch(() => undefined);
@@ -157,8 +170,41 @@ export default function EmployeeMessage() {
   const review = () => {
     setShowIssues(true);
     setError(null);
-    if (departmentIssue || bodyIssue) return;
+    // An error below the fold, or under the sticky action bar on a phone, would
+    // otherwise look like a button that does nothing: the caret goes to the
+    // first field that needs attention.
+    const first = departmentIssue ? (other ? otherRef.current : departmentRef.current) : bodyIssue ? bodyRef.current : null;
+    if (first) {
+      first.focus({ preventScroll: true });
+      first.scrollIntoView({ block: "center" });
+      return;
+    }
     setConfirming(true);
+  };
+
+  // The department list is read when the page opens. If one was archived while
+  // the employee was writing, the send is refused; the list is read again and a
+  // choice that no longer exists is cleared, keeping the message itself.
+  const refreshDepartments = async () => {
+    if (!token.current) return;
+    try {
+      const data = await api<Context>("messages/context", { token: token.current });
+      if (data?.access !== "OPEN") {
+        setBlocked("UNAVAILABLE");
+        setStage("blocked");
+        return;
+      }
+      setContext(data);
+      if (department !== OTHER && !data.departments.some((d) => d.id === department)) {
+        setDepartment("");
+        setError(m.msgDepartmentChanged);
+        departmentRef.current?.focus();
+        return;
+      }
+    } catch {
+      // Keep the page as it is; the generic sentence below still applies.
+    }
+    setError(m.msgInvalid);
   };
 
   const send = async () => {
@@ -182,8 +228,8 @@ export default function EmployeeMessage() {
       if (code === "MESSAGE_LINK_UNAVAILABLE") {
         setBlocked("UNAVAILABLE");
         setStage("blocked");
-      } else if (code === "RATE_LIMITED") setError(m.rateLimited);
-      else if (code === "VALIDATION_FAILED") setError(m.msgInvalid);
+      } else if (code === "RATE_LIMITED") setError(m.msgRateLimited);
+      else if (code === "VALIDATION_FAILED") await refreshDepartments();
       // No answer arrived: the message may or may not have been stored.
       else if (code === "NETWORK") setError(m.msgSendUncertain);
       else setError(m.serviceUnavailable);
@@ -212,6 +258,7 @@ export default function EmployeeMessage() {
               <Alert tone="success" role="status">
                 {m.msgSentBody}
               </Alert>
+              <p className="muted">{m.msgSentNext}</p>
               <div className="survey-actions">
                 <button
                   type="button"
@@ -225,7 +272,7 @@ export default function EmployeeMessage() {
           ) : (
             <Alert tone="warning" role="status">
               {blocked === "RATE_LIMITED"
-                ? m.rateLimited
+                ? m.msgRateLimited
                 : blocked === "UNAVAILABLE" || blocked === "MALFORMED" || blocked === "VALIDATION_FAILED"
                   ? m.msgUnavailable
                   : m.serviceUnavailable}
@@ -278,6 +325,7 @@ export default function EmployeeMessage() {
           <label>
             <span>{m.msgDepartment}</span>
             <select
+              ref={departmentRef}
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
               aria-invalid={showIssues && departmentIssue && !other ? "true" : undefined}
@@ -301,6 +349,7 @@ export default function EmployeeMessage() {
             <label>
               <span>{m.msgOtherDepartment}</span>
               <input
+                ref={otherRef}
                 type="text"
                 value={otherDepartment}
                 maxLength={OTHER_DEPARTMENT_MAX_CHARS}
@@ -319,6 +368,7 @@ export default function EmployeeMessage() {
           <label>
             <span>{m.msgBody}</span>
             <textarea
+              ref={bodyRef}
               value={body}
               rows={8}
               maxLength={MESSAGE_MAX_CHARS}

@@ -39,6 +39,30 @@ On the page the employee:
 No cookie, session, local storage or analytics is used. The token is posted
 with each request.
 
+### The employee's view, screen by screen
+
+| Moment | What the employee sees | What happens |
+|---|---|---|
+| Opens the link | A loading mark, then the OrgFit bar with the language switch | The fragment is read and removed from the address bar before any request |
+| Page open | "This link belongs to the organization" and its name; "if this is not your organization, do not send anything" | Name and ACTIVE departments come from the link; nothing else about the organization |
+| Before writing | "Before you write": company and department are attached; no name, email or device address; time kept to the day. A boxed limit: small departments, don't identify yourself, no guarantee | Same text in Arabic (default) and English |
+| Form | Department picker (+ "Other / not listed" with a 120-character name field) and a message box with a live "n of 2,000" count | Nothing is saved while typing; leaving with text asks first |
+| "Review and send" with something missing | The fields turn red with a sentence under each, and the caret moves to the first one | No request is sent |
+| Confirmation dialog | "This message will reach OrgFit consultants with the company name and the department: X. It cannot be edited or deleted", plus the limit again | Cancel is focused; Escape closes and returns to the button |
+| Sent | "Your message was received", "no reply comes through this page", "Write another message" | The text is cleared; the department stays |
+| Department archived while writing | "The list of departments changed… your message is still here" | The list is read again and the stale choice cleared |
+| Too many sends through this link | "Wait a minute… your message is still here and was not sent" | Per-link rate limit |
+| No answer from the server | "We cannot tell whether the message was received. Send again only if you accept it may arrive twice" | Never claims success or failure it did not see |
+| Link revoked, rotated, invalid, or organization archived | "This message link is not valid or is no longer available" | One answer for all of them |
+
+### Running it locally
+
+The respondent app must use the **same** `INVITATION_DIGEST_KEY` (and version)
+as the staff app, or no link the staff app issues will resolve, and its
+`GATEWAY_DATABASE_URL` must point at the same database with the
+`orgfit_gateway` login. Put both in `apps/respondent/.env.development.local`
+(gitignored), then `npm run dev:respondent` and open the issued link.
+
 ## What is stored
 
 `core.employee_message`: `id` (fresh random), `organization_id`,

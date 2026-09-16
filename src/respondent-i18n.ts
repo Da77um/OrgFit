@@ -150,6 +150,11 @@ export const respondentAr = {
   msgSending: "جارٍ الإرسال…",
   msgSentTitle: "تم استلام رسالتك",
   msgSentBody: "شكرًا لك. لا يمكن فتح الرسالة أو تعديلها من هذا الرابط.",
+  msgSentNext:
+    "لن يصلك رد عبر هذه الصفحة، لأنها لا تعرف من أنت. يقرأ مستشارو OrgFit الرسائل ضمن عملهم مع جهة عملك.",
+  msgRateLimited:
+    "أُرسلت رسائل كثيرة عبر هذا الرابط خلال وقت قصير. انتظر دقيقة ثم أعد المحاولة؛ رسالتك ما زالت هنا ولم تُرسل.",
+  msgDepartmentChanged: "تغيّرت قائمة الإدارات أثناء الكتابة. اختر إدارتك مرة أخرى؛ رسالتك ما زالت هنا.",
   msgWriteAnother: "كتابة رسالة أخرى",
   msgUnavailable: "رابط الرسائل هذا غير صالح أو لم يعد متاحًا.",
   msgSendUncertain:
@@ -297,6 +302,11 @@ export const respondentEn: Record<RespondentKey, string> = {
   msgSending: "Sending…",
   msgSentTitle: "Your message was received",
   msgSentBody: "Thank you. The message cannot be opened or changed from this link.",
+  msgSentNext:
+    "You will not get a reply through this page, because it does not know who you are. OrgFit consultants read messages as part of their work with your organization.",
+  msgRateLimited:
+    "Too many messages were sent through this link in a short time. Wait a minute and try again; your message is still here and was not sent.",
+  msgDepartmentChanged: "The list of departments changed while you were writing. Choose your department again; your message is still here.",
   msgWriteAnother: "Write another message",
   msgUnavailable: "This message link is not valid or is no longer available.",
   msgSendUncertain:
