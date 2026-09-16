@@ -1831,6 +1831,12 @@ Owner input, in this order: P-003 (custodian and managed key service — the blo
 - **CSP console errors:** Next's development overlay and CSS hot reload inject style elements and attributes without a nonce, and a nonce makes browsers ignore `'unsafe-inline'`. Development now uses `style-src 'self' 'unsafe-inline'`; **production is unchanged** (nonce-only styles). Changed: `src/csp.ts`, `src/db.ts`.
 - **Checked:** signed-in timings against the running dev server (session issued in the dev database, then logged out): APIs 35–56 ms, pages 68–124 ms warm, all 200; pre-sign-in pages 21–230 ms; password sign-in about 140 ms, which is the deliberate scrypt cost. Fresh browser tab on `/login` and `/`: no console errors. `tsc`, eslint, `test` 5, `test:integration` 8, `test:operations` 9 passed. **Not run:** a production rebuild and `test:production` (the dev server was using the app directory), and signed-in screens in the browser.
 
+### Follow-up — recurring development sign-in outage (2026-09-16)
+
+- **Cause:** the loopback PostgreSQL cluster (`work/pg-foundation`, port 55432) was not running. Its postmaster had exited at 00:20 (stale `postmaster.pid`, no `postgres.exe`), so `/login` could only report the service as unavailable. Earlier recurrences had the same shape: role passwords reset by tests (D-155) and `orgfit_dev` behind the migrations (2026-09-15 follow-up). Nothing checked the database before the dev server started.
+- **Repair:** `scripts/dev-database.ts`, run as the root `predev` script (so `npm run dev` and the `dev` preview configuration get it). It starts the repository cluster when the dev `DATABASE_URL` is loopback and nothing is listening, waits through crash recovery (`57P03`), runs the idempotent `provisionDev` when `.env.bootstrap` supplies `DEV_ADMIN_DATABASE_URL` (role passwords plus migrations), and checks that the staff and auth logins connect. It never drops or resets anything, prints no credential, refuses `NODE_ENV=production`, and never blocks `next dev`.
+- **Observed:** crash recovery fsyncs about 1,490 databases in the cluster (mostly throwaway test databases), which takes more than 15 minutes. Removing stale test databases would shorten it; not done without owner approval.
+
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

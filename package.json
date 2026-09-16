@@ -10,6 +10,7 @@
     "apps/*"
   ],
   "scripts": {
+    "predev": "tsx scripts/dev-database.ts",
     "dev": "npm run dev -w @orgfit/staff",
     "dev:respondent": "npm run dev -w @orgfit/respondent",
     "build": "npm run build --workspaces",
