@@ -23,7 +23,7 @@ import { redirect } from "next/navigation";
 import { sessionCookie } from "../../../../src/auth";
 import { readConfig } from "../../../../src/config";
 import { withStaff } from "../../../../src/db";
-import { localAccessEnabled } from "../../../../src/local-auth";
+import { localAccessStatus } from "../../../../src/local-auth";
 import { localeOf, messages } from "../../../../src/i18n";
 import { landing } from "../../../../src/landing-i18n";
 import { Alert } from "../../../../src/ui";
@@ -68,7 +68,14 @@ export default async function Login({
     }
   }
 
-  const local = provider && (await localAccessEnabled());
+  const status = provider ? await localAccessStatus() : "OFF";
+  const local = status === "ON";
+  // Outside production the form is drawn, greyed and inert, purely so a
+  // developer can see the screen. It changes nothing about access: the database
+  // routine still refuses a password session while the switch is off, and a
+  // disabled fieldset disables every control natively, so nothing submits.
+  // Production is deliberately unchanged: a form that can never work is not shown.
+  const preview = !local && process.env.NODE_ENV !== "production";
   const expired = params.expired === "1";
 
   return (
@@ -88,6 +95,15 @@ export default async function Login({
 
           {local ? (
             <LoginForm locale={locale} expired={expired} />
+          ) : preview ? (
+            <>
+              <Alert tone="warning" role="status">
+                {status === "UNREACHABLE" ? m.localAccessUnreachable : m.localAccessOff}
+              </Alert>
+              <fieldset className="auth-preview" disabled aria-label={m.loginTitle}>
+                <LoginForm locale={locale} expired={expired} />
+              </fieldset>
+            </>
           ) : (
             provider && (
               <Alert tone="warning" role="status">
@@ -96,7 +112,7 @@ export default async function Login({
             )
           )}
 
-          {local && provider && <div className="auth-divider">{m.providerOr}</div>}
+          {(local || preview) && provider && <div className="auth-divider">{m.providerOr}</div>}
 
           {provider ? (
             <p>

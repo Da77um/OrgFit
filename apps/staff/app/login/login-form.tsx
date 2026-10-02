@@ -19,7 +19,7 @@
 // anywhere in this file.
 // ---------------------------------------------------------------------------
 
-import { useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { messages, type Locale } from "../../../../src/i18n";
 import { Alert } from "../../../../src/ui";
 import { RequestFailure, staffRequest } from "../staff-request";
@@ -33,6 +33,8 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
     () => true,
     () => false,
   );
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const emailId = useId();
   const passwordId = useId();
   const [email, setEmail] = useState("");
@@ -41,6 +43,16 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState(expired ? m.sessionExpired : "");
+
+  // React's hydration commit resets a controlled input to its initial state
+  // (facebook/react#26974, closed "not planned"), so whatever was typed between
+  // paint and hydration is discarded on a slow device. Adopt the live DOM value
+  // once hydration has happened.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (emailRef.current?.value) setEmail(emailRef.current.value);
+    if (passwordRef.current?.value) setPassword(passwordRef.current.value);
+  }, [hydrated]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -93,6 +105,7 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
         <label htmlFor={emailId}>{m.emailLabel}</label>
         <input
           id={emailId}
+          ref={emailRef}
           name="email"
           type="email"
           inputMode="email"
@@ -122,6 +135,7 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
         <div className="password-field">
           <input
             id={passwordId}
+            ref={passwordRef}
             name="password"
             type={reveal ? "text" : "password"}
             autoComplete="current-password"

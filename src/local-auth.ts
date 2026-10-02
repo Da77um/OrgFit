@@ -126,13 +126,22 @@ export async function activateInvitation(
 // Whether this installation has the local path switched on at all. Read through
 // the staff credential, because the sign-in page is rendered by the staff
 // process and a page must not hold the auth credential's reasoning.
-export async function localAccessEnabled(): Promise<boolean> {
+//
+// Three states, because "the switch is off" and "the database could not be
+// asked" are different problems that used to render the same screen.
+export type LocalAccessStatus = "ON" | "OFF" | "UNREACHABLE";
+
+export async function localAccessStatus(): Promise<LocalAccessStatus> {
   try {
     const { rows } = await sql<{
       on: boolean;
     }>`select access.local_access_enabled() as on`.execute(authDatabase());
-    return rows[0].on;
+    return rows[0].on ? "ON" : "OFF";
   } catch {
-    return false;
+    return "UNREACHABLE";
   }
+}
+
+export async function localAccessEnabled(): Promise<boolean> {
+  return (await localAccessStatus()) === "ON";
 }

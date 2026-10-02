@@ -100,6 +100,7 @@ export const ar = {
   activatedBody: "يمكنك الآن تسجيل الدخول ببريدك الإلكتروني وكلمة المرور التي اخترتها.",
   goToLogin: "الانتقال إلى تسجيل الدخول",
   localAccessOff: "تسجيل الدخول بكلمة المرور غير مُفعَّل في هذه البيئة. استخدم موفر الهوية.",
+  localAccessUnreachable: "تعذّر الاتصال بقاعدة البيانات، فلا يمكن التحقق من تفعيل الدخول بكلمة المرور. تحقق من إعدادات الاتصال ثم أعد تحميل الصفحة.",
   // ---- Post-Audit Repair Pass 2: bounded requests and unsaved edits -------
   // A read that failed changed nothing; a change whose answer was lost may or
   // may not have happened. The two are never worded alike.
@@ -223,6 +224,7 @@ export const en: Record<MessageKey, string> = {
   activatedBody: "You can now sign in with your email address and the password you chose.",
   goToLogin: "Go to sign in",
   localAccessOff: "Password sign-in is not enabled in this environment. Use the identity provider.",
+  localAccessUnreachable: "The database could not be reached, so password sign-in cannot be verified. Check the connection settings and reload.",
   requestTimeout: "The server did not answer within {seconds} seconds. Nothing was changed by this request. Try again.",
   requestTimeoutChange: "The server did not answer within {seconds} seconds.",
   connectionLost: "The connection to the server was lost. Check your network and try again.",
