@@ -19,7 +19,7 @@
 // and never blocks the dev server: a problem is reported and `next dev` starts.
 // ---------------------------------------------------------------------------
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { resolve } from "node:path";
@@ -99,11 +99,19 @@ async function main() {
     }
     console.log(`[dev-database] Starting the local PostgreSQL cluster on port ${port}…`);
     // -W: do not wait here; crash recovery is awaited below with progress.
-    spawnSync(
+    //
+    // Detached, with its own hidden console and no inherited output. With
+    // stdio "inherit" the server shared the console of whatever ran this
+    // script; once that process exited, every worker the server started later
+    // failed at birth with 0xC0000142 (STATUS_DLL_INIT_FAILED), the server
+    // reset itself and could not reattach its shared memory (error 487), and
+    // sign-in reported the database as unreachable until a manual restart. It
+    // also held the caller's output pipe open, so the caller never finished.
+    spawn(
       pgCtl,
       ["-D", cluster, "-l", resolve("work/postgres.log"), "-o", `-h ${target.hostname} -p ${port}`, "-W", "start"],
-      { stdio: "inherit" },
-    );
+      { detached: true, stdio: "ignore", windowsHide: true },
+    ).unref();
   }
 
   const failure = await waitForConnections(
