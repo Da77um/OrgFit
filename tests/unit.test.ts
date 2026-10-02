@@ -5,6 +5,7 @@ import { ar, en, localeOf, direction } from "../src/i18n";
 import {
   assertMfa,
   checkMutation,
+  sameOrigin,
   jsonInput,
   sessionDigest,
   createStaffInput,
@@ -92,6 +93,38 @@ test("errors never echo SQL, credentials, providers or request bodies", async ()
   );
   assert.equal(r.status, 503);
   assert.doesNotMatch(await r.text(), /password|SELECT|token_digest/);
+});
+test("development treats the loopback names as one origin; nothing else is relaxed", () => {
+  const origin = "http://127.0.0.1:3000";
+  const env = process.env as Record<string, string | undefined>;
+  const before = env.NODE_ENV;
+  try {
+    env.NODE_ENV = "development";
+    for (const alias of ["http://localhost:3000", "http://[::1]:3000", origin])
+      assert.equal(sameOrigin(alias, origin), true, alias);
+    assert.equal(sameOrigin("http://127.0.0.1:3000", "http://localhost:3001"), false);
+    for (const refused of [
+      null,
+      "",
+      "null",
+      "http://localhost:3001", // another port
+      "https://localhost:3000", // another protocol
+      "http://evil.test:3000",
+      "http://localhost.evil.test:3000",
+      "http://127.0.0.2:3000",
+      "http://localhost:3000/path", // not an origin
+    ])
+      assert.equal(sameOrigin(refused, origin), false, String(refused));
+    assert.equal(sameOrigin("http://localhost:3000", "https://staff.example"), false);
+    // Exact everywhere else: production, and the test runner itself.
+    for (const mode of ["production", "test"]) {
+      env.NODE_ENV = mode;
+      assert.equal(sameOrigin("http://localhost:3000", origin), false, mode);
+      assert.equal(sameOrigin(origin, origin), true, mode);
+    }
+  } finally {
+    env.NODE_ENV = before;
+  }
 });
 test("file bytes, including a report opened for printing, are served under the file policy", async () => {
   const { ATTACHMENT_ROUTE, ATTACHMENT_CSP, secureResponse } = await import("../src/csp");

@@ -70,6 +70,31 @@ export function sessionDigest(token: string | undefined) {
     throw new AppError("SESSION_REQUIRED", 401);
   return digest(token).toString("hex");
 }
+// The Origin a mutation carries must be the configured origin exactly. One
+// development exception: localhost, 127.0.0.1 and [::1] name the same machine,
+// and a page opened under the other name (the dev server binds 127.0.0.1, a
+// browser is typed "localhost") was refused on every save — sign-in showed it
+// as a wrong password. A redirect cannot fix it: Next's dev server treats the
+// names as one host and turns the redirect into a relative loop. Protocol and
+// port must still match; production compares exactly.
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+export function sameOrigin(received: string | null, expected: string) {
+  if (received === expected) return true;
+  if (process.env.NODE_ENV !== "development" || !received) return false;
+  try {
+    const a = new URL(received),
+      b = new URL(expected);
+    return (
+      a.origin === received &&
+      a.protocol === b.protocol &&
+      a.port === b.port &&
+      LOOPBACK.has(a.hostname) &&
+      LOOPBACK.has(b.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 // `binary` is granted to exactly one route — the visit attachment upload — and
 // it relaxes the media type only. The same-origin and CSRF checks are unchanged,
 // and an octet stream is still not a form post a third-party page could make.
@@ -79,7 +104,7 @@ export function checkMutation(
   binary = false,
 ) {
   if (
-    request.headers.get("origin") !== origin ||
+    !sameOrigin(request.headers.get("origin"), origin) ||
     request.headers.get("sec-fetch-site") === "cross-site"
   )
     throw new AppError("FORBIDDEN", 403);

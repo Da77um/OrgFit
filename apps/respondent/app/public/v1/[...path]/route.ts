@@ -22,6 +22,7 @@ import {
   RateLimited,
 } from "../../../../../../src/respondent";
 import { respondentMessages } from "../../../../../../src/respondent-i18n";
+import { sameOrigin } from "../../../../../../src/security";
 import { localeOf, type Locale } from "../../../../../../src/i18n";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +77,7 @@ function checkOrigin(request: Request) {
   const expected = process.env.RESPONDENT_ORIGIN;
   if (!expected) throw publicError("TEMPORARILY_UNAVAILABLE");
   if (
-    request.headers.get("origin") !== expected ||
+    !sameOrigin(request.headers.get("origin"), expected) ||
     request.headers.get("sec-fetch-site") === "cross-site"
   )
     throw publicError("SESSION_REQUIRED");

@@ -117,7 +117,11 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
           value={email}
           aria-invalid={fieldErrors.email ? true : undefined}
           aria-describedby={fieldErrors.email ? `${emailId}-error` : undefined}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            // An answer about the old value must not stay beside the new one.
+            setFieldErrors((f) => ({ ...f, email: undefined }));
+          }}
           disabled={pending}
         />
         {fieldErrors.email && (
@@ -143,7 +147,10 @@ export function LoginForm({ locale, expired }: { locale: Locale; expired: boolea
             value={password}
             aria-invalid={fieldErrors.password ? true : undefined}
             aria-describedby={fieldErrors.password ? `${passwordId}-error` : undefined}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setFieldErrors((f) => ({ ...f, password: undefined }));
+            }}
             disabled={pending}
           />
           <button
