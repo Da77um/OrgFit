@@ -1837,6 +1837,13 @@ Owner input, in this order: P-003 (custodian and managed key service — the blo
 - **Repair:** `scripts/dev-database.ts`, run as the root `predev` script (so `npm run dev` and the `dev` preview configuration get it). It starts the repository cluster when the dev `DATABASE_URL` is loopback and nothing is listening, waits through crash recovery (`57P03`), runs the idempotent `provisionDev` when `.env.bootstrap` supplies `DEV_ADMIN_DATABASE_URL` (role passwords plus migrations), and checks that the staff and auth logins connect. It never drops or resets anything, prints no credential, refuses `NODE_ENV=production`, and never blocks `next dev`.
 - **Observed:** crash recovery fsyncs about 1,490 databases in the cluster (mostly throwaway test databases), which takes more than 15 minutes. Removing stale test databases would shorten it; not done without owner approval.
 
+### Follow-up — repository audit: navigation, localization, accessibility (2026-09-29)
+
+- **Already in place, verified, not changed:** streaming loading chrome, Suspense around the catch-all database work and the client-side same-organization rail (commit `645a702`), including the unsaved-changes guard's link and popstate interception.
+- **Changed:** `tests/localization.test.ts` L-5 discovers every `src/*i18n.ts` on disk and compares Arabic and English recursively (keys, list lengths, non-empty strings, `{placeholder}` sets); a module exposing no `(locale) => catalog` fails. It found no parity gap in the 11 catalogs, and it caught a deliberately removed Arabic key that L-4 did not. The message-link copy button (`organizations/messages-ui.tsx`) now reports a refused clipboard in a polite live region, using the administration catalog's approved `copyFailed` wording, added to `src/inbox-i18n.ts` in both languages.
+- **Tests actually run:** `typecheck`, `lint`, `check:boundaries`, `test` (11), `test:localization` (5), all pass. **Not run:** Playwright, and the copy-failure state in a browser (exercising it needs a message link issued in the development database).
+- **Open, owner decision:** administration entries on the organization rail; results-screen heading level and tab `aria-current`; 19 unread catalog keys and 14 unused exports; inline `t(ar, en)` copy in the questionnaire builder, which catalog parity cannot cover; double-submit guard on the respondent resume form.
+
 ## Handoff format for subsequent steps (template)
 
 - Step and status: COMPLETE / BLOCKED / IN PROGRESS.

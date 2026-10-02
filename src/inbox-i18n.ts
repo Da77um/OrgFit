@@ -42,6 +42,7 @@ const ar = {
   linkRevoked: "أُلغي الرابط.",
   copy: "نسخ الرابط",
   copied: "تم النسخ",
+  copyFailed: "تعذّر النسخ تلقائيًا. حدّد الرابط وانسخه يدويًا.",
   cancel: "إلغاء",
 };
 const en: Record<keyof typeof ar, string> = {
@@ -79,6 +80,7 @@ const en: Record<keyof typeof ar, string> = {
   linkRevoked: "The link was revoked.",
   copy: "Copy link",
   copied: "Copied",
+  copyFailed: "Could not copy automatically. Select the link and copy it by hand.",
   cancel: "Cancel",
 };
 export const inboxMessages = (locale: Locale) => (locale === "en" ? en : ar);

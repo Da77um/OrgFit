@@ -49,7 +49,7 @@ export function Inbox({
   const [link, setLink] = useState<MessageLinkStatus | null>(null);
   const [issuedUrl, setIssuedUrl] = useState<string | null>(null);
   const [linkNote, setLinkNote] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"" | "copied" | "failed">("");
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [busy, setBusy] = useState(true);
   const [loadProblem, setLoadProblem] = useState<unknown>(null);
@@ -100,7 +100,7 @@ export function Inbox({
     setProblem(null);
     setIssuedUrl(null);
     setLinkNote("");
-    setCopied(false);
+    setCopied("");
     try {
       const result = await client.mutate<{ replayed: boolean; url: string | null }>(scope, `${root}/link`, {
         method: "POST",
@@ -138,9 +138,11 @@ export function Inbox({
     if (!issuedUrl) return;
     try {
       await navigator.clipboard.writeText(issuedUrl);
-      setCopied(true);
+      setCopied("copied");
     } catch {
-      setCopied(false);
+      // The link is shown once: a refused clipboard must say so, not look
+      // like a button that did nothing.
+      setCopied("failed");
     }
   };
 
@@ -218,8 +220,11 @@ export function Inbox({
               </code>
               <div className="row">
                 <button type="button" onClick={() => void copy()}>
-                  {copied ? m.copied : m.copy}
+                  {copied === "copied" ? m.copied : m.copy}
                 </button>
+                <span role="status" aria-live="polite">
+                  {copied === "failed" ? m.copyFailed : ""}
+                </span>
               </div>
             </div>
           )}

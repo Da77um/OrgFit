@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkAnswer, normalizeNumerals } from "../src/answer-rules";
 import { validateAnswers, ScoringError } from "../src/scoring";
 import { newQuestion, blankInstrument, newIdentity, tr } from "../src/instrument-input";
@@ -151,4 +154,53 @@ test("L-4 every catalog touched by this phase is complete in both languages", ()
     assert.equal(names(respondentAr[key]), names(respondentEn[key]), key);
   }
   assert.equal(fill(respondentEn.numberRange, { min: "0", max: "<b>" }), "A value from 0 to <b>.");
+});
+
+// Every catalog on disk, not a hand-kept list: a new src/*i18n.ts is covered
+// the day it is added. A catalog is whatever an exported one-argument function
+// returns for "ar" and "en" when both are distinct plain objects; a module that
+// yields none fails, so an unfamiliar shape is noticed instead of skipped.
+test("L-5 every i18n catalog has the same keys, shape and placeholders in Arabic and English", async () => {
+  const dir = fileURLToPath(new URL("../src/", import.meta.url));
+  const files = readdirSync(dir).filter((f) => /i18n\.ts$/.test(f)).sort();
+  assert.ok(files.length >= 11, files.join());
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  const holes = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join();
+  const gaps: string[] = [];
+  const compare = (a: unknown, b: unknown, at: string) => {
+    if (typeof a === "string" || typeof b === "string") {
+      if (typeof a !== typeof b) gaps.push(`${at}: type differs`);
+      else if (!(a as string).trim() || !(b as string).trim()) gaps.push(`${at}: empty`);
+      else if (holes(a as string) !== holes(b as string)) gaps.push(`${at}: placeholders differ`);
+    } else if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length)
+        gaps.push(`${at}: list length differs`);
+      else a.forEach((v, i) => compare(v, b[i], `${at}[${i}]`));
+    } else if (isRecord(a) && isRecord(b)) {
+      for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        if (!(k in a)) gaps.push(`${at}.${k}: missing in ar`);
+        else if (!(k in b)) gaps.push(`${at}.${k}: missing in en`);
+        else compare(a[k], b[k], `${at}.${k}`);
+      }
+    } else if (typeof a !== typeof b) gaps.push(`${at}: type differs`);
+  };
+  for (const file of files) {
+    const mod: Record<string, unknown> = await import(pathToFileURL(join(dir, file)).href);
+    let found = 0;
+    for (const [name, value] of Object.entries(mod)) {
+      if (typeof value !== "function" || value.length !== 1) continue;
+      let ar: unknown, en: unknown;
+      try {
+        [ar, en] = [value("ar"), value("en")];
+      } catch {
+        continue;
+      }
+      if (!isRecord(ar) || !isRecord(en) || ar === en) continue;
+      found++;
+      compare(ar, en, `${file}:${name}`);
+    }
+    assert.ok(found > 0, `${file} exposes no (locale) => catalog`);
+  }
+  assert.deepEqual(gaps, []);
 });
