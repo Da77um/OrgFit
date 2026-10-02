@@ -87,7 +87,7 @@ Preflight prints names and outcomes only, never a value, and exits 1 on any fail
    npm run db:bootstrap
    ```
 
-4. Do **not** run `db:seed`, `db:provision-dev`, `db:bootstrap-dev-admin` or `showcase` in any shared environment. `instruments:seed` installs illustrative templates only (P-006).
+4. Do **not** run `db:seed`, `db:provision-dev`, `db:bootstrap-dev-admin`, `db:reset-dev-admin-password` or `showcase` in any shared environment. `instruments:seed` installs illustrative templates only (P-006).
 5. **Key custody**: generate the custodian key pair once per environment (`.env.example` shows the command). The public half goes to staff; the secret half only to the processor. The file-directory custody adapter is a development stand-in (P-003, SEC-H1) — a managed key service must replace it before real data; since Pass 4 production refuses it at start and preflight fails it ([key-custody.md](key-custody.md)).
 6. **Preflight** all six processes (§3), then start respondent and staff, then start the job supervisor (§9) or the provider's scheduler with the cadences from `deploy/processes.json` → `schedule`.
 7. **Health**: `GET /health/live` (process up) and `GET /health/ready` on both hosts must return 200 before traffic is routed. Readiness fails closed on a missing configuration, a misgranted database role or a pending restore.

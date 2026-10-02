@@ -57,6 +57,7 @@
     "showcase": "tsx scripts/showcase.ts",
     "db:provision-dev": "tsx scripts/provision-dev.ts",
     "db:bootstrap-dev-admin": "tsx scripts/bootstrap-dev-admin.ts",
+    "db:reset-dev-admin-password": "tsx scripts/reset-dev-admin-password.ts",
     "test:access": "tsx --test --test-concurrency=1 tests/access.test.ts",
     "test:localization": "tsx --test tests/localization.test.ts",
     "retention:run": "tsx scripts/retention.ts",

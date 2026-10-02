@@ -142,7 +142,7 @@
   },
   "localStorageSweeps": { "npm run imports:expire": "staff environment, local storage only; a bucket uses a 1-day lifecycle rule", "npm run links:expire": "staff environment, local storage only; a bucket uses a 1-day lifecycle rule" },
   "illustrativeOnly": ["instruments:seed"],
-  "neverInProduction": ["db:provision-dev", "db:bootstrap-dev-admin", "db:seed", "showcase"],
+  "neverInProduction": ["db:provision-dev", "db:bootstrap-dev-admin", "db:reset-dev-admin-password", "db:seed", "showcase"],
   "schedule": {
     "$comment": "Machine-readable form of the job cadences above (Post-Audit Repair Pass 3). scripts/supervise.ts runs it; ops.job_status (migration 023) holds the same intervals and tests/supervisor.test.ts asserts they agree. A group runs its jobs one after another in the listed order and never overlaps itself; every job of a group keeps its own process credential. Retries after a failure back off from retryBaseSeconds, doubling, for at most maxRetries attempts, then fall back to the normal cadence while the job is reported FAILING.",
     "retry": { "maxRetries": 3, "retryBaseSeconds": 15 },
