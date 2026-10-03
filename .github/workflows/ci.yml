@@ -64,4 +64,6 @@ jobs:
       - run: npm run check:boundaries
       - run: npm run test:production
       - run: mkdir -p work && npm run test:e2e
-      - run: npm audit --audit-level=high
+      # High/critical advisories fail; see scripts/audit.ts (D-163) for the one
+      # narrowly excused dev-only advisory with no upstream fix.
+      - run: npm run audit:ci

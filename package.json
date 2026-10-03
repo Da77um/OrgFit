@@ -21,6 +21,7 @@
     "test:e2e": "playwright test",
     "test:production": "tsx tests/production-smoke.ts",
     "check:boundaries": "tsx scripts/check-boundaries.ts",
+    "audit:ci": "tsx scripts/audit.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:bootstrap": "tsx scripts/bootstrap.ts",
     "db:seed": "tsx scripts/seed.ts",
