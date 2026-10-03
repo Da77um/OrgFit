@@ -8,6 +8,7 @@ import {
   type SafeCell,
 } from "./disclosure";
 import type { Translation } from "./instrument-input";
+import { seedFor, signatureScores } from "./brand-mark";
 
 // ---------------------------------------------------------------------------
 // The report document model.
@@ -229,6 +230,8 @@ export type ReportModel = {
   methodology: LabelledValue[];
   overall: MetricRow | null;
   dimensions: MetricRow[];
+  /** The cover's signature: all five released dimension scores, or null. */
+  signature: { scores: number[]; seed: number } | null;
   departments: { groups: { key: string; label: string }[]; rows: DepartmentRow[] };
   questions: QuestionBlock[];
   strengths: { label: string; value: string; band: string | null }[];
@@ -650,6 +653,10 @@ export function buildReportModel(source: ReportSource): ReportModel {
     ],
     overall,
     dimensions,
+    signature: (() => {
+      const scores = signatureScores(dimensions.map((row) => row.numeric));
+      return scores ? { scores, seed: seedFor(source.organization.id) } : null;
+    })(),
     departments: {
       groups: departmentGroups.map((g) => ({
         key: g.key,

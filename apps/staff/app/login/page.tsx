@@ -14,7 +14,7 @@
 //     endpoint is refused by the routine, not by this page.
 //
 // The page is part of the same visual system as the overview page: same
-// chrome, same lockup, same limestone, same single clay accent on the card's
+// chrome, same lockup, same paper, same single clay accent on the card's
 // top rule.
 // ---------------------------------------------------------------------------
 

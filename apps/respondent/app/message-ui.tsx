@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fill, respondentMessages } from "../../../src/respondent-i18n";
 import { direction, type Locale } from "../../../src/i18n";
-import { Alert, Label, LoadingState, Mark } from "../../../src/ui";
+import { Alert, Label, LoadingState } from "../../../src/ui";
+import { Lockup } from "../../../src/brand";
 import { Dialog, Shell } from "./survey-ui";
 
 // The employee message page (migration 025).
@@ -249,7 +250,9 @@ export default function EmployeeMessage() {
     return (
       <Shell locale={locale} setLocale={changeLocale} dir={dir} title={m.msgAppTitle}>
         <section className="panel login stack">
-          <Mark className="state-mark" />
+          <span className="state-lockup" aria-hidden="true">
+            <Lockup descriptor="التقييم التنظيمي" markSize={56} cap={18} />
+          </span>
           <h1 ref={headingRef} tabIndex={-1}>
             {stage === "sent" ? m.msgSentTitle : m.msgAppTitle}
           </h1>

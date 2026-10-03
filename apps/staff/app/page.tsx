@@ -17,7 +17,7 @@
 import { cookies } from "next/headers";
 import { direction, localeOf, messages } from "../../../src/i18n";
 import { landing } from "../../../src/landing-i18n";
-import { Mark } from "../../../src/ui";
+import { Lockup } from "../../../src/brand";
 import "../../../src/landing.css";
 import { SiteHeader, LanguageSwitch } from "./landing-ui";
 import {
@@ -241,14 +241,10 @@ export default async function Overview() {
       <footer className="site-footer">
         <div className="site-footer-inner">
           <div className="footer-brand">
-            <span className="lockup" role="img" aria-label={m.title}>
-              <Mark tone="inverse" className="site-brand-mark" />
-              <span className="site-brand-text" aria-hidden="true">
-                <span className="site-brand-word">ORGFIT</span>
-                <span className="site-brand-descriptor">
-                  {locale === "en" ? "Organizational assessment" : "التقييم التنظيمي"}
-                </span>
-              </span>
+            {/* The one place the lockup sits on core navy: .on-core flips
+                every role of the mark, the wordmark and the descriptor. */}
+            <span className="footer-lockup on-core" role="img" aria-label={m.title}>
+              <Lockup descriptor="التقييم التنظيمي" markSize={56} cap={18} />
             </span>
             <p>{c.footerDescription}</p>
             <LanguageSwitch locale={locale} />

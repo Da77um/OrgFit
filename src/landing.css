@@ -15,7 +15,7 @@
    The page is a PERSUADE surface and the workspace is an OPERATE surface, so
    this file is allowed a larger type scale, more air and one authored motion
    moment that the workspace deliberately does not have. It is not allowed a
-   different identity: same ink, same limestone, same single clay, same
+   different identity: same core, same paper, same single clay, same
    hairline rectangles, same zero radius.
    =========================================================================== */
 
@@ -69,42 +69,33 @@ html {
   align-items: center;
   gap: var(--space-3);
 }
-/* The compact application of Lockup A: mark, hairline, Latin name over the
-   Arabic descriptor. The identity drops the descriptor below 120px of lockup
-   width, which is what the media query at the end of this file does. */
+/* The compact lockup: mark, hairline, drawn wordmark over the Arabic
+   descriptor (<Lockup> in src/brand.tsx). The drawings size
+   themselves from their props; this only sets the descriptor's scale here.
+   The descriptor is dropped on narrow screens by the media query at the end
+   of this file. */
 .site-brand {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
   text-decoration: none;
   color: var(--text);
   flex: none;
 }
-.site-brand-mark {
-  block-size: 2.5rem;
-  inline-size: auto;
+.site-brand svg,
+.footer-lockup svg {
+  display: block;
   flex: none;
 }
-.site-brand-text {
-  display: grid;
-  gap: 0.15rem;
-}
-.site-brand-word {
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 1.0625rem;
-  letter-spacing: var(--tracking-word);
-  padding-inline-end: var(--tracking-word);
-  line-height: 1;
-  direction: ltr;
-  unicode-bidi: isolate;
-}
-.site-brand-descriptor {
-  font-family: var(--font-display);
-  font-weight: 400;
+.site-brand .lockup-descriptor {
   font-size: var(--text-sm);
   line-height: 1.1;
-  color: var(--text-muted);
+}
+.footer-lockup {
+  display: inline-flex;
+}
+.footer-lockup .lockup-descriptor {
+  font-size: var(--text-base);
+  line-height: 1.1;
 }
 .site-nav {
   display: flex;
@@ -314,8 +305,8 @@ html {
   align-items: center;
   gap: 0.35rem;
   padding: 0.15rem 0.6rem;
-  border: var(--hairline) solid var(--accent-on-dark);
-  color: var(--accent-on-dark);
+  border: var(--hairline) solid var(--accent-on-inverse);
+  color: var(--accent-on-inverse);
   font-size: var(--text-xs);
   font-weight: 500;
 }
@@ -339,7 +330,7 @@ html {
 }
 .figure-note-glyph {
   font-family: var(--font-mono);
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 
 /* Drawn chart parts, so a figure never needs an inline style. */
@@ -510,8 +501,10 @@ html {
   justify-content: center;
   direction: ltr;
 }
+/* Deep clay, not clay: paper on #c4633c is 3.5:1, and the step number is
+   small text. */
 .flow li:first-child .flow-step {
-  background: var(--accent);
+  background: var(--accent-text);
 }
 .flow h3 {
   margin: 0;
@@ -534,10 +527,10 @@ html {
   color: var(--text-inverse);
 }
 .band-ink .section-head p {
-  color: var(--brand-limestone);
+  color: var(--text-inverse);
 }
 .band-ink :focus-visible {
-  outline-color: var(--accent-on-dark);
+  outline-color: var(--accent-on-inverse);
 }
 .privacy-points {
   display: grid;
@@ -554,7 +547,7 @@ html {
 .privacy-points li {
   min-inline-size: 0;
   padding-block-start: var(--space-3);
-  border-block-start: var(--hairline) solid var(--brand-ink-mute);
+  border-block-start: var(--hairline) solid var(--border-inverse);
   display: grid;
   gap: var(--space-2);
   align-content: start;
@@ -566,12 +559,12 @@ html {
 }
 .privacy-points p {
   margin: 0;
-  color: var(--brand-limestone);
+  color: var(--text-inverse);
 }
 .privacy-glyph {
   inline-size: 1.75rem;
   block-size: 1.75rem;
-  color: var(--accent-on-dark);
+  color: var(--accent-on-inverse);
 }
 /* The limit, stated where the promise is. It is set quieter than the three
    points, not hidden below them, because the blueprint forbids letting the
@@ -579,8 +572,8 @@ html {
 .privacy-limit {
   margin: var(--space-5) 0 0;
   padding-inline-start: var(--space-3);
-  border-inline-start: var(--hairline) solid var(--accent-on-dark);
-  color: var(--brand-limestone);
+  border-inline-start: var(--hairline) solid var(--accent-on-inverse);
+  color: var(--text-inverse);
   font-size: var(--text-md);
   max-inline-size: 72ch;
 }
@@ -619,7 +612,7 @@ html {
   align-items: center;
   gap: 0.35rem;
   font-size: var(--text-xs);
-  color: var(--text-accent);
+  color: var(--accent-text);
   font-weight: 500;
 }
 
@@ -652,7 +645,7 @@ html {
   display: none;
 }
 .faq-item summary:hover {
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 .faq-marker {
   inline-size: 1.25rem;
@@ -706,7 +699,7 @@ html {
 
 .site-footer {
   background: var(--surface-inverse);
-  color: var(--brand-limestone);
+  color: var(--text-inverse);
 }
 .site-footer-inner {
   max-inline-size: var(--content-width);
@@ -723,15 +716,10 @@ html {
   }
 }
 .site-footer a {
-  color: var(--brand-limestone-light);
-}
-/* The descriptor's default is a muted ink, which is invisible on ink. The
-   footer is the one place the lockup sits on the inverse surface. */
-.site-footer .site-brand-descriptor {
-  color: var(--brand-limestone);
+  color: var(--text-inverse);
 }
 .site-footer :focus-visible {
-  outline-color: var(--accent-on-dark);
+  outline-color: var(--accent-on-inverse);
 }
 .footer-brand {
   display: grid;
@@ -753,11 +741,11 @@ html {
 }
 .footer-note {
   margin: 0;
-  color: var(--brand-ink-faint);
+  color: var(--text-on-inverse-muted);
   font-size: var(--text-sm);
 }
 .footer-rule {
-  border-block-start: var(--hairline) solid var(--brand-ink-soft);
+  border-block-start: var(--hairline) solid var(--border-inverse);
   padding-block-start: var(--space-3);
   grid-column: 1 / -1;
   display: grid;
@@ -979,13 +967,11 @@ html {
     display: none;
   }
 }
-/* Below the identity's 120px lockup width the Arabic descriptor is dropped and
-   the Latin name carries the mark alone. */
+/* On a narrow screen the Arabic descriptor and its rule are dropped and the
+   wordmark carries the mark alone. */
 @media (max-width: 26rem) {
-  .site-brand-descriptor {
+  .site-brand .lockup-descriptor,
+  .site-brand .lockup-rule {
     display: none;
-  }
-  .site-brand-mark {
-    block-size: 2rem;
   }
 }

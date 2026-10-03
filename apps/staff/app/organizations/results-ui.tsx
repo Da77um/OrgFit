@@ -12,6 +12,8 @@ import { ReportsPanel } from "./reports-ui";
 import { ReleasePanel } from "./release-ui";
 import { utcDate } from "../../../../src/zoned-time";
 import { Workspace, organizationName } from "../shell";
+import { Mark } from "../../../../src/brand";
+import { seedFor, signatureScores } from "../../../../src/brand-mark";
 import {
   Alert,
   Badge,
@@ -305,7 +307,50 @@ function ScoreTable({
   );
 }
 
-function Overview({ data, m, locale }: { data: ViewData; m: M; locale: Locale }) {
+// The organization's signature: the identity mark drawn from its own five
+// published dimension scores, in the scoring module's order. Nothing is drawn
+// unless all five were released (see signatureScores), and the seed comes from
+// the organization's id so the figure is the same on every render and in the
+// printed report.
+function Signature({
+  data,
+  org,
+  m,
+}: {
+  data: ViewData;
+  org: string;
+  m: M;
+}) {
+  const scores = signatureScores(
+    data.metrics
+      .filter((metric) => metric.kind === "DIMENSION")
+      .map((metric) => {
+        const cell = data.cells.find(
+          (c) => c.metricKey === metric.key && c.groupKey === data.companyGroupKey,
+        );
+        return cell?.status === "AVAILABLE" && cell.value !== null ? Number(cell.value) : null;
+      }),
+  );
+  if (!scores) return null;
+  return (
+    <figure className="result-signature">
+      <Mark size={120} scores={scores} seed={seedFor(org)} concern title={m.signature} />
+      <figcaption className="muted">{m.signatureDescription}</figcaption>
+    </figure>
+  );
+}
+
+function Overview({
+  data,
+  org,
+  m,
+  locale,
+}: {
+  data: ViewData;
+  org: string;
+  m: M;
+  locale: Locale;
+}) {
   const company = data.companyGroupKey;
   const list = (title: string, items: Ranked[] | undefined) => (
     <div className="stack">
@@ -326,6 +371,7 @@ function Overview({ data, m, locale }: { data: ViewData; m: M; locale: Locale })
   );
   return (
     <div className="stack">
+      <Signature data={data} org={org} m={m} />
       <div className="tiles">
         <Tile label={m.contributors} value={data.contributorCount ?? "—"} />
         <Tile label={m.threshold} value={data.threshold} />
@@ -950,7 +996,7 @@ export function Results({
             the loaded payload is what keeps a tab switch from rendering one
             view against another's data. */}
         {data?.view === "overview" && (
-          <Overview data={data} m={m} locale={locale} />
+          <Overview data={data} org={org} m={m} locale={locale} />
         )}
         {data?.view === "departments" && (
           <Departments data={data} m={m} locale={locale} />

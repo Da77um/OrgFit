@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { Mark } from "../../../src/ui";
+import { Lockup } from "../../../src/brand";
 import { messages, type Locale } from "../../../src/i18n";
 import { landing } from "../../../src/landing-i18n";
 import { staffRequest } from "./staff-request";
@@ -61,12 +61,11 @@ export function SiteBrand({ locale, href = "/" }: { locale: Locale; href?: strin
   const m = messages(locale);
   return (
     <a className="site-brand" href={href}>
-      <Mark className="site-brand-mark" />
-      <span className="site-brand-text" aria-hidden="true">
-        <span className="site-brand-word">ORGFIT</span>
-        <span className="site-brand-descriptor">
-          {locale === "en" ? "Organizational assessment" : "التقييم التنظيمي"}
-        </span>
+      {/* Arabic leads the lockup in both languages: the descriptor is the
+          identity's Arabic line, not a translation of the page. The drawing is
+          decorative; the link's name is the product name. */}
+      <span aria-hidden="true">
+        <Lockup descriptor="التقييم التنظيمي" markSize={40} cap={14} />
       </span>
       <span className="visually-hidden">{m.title}</span>
     </a>

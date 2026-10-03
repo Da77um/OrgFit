@@ -1,17 +1,17 @@
 /* ===========================================================================
    OrgFit design system.
 
-   Source of truth for the visual direction is the brand identity package in
-   docs/identityreference/ — "OrgFit Identity.dc.html" (symbol, lockups, clear
-   space, minimum sizes) and "OrgFit Signature System.dc.html" (palette in use,
-   typographic roles, the in-platform screen in section 04, and the rule that
-   information lives in the shape, not the colour).
+   The visual direction is identity Direction D — الشبكة: scattered data at the
+   periphery travels through channels into a solid core. The mark is geometry,
+   not a picture (src/brand-mark.ts, drawn by src/brand.tsx and by
+   the report renderer), and the rule that information lives in the shape, not
+   the colour, still holds: the one concern is clay AND a rhombic node.
 
    Three token layers, in order. A rebrand touches layer 1 and, rarely, layer 2.
    No component below reads a literal colour, family or size.
 
      1. BRAND     the identity's own primitives, in the identity's own words
-                  (ink, limestone, clay). Never used directly by a component.
+                  (core, channel, clay, paper). Never used directly by a component.
      2. SEMANTIC  what a primitive MEANS here (surface, text, border, action,
                   danger). This is the layer components are allowed to read.
      3. COMPONENT the few shape decisions a single family of components owns
@@ -40,73 +40,111 @@
 @import "@fontsource/ibm-plex-sans-arabic/600.css";
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
+/* Syne carries the identity's supporting Latin lines (MEASURE · UNDERSTAND ·
+   IMPROVE). One weight only; it is Latin-subset, so an Arabic page that sets no
+   such line never fetches it. */
+@import "@fontsource/syne/700.css";
 
 :root {
   color-scheme: light;
 
   /* --- 1. BRAND ------------------------------------------------------- */
-  /* Ink on limestone, one unit in clay. Values taken verbatim from the
-     identity package; the frequency of each in the source documents is what
-     decided which became a surface and which became an accent. */
-  --brand-ink: #191614;
-  --brand-ink-soft: #3a342e;
-  --brand-ink-mute: #625b53;
-  --brand-ink-faint: #9a9186;
-  --brand-limestone: #e4dccf;
-  --brand-limestone-light: #efe8dd;
-  --brand-limestone-lighter: #f7f3ec;
-  --brand-rule: #cfc7ba;
-  --brand-rule-soft: #e3dcd1;
-  --brand-clay: #9a4e2a;
-  --brand-clay-light: #c97b52;
-  /* Clay darkened for small text on a light surface: #9a4e2a reaches 4.9:1 on
-     the lightest surface, which passes AA but leaves nothing for 12px mono
-     labels. This reaches 6.5:1. */
-  --brand-clay-deep: #7e3f22;
+  /* Direction D — الشبكة. Paper on core navy: scattered data at the periphery
+     travels through channels into a solid core. */
+  /* The core and its depths: the solid centre the identity is named for. */
+  --brand-core: #0b1e30;
+  --brand-core-raised: #13293f;
+  --brand-core-line: #1c3a56;
 
-  /* Functional status hues. The identity is deliberately ink + one clay and
-     says nothing about success or failure, so these four are introduced here
-     as a FUNCTIONAL set, held to the same muted, earth-weighted register so
-     they read as part of the same system. They are never the only carrier of
-     a state: every status also prints a word and a glyph. */
+  /* The channels: what carries scattered data inward. Never a surface. */
+  --brand-channel: #4e93c0;
+  --brand-channel-light: #8fc0dc;
+  --brand-channel-deep: #2c6a93;
+
+  /* Clay, carried over from the previous identity and still meaning exactly
+     one thing: the single dimension below threshold. Light for small text on
+     core navy (6.3:1); deep for small text on paper (5.2:1). */
+  --brand-clay: #c4633c;
+  --brand-clay-light: #e0875f;
+  --brand-clay-deep: #9a4e2a;
+
+  /* Paper. The report is printed, so the light end stays warm, not white. */
+  --brand-paper: #f4efe6;
+  --brand-stone: #e7dfd2;
+  --brand-rule: #cfc5b5;
+
+  /* Text greys, measured against both grounds. Neither reaches 4.5:1 on
+     stone (#5b6b7a is 4.2:1 there), so stone is never a ground for text. */
+  --brand-mute: #5b6b7a; /* on paper  4.8:1 */
+  --brand-mute-light: #8fa3b5; /* on core   6.5:1 */
+  --brand-scatter: #8fa3b5;
+
+  /* Functional status hues. The identity is core + one clay and says nothing
+     about success or failure, so these three are a FUNCTIONAL set held to a
+     muted, earth-weighted register. They are never the only carrier of a
+     state: every status also prints a word and a glyph. On paper: moss 6.3:1,
+     ochre 5.5:1, brick 8.0:1. */
   --brand-moss: #3f5f3a;
   --brand-ochre: #7a5c12;
   --brand-brick: #8a2015;
 
   /* --- 2. SEMANTIC ---------------------------------------------------- */
-  --surface-page: var(--brand-limestone);
-  --surface: var(--brand-limestone-lighter);
-  --surface-muted: var(--brand-limestone-light);
-  --surface-sunken: var(--brand-limestone);
-  --surface-inverse: var(--brand-ink);
+  /* Map, do not re-specify. Component CSS reads only these. */
+  --surface-page: var(--brand-paper);
+  --surface: var(--brand-paper);
+  --surface-raised: #ffffff;
+  /* Muted is the lighter tint, not the darker one: stone is no ground for
+     muted text or links, and the withheld hatch needs muted and sunken to
+     differ. */
+  --surface-muted: var(--surface-raised);
+  --surface-sunken: var(--brand-stone);
+  --surface-inverse: var(--brand-core);
 
-  --text: var(--brand-ink);
-  --text-soft: var(--brand-ink-soft);
-  --text-muted: var(--brand-ink-mute);
-  --text-faint: var(--brand-ink-faint);
-  --text-inverse: var(--brand-limestone-light);
-  --text-accent: var(--brand-clay-deep);
+  --text: var(--brand-core);
+  --text-soft: var(--brand-core-raised);
+  --text-muted: var(--brand-mute);
+  --text-faint: var(--brand-mute);
+  --text-inverse: var(--brand-paper);
+  --text-on-inverse-muted: var(--brand-mute-light);
 
   --border: var(--brand-rule);
-  --border-soft: var(--brand-rule-soft);
-  --border-strong: var(--brand-ink);
-  --border-accent: var(--brand-clay);
+  --border-soft: var(--brand-rule);
+  --border-strong: var(--brand-core);
+  --border-inverse: var(--brand-core-line);
 
-  --action: var(--brand-ink);
-  --action-text: var(--brand-limestone-light);
-  --action-hover: var(--brand-ink-soft);
+  --action: var(--brand-core);
+  --action-text: var(--brand-paper);
+  --action-hover: var(--brand-core-raised);
   --accent: var(--brand-clay);
-  --accent-on-dark: var(--brand-clay-light);
+  --accent-text: var(--brand-clay-deep); /* small text on paper */
+  --accent-on-inverse: var(--brand-clay-light); /* small text on core  */
+
+  --link: var(--brand-channel-deep);
+  --link-on-inverse: var(--brand-channel-light);
 
   --focus: var(--brand-clay);
   --danger: var(--brand-brick);
   --warning: var(--brand-ochre);
   --positive: var(--brand-moss);
-  --info: var(--brand-ink-mute);
+
+  /* The mark reads these; see src/brand.tsx. Any inverse surface
+     overrides --mark-ground so the node centres punch out correctly. */
+  --mark-ground: var(--surface);
+  --mark-channel: var(--brand-channel-deep);
+  --mark-channel-light: var(--brand-channel);
+  --mark-core: var(--brand-core);
+  --mark-accent: var(--brand-clay);
+  --mark-scatter: var(--brand-mute);
+
+  --wordmark-ink: var(--text);
+  --wordmark-node: var(--brand-channel-deep);
+  --wordmark-tittle: var(--brand-clay);
 
   --font-display: "Zain", "IBM Plex Sans Arabic", Tahoma, system-ui, sans-serif;
   --font-body: "IBM Plex Sans Arabic", Tahoma, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+  /* Supporting Latin lines only, always at 700. Never body text, never Arabic. */
+  --font-support: "Syne", "IBM Plex Sans Arabic", system-ui, sans-serif;
 
   /* The identity measures in units of the rhombic dot. 1U here is 0.5rem, and
      every gap in the product is an integer number of them. */
@@ -118,8 +156,8 @@
   --space-5: calc(var(--u) * 6); /* 48 */
   --space-6: calc(var(--u) * 8); /* 64 */
 
-  /* The identity is a drawn system: hairline rectangles, no rounding and no
-     shadow. The token stays so that the decision has one home. */
+  /* Geometry is unchanged: squared, hairline, unshadowed. The token stays so
+     that the decision has one home. */
   --radius: 0;
   --radius-pill: 0;
   --hairline: 1px;
@@ -146,10 +184,10 @@
   --control-height: 2.75rem; /* 44px touch target */
 
   /* Charts. Replace these to rebrand a chart without touching a component.
-     The scale runs limestone → clay because the identity colours exactly one
+     The scale runs paper → clay because the identity colours exactly one
      concern; every shaded cell also prints its number. */
-  --chart-fill: var(--brand-ink);
-  --chart-track: var(--brand-rule-soft);
+  --chart-fill: var(--brand-core);
+  --chart-track: var(--brand-stone);
   --chart-accent: var(--brand-clay);
   --chart-grid: var(--brand-rule);
   --chart-scale-1: #ddb9a3;
@@ -159,14 +197,35 @@
   --chart-scale-5: #f2efe6;
 }
 
+/* On a core-navy ground every role flips together, so no component needs a
+   modifier class of its own. */
+.on-core {
+  --surface: var(--brand-core);
+  --surface-raised: var(--brand-core-raised);
+  --surface-sunken: var(--brand-core-raised);
+  --text: var(--brand-paper);
+  --text-muted: var(--brand-mute-light);
+  --border-soft: var(--brand-core-line);
+  --border-strong: var(--brand-core-line);
+  --accent-text: var(--brand-clay-light);
+  --link: var(--brand-channel-light);
+  --mark-ground: var(--brand-core);
+  --mark-channel: var(--brand-channel);
+  --mark-channel-light: var(--brand-channel-light);
+  --mark-core: var(--brand-paper);
+  --mark-scatter: var(--brand-mute-light);
+  --wordmark-ink: var(--brand-paper);
+  --wordmark-node: var(--brand-channel-light);
+}
+
 /* A visitor who asks for more contrast gets the strong rule everywhere and
    loses the soft one. */
 @media (prefers-contrast: more) {
   :root {
-    --border: var(--brand-ink-mute);
-    --border-soft: var(--brand-ink-mute);
-    --text-muted: var(--brand-ink-soft);
-    --text-faint: var(--brand-ink-soft);
+    --border: var(--brand-mute);
+    --border-soft: var(--brand-mute);
+    --text-muted: var(--brand-core-raised);
+    --text-faint: var(--brand-core-raised);
   }
 }
 
@@ -224,7 +283,7 @@ time,
   direction: ltr;
 }
 .micro-accent {
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 /* The same role for localized text: small, quiet and set above a title or a
    group of controls. No tracking, no case change, and the body face rather
@@ -237,7 +296,7 @@ time,
   color: var(--text-muted);
 }
 .label-accent {
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 .code {
   font-size: var(--text-sm);
@@ -324,8 +383,8 @@ hr,
   outline-offset: 3px;
 }
 ::selection {
-  background: var(--brand-clay-light);
-  color: var(--brand-ink);
+  background: var(--accent-on-inverse);
+  color: var(--text);
 }
 
 .skip {
@@ -412,13 +471,13 @@ main {
 }
 
 /* ---------------------------------------------------- application shell --- */
-/* Mirrors section 04 of the signature system: an ink bar carrying the lockup
-   and the record's coordinates, a quiet rail, and the work on limestone. */
+/* A core-navy bar carrying the lockup and the record's coordinates, a quiet
+   rail, and the work on paper. */
 
 .appbar {
   background: var(--surface-inverse);
   color: var(--text-inverse);
-  border-block-end: var(--hairline) solid var(--brand-ink);
+  border-block-end: var(--hairline) solid var(--border-inverse);
   position: sticky;
   inset-block-start: 0;
   z-index: 40;
@@ -447,33 +506,22 @@ main {
   padding: var(--space-1);
   margin: calc(var(--space-1) * -1);
 }
-.appbar-mark {
+/* The mark and the drawn wordmark size themselves from their props. */
+.appbar-brand svg {
   display: block;
-  block-size: 1.75rem;
-  inline-size: auto;
   flex: none;
-}
-.appbar-word {
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 0.9375rem;
-  letter-spacing: var(--tracking-word);
-  padding-inline-end: var(--tracking-word);
-  direction: ltr;
-  unicode-bidi: isolate;
-  white-space: nowrap;
 }
 .appbar-divider {
   inline-size: var(--hairline);
   block-size: 1.375rem;
-  background: var(--brand-ink-soft);
+  background: var(--border-inverse);
   flex: none;
 }
 .appbar-context {
   font-family: var(--font-display);
   font-size: var(--text-lg);
   font-weight: 700;
-  color: var(--brand-rule);
+  color: var(--text-inverse);
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
@@ -481,14 +529,14 @@ main {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--brand-ink-faint);
+  color: var(--text-on-inverse-muted);
   flex-wrap: wrap;
 }
 .appbar-meta .micro {
   color: inherit;
 }
 .appbar :focus-visible {
-  outline-color: var(--accent-on-dark);
+  outline-color: var(--accent-on-inverse);
 }
 
 .shell {
@@ -515,7 +563,7 @@ main {
   display: block;
   padding-inline: var(--space-3);
   padding-block-end: var(--space-1);
-  /* Muted, not faint: faint on the rail's limestone measured 2.54:1 in the
+  /* Muted, not faint: faint on the rail's ground measured 2.54:1 in the
      Phase 13 audit, and a 12px group label is text a reader needs. */
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -625,48 +673,31 @@ header a {
   min-block-size: var(--appbar-height);
 }
 header :focus-visible {
-  outline-color: var(--accent-on-dark);
+  outline-color: var(--accent-on-inverse);
 }
 
-/* Lockup A at the one size the identity keeps the Arabic descriptor at: the
-   mark, a hairline, and the descriptor beneath the Latin name. Used on the
-   sign-in and entry screens, which are the only places with room for it. */
+/* The lockup, used by <Lockup> in src/brand.tsx: the mark, a
+   hairline, and the drawn wordmark over the Arabic descriptor. Both drawings
+   carry direction="ltr" so an RTL ancestor cannot mirror a measured figure. */
 .lockup {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-}
-.lockup-mark {
-  block-size: 4.5rem;
-  inline-size: auto;
-  flex: none;
-  color: var(--text);
-}
-.lockup-text {
-  display: grid;
-  gap: var(--space-1);
-  justify-items: stretch;
-  min-inline-size: 0;
-}
-.lockup-word {
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 2rem;
-  letter-spacing: var(--tracking-word);
-  padding-inline-end: var(--tracking-word);
-  line-height: 1;
-  direction: ltr;
-  unicode-bidi: isolate;
+  gap: var(--space-2);
 }
 .lockup-rule {
-  block-size: var(--hairline);
-  background: var(--border-strong);
+  inline-size: var(--hairline);
+  align-self: stretch;
+  background: var(--border-soft);
+}
+.lockup-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 .lockup-descriptor {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.25rem;
-  line-height: 1.15;
+  color: var(--text);
 }
 
 /* --------------------------------------------------------- page header --- */
@@ -686,7 +717,7 @@ header :focus-visible {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 .page-title {
   margin: 0;
@@ -815,7 +846,7 @@ header :focus-visible {
   color: var(--text-muted);
 }
 .tile-accent .tile-value {
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 
 /* --------------------------------------------------------------- forms --- */
@@ -849,7 +880,7 @@ textarea {
   background: var(--surface);
   border: var(--hairline) solid var(--border);
   border-block-end-width: var(--rule-strong);
-  border-block-end-color: var(--brand-ink-faint);
+  border-block-end-color: var(--text-muted);
 }
 input:hover,
 select:hover,
@@ -872,7 +903,7 @@ input[type="radio"] {
   inline-size: 1.25rem;
   block-size: 1.25rem;
   min-block-size: 1.25rem;
-  accent-color: var(--brand-ink);
+  accent-color: var(--action);
   border-block-end-width: var(--hairline);
 }
 input[aria-invalid="true"],
@@ -999,7 +1030,7 @@ button.button-quiet {
 button.button-danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: var(--brand-limestone-lighter);
+  color: var(--action-text);
 }
 .button-danger:hover:not(:disabled) {
   background: #6f1a11;
@@ -1093,7 +1124,7 @@ button.button-small {
 }
 .badge-accent {
   border-color: var(--accent);
-  color: var(--text-accent);
+  color: var(--accent-text);
 }
 .badge-neutral {
   border-color: var(--border);
@@ -1179,10 +1210,24 @@ p[role="alert"] {
   margin: 0;
   max-inline-size: var(--reading-width);
 }
+/* The logo in single ink: monochrome collapses every role to --mark-core. */
 .state-mark {
-  color: var(--border);
-  block-size: 2.5rem;
-  inline-size: auto;
+  --mark-core: var(--border);
+  display: block;
+  flex: none;
+}
+/* The respondent's blocked, closed and accepted panels carry the full lockup:
+   for someone outside the company it is the only identity on the page. */
+.state-lockup {
+  display: block;
+}
+.state-lockup svg {
+  display: block;
+  flex: none;
+}
+.state-lockup .lockup-descriptor {
+  font-size: var(--text-base);
+  line-height: 1.1;
 }
 .state-error {
   border-style: solid;
@@ -1648,6 +1693,19 @@ dd {
 .result-radar {
   margin: 0;
 }
+.result-signature {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.result-signature svg {
+  display: block;
+  flex: none;
+}
+.result-signature figcaption {
+  max-inline-size: var(--reading-width);
+}
 
 /* --------------------------------------------------- overlays / drawers --- */
 
@@ -2009,17 +2067,17 @@ nav a {
 /* Additions from Phase 13. No new colour, face or radius: every value below
    reads an existing semantic token. */
 
-/* A control sitting on the ink bar. The default button is ink on limestone,
-   which on the ink bar was ink on ink. */
+/* A control sitting on the core bar. The default button is core on paper,
+   which on the core bar was core on core. */
 .button-on-dark,
 button.button-on-dark {
   background: transparent;
   color: var(--text-inverse);
-  border-color: var(--brand-ink-soft);
+  border-color: var(--border-inverse);
 }
 .button-on-dark:hover:not(:disabled) {
-  background: var(--brand-ink-soft);
-  border-color: var(--accent-on-dark);
+  background: var(--border-inverse);
+  border-color: var(--accent-on-inverse);
 }
 .appbar-locale {
   display: inline-flex;

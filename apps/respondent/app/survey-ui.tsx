@@ -9,7 +9,8 @@ import {
   normalizeNumerals,
   type AnswerIssue,
 } from "../../../src/answer-rules";
-import { Alert, Label, LoadingState, Mark } from "../../../src/ui";
+import { Alert, Label, LoadingState } from "../../../src/ui";
+import { Lockup, Mark, Wordmark } from "../../../src/brand";
 import {
   CIPHER_VERSION,
   decryptDraft,
@@ -694,7 +695,9 @@ export default function Survey() {
     return (
       <Shell locale={locale} setLocale={changeLocale} dir={dir}>
         <section className="panel login stack">
-          <Mark className="state-mark" />
+          <span className="state-lockup" aria-hidden="true">
+            <Lockup descriptor="التقييم التنظيمي" markSize={56} cap={18} />
+          </span>
           <h1 ref={headingRef} tabIndex={-1}>
             {stage === "accepted" ? m.acceptedTitle : m.appTitle}
           </h1>
@@ -1153,11 +1156,9 @@ export function Shell({
       </a>
       <header className="appbar">
         <div className="appbar-inner">
-          <span className="appbar-brand">
-            <Mark tone="inverse" className="appbar-mark" />
-            <span className="appbar-word" aria-hidden="true">
-              ORGFIT
-            </span>
+          <span className="appbar-brand on-core">
+            <Mark size={34} concern={false} />
+            <Wordmark cap={19} aria-hidden="true" />
             <strong className="visually-hidden">{heading}</strong>
           </span>
           <button

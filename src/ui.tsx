@@ -20,90 +20,14 @@
 //     must never link a staff module.
 // ---------------------------------------------------------------------------
 
-import type { ReactNode, SVGProps } from "react";
+import type { ReactNode } from "react";
+import { Mark } from "./brand";
 
 /* -------------------------------------------------------------- identity -- */
 
-// The symbol: three rhombic units on a plumb line, the middle one displaced
-// half a unit toward the writing hand and carried in clay. Geometry is copied
-// from docs/identityreference/"OrgFit Identity.dc.html", section 01, including
-// the 20-degree pen angle and the 24px minimum. `tone` selects the two approved
-// renderings: on limestone the offset unit is clay, on ink it is the light clay.
-export function Mark({
-  tone = "ink",
-  className = "",
-  ...rest
-}: { tone?: "ink" | "inverse" | "flat" } & SVGProps<SVGSVGElement>) {
-  const body =
-    tone === "inverse" ? "var(--text-inverse)" : tone === "flat" ? "currentColor" : "currentColor";
-  const offset =
-    tone === "inverse"
-      ? "var(--accent-on-dark)"
-      : tone === "flat"
-        ? "currentColor"
-        : "var(--accent)";
-  return (
-    <svg
-      viewBox="8 6 32 58"
-      className={className}
-      aria-hidden="true"
-      focusable="false"
-      {...rest}
-    >
-      <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,14) rotate(-20)" fill={body} />
-      <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(17,35) rotate(-20)" fill={offset} />
-      <polygon points="0,-5 6.4,0 0,5 -6.4,0" transform="translate(24,56) rotate(-20)" fill={body} />
-    </svg>
-  );
-}
-
-// The squared form. The identity permits this one at 16px and requires it for
-// the favicon and the system icon; the bare symbol is never used below 24px.
-export function MarkTile({ className = "", ...rest }: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true" focusable="false" {...rest}>
-      <rect width="32" height="32" fill="var(--brand-ink)" />
-      <polygon
-        points="0,-5 6.4,0 0,5 -6.4,0"
-        transform="translate(17.5,7.4) rotate(-20) scale(0.62)"
-        fill="var(--brand-limestone-light)"
-      />
-      <polygon
-        points="0,-5 6.4,0 0,5 -6.4,0"
-        transform="translate(13,16) rotate(-20) scale(0.62)"
-        fill="var(--brand-clay-light)"
-      />
-      <polygon
-        points="0,-5 6.4,0 0,5 -6.4,0"
-        transform="translate(17.5,24.6) rotate(-20) scale(0.62)"
-        fill="var(--brand-limestone-light)"
-      />
-    </svg>
-  );
-}
-
-// Lockup A reduced to its one-line application form: mark, then the Latin
-// wordmark at the identity's tracking. The Arabic descriptor is dropped here
-// because the bar is far below the 120px minimum at which the identity keeps
-// it. The accessible name carries the full product name.
-export function Lockup({ href, label }: { href?: string; label: string }) {
-  const inner = (
-    <>
-      <Mark tone="inverse" className="appbar-mark" />
-      <span className="appbar-word" aria-hidden="true">
-        ORGFIT
-      </span>
-      <span className="visually-hidden">{label}</span>
-    </>
-  );
-  return href ? (
-    <a className="appbar-brand" href={href}>
-      {inner}
-    </a>
-  ) : (
-    <span className="appbar-brand">{inner}</span>
-  );
-}
+// The identity mark and lockup live in src/brand.tsx, drawn from the shared
+// geometry in src/brand-mark.ts. The empty and loading states below use the
+// logo in single ink; .state-mark in src/theme.css sets that ink.
 
 /* ------------------------------------------------------------ typography -- */
 
@@ -240,7 +164,7 @@ export function EmptyState({
 }) {
   return (
     <div className="state state-empty">
-      <Mark className="state-mark" tone="flat" />
+      <Mark size={40} concern={false} monochrome className="state-mark" />
       <h3>{title}</h3>
       {body && <p>{body}</p>}
       {action}
@@ -251,7 +175,7 @@ export function EmptyState({
 export function LoadingState({ label }: { label: string }) {
   return (
     <div className="state state-loading" role="status" aria-live="polite">
-      <Mark className="state-mark" tone="flat" />
+      <Mark size={40} concern={false} monochrome className="state-mark" />
       <p>{label}</p>
     </div>
   );

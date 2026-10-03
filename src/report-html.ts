@@ -2,6 +2,7 @@ import type { ReportModel, MetricRow } from "./report-model";
 import { reportMessages } from "./report-i18n";
 import { reportTheme, themeVariables, REPORT_THEME_VERSION, type ReportTheme } from "./report-theme";
 import { fontStack } from "./report-fonts";
+import { detailFor, markSvgString, type MarkPalette } from "./brand-mark";
 
 // ---------------------------------------------------------------------------
 // The printable document.
@@ -16,7 +17,10 @@ import { fontStack } from "./report-fonts";
 //     an organization name, a consultant note or a band label cannot introduce
 //     an element, a style or a resource reference.
 //   * Every visual value is a theme token. There is no literal colour or size
-//     below, so replacing the theme replaces the design.
+//     below, so replacing the theme replaces the design — with one exception,
+//     the signature palette, which mirrors the @media print block of
+//     src/theme.css because an SVG attribute cannot read a custom property in
+//     every renderer the report must survive.
 //
 // Long tables repeat their header on each page through <thead>, and rows avoid
 // splitting across a page break. Page numbers come from the renderer's footer
@@ -112,6 +116,18 @@ function barChart(rows: MetricRow[], model: ReportModel, title: string) {
 <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" direction="ltr" role="img" aria-label="${escape(title)}" xmlns="http://www.w3.org/2000/svg">${bars}</svg></figure>`;
 }
 
+// The print values of the mark, from the @media print block in src/theme.css.
+// Single ink on white: in print and in greyscale the concern is carried by the
+// short arm and the rhombic node alone, never by colour.
+const MARK_PRINT_PALETTE: MarkPalette = {
+  ground: "#ffffff",
+  channel: "#000000",
+  channelLight: "#000000",
+  core: "#000000",
+  accent: "#000000",
+  scatter: "#595959",
+};
+
 const section = (id: string, heading: string, body: string) =>
   `<section id="${escape(id)}"><h2>${escape(heading)}</h2>${body}</section>`;
 
@@ -136,6 +152,9 @@ h3{font-size:var(--report-font-size-h3);margin:9pt 0 3pt;break-after:avoid;}
 p{margin:0 0 6pt;}
 section{break-inside:auto;}
 .cover{border:1pt solid var(--report-rule-strong);padding:10pt;margin-bottom:10pt;background:var(--report-surface-alt);border-radius:var(--report-radius);}
+.cover::after{content:"";display:block;clear:both;}
+.signature{float:${model.direction === "rtl" ? "left" : "right"};margin:0;}
+.signature svg{display:block;}
 .kind{color:var(--report-ink-muted);margin:0 0 6pt;}
 .confidential{display:inline-block;background:var(--report-accent);color:var(--report-ink-inverse);padding:2pt 6pt;border-radius:var(--report-radius);font-size:var(--report-font-size-small);}
 dl{display:grid;grid-template-columns:auto 1fr;gap:2pt 10pt;margin:6pt 0;}
@@ -178,7 +197,19 @@ export function reportBody(model: ReportModel) {
     t = (key: string) => (m as Record<string, string>)[key] ?? key;
   const parts: string[] = [];
 
+  const signature = model.signature
+    ? `<figure class="signature">${markSvgString({
+        scores: model.signature.scores,
+        seed: model.signature.seed,
+        detail: detailFor(120),
+        concern: true,
+        size: 120,
+        palette: MARK_PRINT_PALETTE,
+        title: escape(t("signature")),
+      })}</figure>`
+    : "";
   parts.push(`<header class="cover">
+${signature}
 <h1>${escape(model.title)}</h1>
 <p class="kind">${escape(model.subtitle)}</p>
 <p><span class="confidential">${escape(model.confidential)}</span></p>

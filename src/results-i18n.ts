@@ -24,6 +24,9 @@ const ar = {
   snapshot: "معرّف الإصدار",
   overall: "النتيجة العامة",
   dimensions: "الأبعاد",
+  signature: "بصمة المنظمة",
+  signatureDescription:
+    "خمسة محاور، محور لكل بُعد منشور، طول كل محور بقدر نتيجته. البُعد الأدنى تحت 55 يُرسم بلون الطين وبعقدة معيّنة.",
   radar: "مخطط الأبعاد",
   radarDescription:
     "مخطط شعاعي يعرض الأبعاد المنشورة فقط على مقياس من صفر إلى مئة.",
@@ -188,6 +191,9 @@ const en: Record<ResultsKey, string> = {
   snapshot: "Release identifier",
   overall: "Overall score",
   dimensions: "Dimensions",
+  signature: "Organization signature",
+  signatureDescription:
+    "Five axes, one per published dimension, each as long as that dimension scored. The lowest dimension below 55 is drawn in clay with a rhombic node.",
   radar: "Dimension chart",
   radarDescription:
     "Radar chart showing published dimensions only, on a zero to one hundred scale.",

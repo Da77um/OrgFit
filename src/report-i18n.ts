@@ -35,6 +35,7 @@ const ar = {
   contents: "المحتويات",
 
   executiveSummary: "الملخص التنفيذي",
+  signature: "بصمة المنظمة: محور لكل بُعد بطول نتيجته، والبُعد الأدنى تحت 55 بعقدة معيّنة",
   summaryOverall:
     "النتيجة العامة المنشورة لهذه الجولة هي {value} من 100 ضمن تصنيف «{band}».",
   summaryOverallWithheld:
@@ -241,6 +242,7 @@ const en: Record<ReportMessageKey, string> = {
   contents: "Contents",
 
   executiveSummary: "Executive summary",
+  signature: "Organization signature: one axis per dimension, as long as it scored; the lowest below 55 ends in a rhombic node",
   summaryOverall:
     "The published overall score for this round is {value} out of 100, in the “{band}” band.",
   summaryOverallWithheld: "No overall score was published for this round. {reason}",

@@ -13,9 +13,8 @@
 // Before this pass every screen restated its own header as three or four bare
 // links in a flex row, and there was no way to tell from the chrome which
 // organization you were inside or which section you were in. The layout here
-// is the one in section 04 of the signature system: an ink bar carrying the
-// lockup and the record's coordinates, a quiet rail of sections, and the work
-// itself on limestone.
+// is a core-navy bar carrying the lockup and the record's coordinates, a quiet
+// rail of sections, and the work itself on paper.
 //
 // Two properties matter beyond appearance:
 //
@@ -27,7 +26,8 @@
 // ---------------------------------------------------------------------------
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Label, Lockup, Micro } from "../../../src/ui";
+import { Label, Micro } from "../../../src/ui";
+import { Mark, Wordmark } from "../../../src/brand";
 import { messages, type Locale } from "../../../src/i18n";
 import { adminMessages } from "../../../src/admin-i18n";
 import { LocaleSwitch } from "./locale-switch";
@@ -287,7 +287,14 @@ export function AppBar({
     <header className="appbar">
       <div className="appbar-inner">
         <div className="row" role="none">
-          <Lockup href="/workspace" label={m.title} />
+          {/* The bar is far below the size at which the lockup keeps its Arabic
+              descriptor, so it carries the mark and the wordmark only. The
+              drawings are decorative; the link's name is the product name. */}
+          <a className="appbar-brand on-core" href="/workspace">
+            <Mark size={34} concern={false} />
+            <Wordmark cap={19} aria-hidden="true" />
+            <span className="visually-hidden">{m.title}</span>
+          </a>
           {context && (
             <>
               <span className="appbar-divider" aria-hidden="true" />

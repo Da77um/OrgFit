@@ -24,9 +24,10 @@
 // produce; it is recorded as remaining Phase 13 work rather than done blind.
 // ---------------------------------------------------------------------------
 
-// Bumped with the identity palette: a reader comparing two renderings of the
+// Bumped with the identity palette (1.1.0) and again when the cover gained the
+// organization's signature (1.2.0): a reader comparing two renderings of the
 // same round needs to see that the presentation, not the measurement, changed.
-export const REPORT_THEME_VERSION = "1.1.0" as const;
+export const REPORT_THEME_VERSION = "1.2.0" as const;
 
 export const defaultReportTheme = {
   "page-width": "210mm",
