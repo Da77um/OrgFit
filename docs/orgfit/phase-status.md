@@ -1942,3 +1942,9 @@ Do not mark a checkpoint passed solely because its preceding phase is implemente
 - **Preflight now:** respondent has no FAIL. Staff's only FAIL is `required`: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, which come from the Auth0 tenant. Operator has no FAIL.
 - **Not run:** anything against Auth0 (no tenant yet), a real MFA sign-in, and the bootstrap against staging.
 - **Next (owner):** create the tenant and app (guide steps 1–6), run `oidc:check`, bootstrap yourself (step 8), and sign in locally (step 9). Then steps 5–6 of the Vercel plan (managed key custody, malware scanning).
+
+### Follow-up — CI dependency audit, new advisories (2026-10-06)
+
+- **Cause:** CI on `fdd005f` failed only at `npm run audit:ci`; every test step passed. Two high advisories had been published after the last green run (2026-10-03): GHSA-wq5f-xc86-pv6w (`sharp` <0.35.5, a librsvg vulnerability) and GHSA-68fv-2mgg-jv7q (`source-map-js` 1.0.0 to <1.2.2). Both come only through `next@16.3.8` (`sharp`, and `postcss` > `source-map-js`). The pushes themselves had succeeded: GitHub's `main` held every commit through `f67bc8f`.
+- **Change:** lockfile only, `npm update sharp source-map-js`. `sharp` 0.35.5 with its `@img/sharp-*` binaries (libvips 1.3.4), and `source-map-js` 1.2.2, both inside the ranges their parents declare. No override, no new dependency, no exception.
+- **Tests run:** `audit:ci` passes (only the existing D-163 exception). `build` (staff, respondent, jobs), `check:boundaries`, `test` 12/12, `lint` and `typecheck` all pass.
