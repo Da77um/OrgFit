@@ -41,7 +41,7 @@ Every app runs from its own folder, and `outputFileTracingIncludes` in each `nex
 - `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_MFA_ACR`: step 4, not chosen yet (P-005).
 - `IMPORT_ENCRYPTION_KEY`, `LINK_EXPORT_ENCRYPTION_KEY`, `REPORT_ENCRYPTION_KEY`, `PARTICIPATION_EXPORT_ENCRYPTION_KEY`, `ATTACHMENT_ENCRYPTION_KEY`, `INVITATION_DIGEST_KEY`, `INVITATION_DIGEST_KEY_VERSION`.
 - `CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY`, and managed custody: step 5 (P-003).
-- `IMPORT_S3_BUCKET`, `LINK_EXPORT_S3_BUCKET`, `REPORT_S3_BUCKET`, `PARTICIPATION_EXPORT_S3_BUCKET`, `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, and the bucket credentials: step 3.
+- `IMPORT_S3_BUCKET`, `LINK_EXPORT_S3_BUCKET`, `REPORT_S3_BUCKET`, `PARTICIPATION_EXPORT_S3_BUCKET`, `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, and the `-staff` IAM user's `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: step 3, `docs/orgfit/aws-storage-setup.md`.
 - `RATE_LIMIT_CLIENT_IP_HEADER=x-real-ip` and `RATE_LIMIT_TRUSTED_PROXY_HOPS=0`. Vercel sets this header itself.
 - `NEXT_TELEMETRY_DISABLED=1`.
 
@@ -53,16 +53,16 @@ Every app runs from its own folder, and `outputFileTracingIncludes` in each `nex
 
 **All four job projects:** `ORGFIT_JOB_PROCESS` (`processor`, `report`, `scanner` or `operator`) and `CRON_SECRET` (at least 32 characters, different per project). Vercel sends the secret with every cron call, and the route refuses anything else with 401. Then each project adds its own variables:
 - **processor:** `PROCESSOR_DATABASE_URL`, `ANONYMOUS_DATABASE_URL`, and managed custody (step 5).
-- **report:** `REPORT_DATABASE_URL`, `REPORT_ENCRYPTION_KEY`, `REPORT_S3_BUCKET`, `AWS_REGION`.
-- **scanner:** `SCANNER_DATABASE_URL`, `ATTACHMENT_ENCRYPTION_KEY`, `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, `ATTACHMENT_SCAN_ENGINE=clamd`, `ATTACHMENT_SCAN_CLAMD_ADDRESS` (step 6).
-- **operator:** `MIGRATION_DATABASE_URL`, `ANONYMOUS_MIGRATION_DATABASE_URL`, `TOMBSTONE_LEDGER_S3_BUCKET`, `TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS` (≥ 36), `AWS_REGION`.
+- **report:** `REPORT_DATABASE_URL`, `REPORT_ENCRYPTION_KEY`, `REPORT_S3_BUCKET`, `AWS_REGION`, and the `-report` user's key pair.
+- **scanner:** `SCANNER_DATABASE_URL`, `ATTACHMENT_ENCRYPTION_KEY`, `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, `ATTACHMENT_SCAN_ENGINE=clamd`, `ATTACHMENT_SCAN_CLAMD_ADDRESS` (step 6), and the `-scanner` user's key pair.
+- **operator:** `MIGRATION_DATABASE_URL`, `ANONYMOUS_MIGRATION_DATABASE_URL`, `TOMBSTONE_LEDGER_S3_BUCKET`, `TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS` (≥ 36), `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, and the `-operator` user's key pair.
 
 **Never in any Vercel project:**
 - `CAMPAIGN_KEY_CUSTODY_SECRET_KEY` (development stand-in).
 - `CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY`.
 - `BOOTSTRAP_ADMIN_PASSWORD`.
 - Any `*_LOCAL_DIRECTORY` or `TOMBSTONE_LEDGER_DIRECTORY`: Vercel's disk does not persist.
-- Another project's database URL.
+- Another project's database URL or AWS key pair.
 
 Migrations are not a Vercel job. Run them from the operator machine (`npm run db:migrate`, `npm run db:migrate-anonymous`) before each release.
 

@@ -1912,3 +1912,19 @@ Do not mark a checkpoint passed solely because its preceding phase is implemente
   - Decision: how to render report PDFs.
   - The 800 s limit against the processor and retention timeouts.
 - **Next:** step 3 (buckets) and step 4 (identity provider). Both need owner accounts.
+
+### Vercel plan step 3, storage buckets (2026-10-06): ready for the owner; no AWS resource exists
+
+- **Built:**
+  - `deploy/aws/orgfit-storage.cfn.json`: files bucket, Object Lock ledger bucket, four IAM users.
+  - `src/storage-access.ts`: the access table.
+  - `src/storage-check.ts` and `scripts/check-storage.ts`: `npm run storage:check`.
+  - The guide `docs/orgfit/aws-storage-setup.md`; `vercel-deployment.md` now names each project's own AWS key pair (D-166).
+  - Empty storage lines were added to the git-ignored `.env.staging.{staff,report,scanner,operator}`; only `AWS_REGION` and the lock days are filled.
+- **Tests run:** `typecheck` and `lint` clean; `test` 12/12; `test:storage` 10/10; `test:vercel-jobs` 8/8. Preflight on the edited staging files: report, scanner and operator have no FAIL; staff is unchanged (only `required`: origins and OIDC, step 4). `storage:check` refuses to start and names the missing keys and buckets, as expected before AWS exists.
+- **Not run:** anything against AWS (no account yet), and a Vercel deployment.
+- **Owner inputs:**
+  - An AWS account and the CloudFormation stack (`ap-northeast-1`).
+  - Four access keys, pasted into the staging files and later into Vercel.
+  - Then `npm run storage:check`, which must be all PASS.
+- **Next:** after `storage:check` passes, run `tombstones:ship` once to prove ledger writes. Then step 4 (identity provider).

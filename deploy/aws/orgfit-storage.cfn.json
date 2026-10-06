@@ -1,0 +1,214 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "OrgFit object storage (D-166): a private files bucket with lifecycle backstops, a tombstone ledger bucket with Object Lock in COMPLIANCE mode, and four least-privilege IAM users (staff, report, scanner, operator). Access matches src/storage-access.ts; tests/storage-access.test.ts compares them. Create access keys for each user yourself after the stack completes.",
+  "Parameters": {
+    "NamePrefix": {
+      "Type": "String",
+      "Default": "orgfit-staging",
+      "AllowedPattern": "^[a-z0-9][a-z0-9-]{2,22}[a-z0-9]$",
+      "Description": "Lowercase prefix for bucket and user names, e.g. orgfit-staging or orgfit-prod. The AWS account id is appended to bucket names so they are globally unique."
+    }
+  },
+  "Resources": {
+    "FilesBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": { "Fn::Sub": "${NamePrefix}-files-${AWS::AccountId}" },
+        "VersioningConfiguration": { "Status": "Enabled" },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": { "Rules": [{ "ObjectOwnership": "BucketOwnerEnforced" }] },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [{ "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }]
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            { "Id": "imports-expire", "Status": "Enabled", "Prefix": "imports/", "ExpirationInDays": 1, "NoncurrentVersionExpiration": { "NoncurrentDays": 1 } },
+            { "Id": "link-exports-expire", "Status": "Enabled", "Prefix": "link-exports/", "ExpirationInDays": 1, "NoncurrentVersionExpiration": { "NoncurrentDays": 1 } },
+            { "Id": "participation-exports-expire", "Status": "Enabled", "Prefix": "participation-exports/", "ExpirationInDays": 1, "NoncurrentVersionExpiration": { "NoncurrentDays": 1 } },
+            { "Id": "reports-expire", "Status": "Enabled", "Prefix": "reports/", "ExpirationInDays": 1, "NoncurrentVersionExpiration": { "NoncurrentDays": 1 } },
+            { "Id": "attachments-expire", "Status": "Enabled", "Prefix": "attachments/", "ExpirationInDays": 366, "NoncurrentVersionExpiration": { "NoncurrentDays": 1 } },
+            { "Id": "cleanup", "Status": "Enabled", "ExpiredObjectDeleteMarker": true, "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 } }
+          ]
+        }
+      }
+    },
+    "FilesBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": { "Ref": "FilesBucket" },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyInsecureTransport",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}" },
+                { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/*" }
+              ],
+              "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+            }
+          ]
+        }
+      }
+    },
+    "LedgerBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": { "Fn::Sub": "${NamePrefix}-ledger-${AWS::AccountId}" },
+        "ObjectLockEnabled": true,
+        "ObjectLockConfiguration": {
+          "ObjectLockEnabled": "Enabled",
+          "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE", "Days": 36 } }
+        },
+        "VersioningConfiguration": { "Status": "Enabled" },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": { "Rules": [{ "ObjectOwnership": "BucketOwnerEnforced" }] },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [{ "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }]
+        }
+      }
+    },
+    "LedgerBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": { "Ref": "LedgerBucket" },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyInsecureTransport",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}" },
+                { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}/*" }
+              ],
+              "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+            },
+            {
+              "Sid": "DenyOperatorDeletionAndLockChanges",
+              "Effect": "Deny",
+              "Principal": { "AWS": { "Fn::GetAtt": ["OperatorUser", "Arn"] } },
+              "Action": [
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion",
+                "s3:BypassGovernanceRetention",
+                "s3:PutBucketObjectLockConfiguration",
+                "s3:PutLifecycleConfiguration",
+                "s3:PutBucketVersioning",
+                "s3:PutBucketPolicy",
+                "s3:DeleteBucketPolicy"
+              ],
+              "Resource": [
+                { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}" },
+                { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}/*" }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "StaffUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": { "Fn::Sub": "${NamePrefix}-staff" },
+        "Policies": [
+          {
+            "PolicyName": "orgfit-storage",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                { "Sid": "Imports", "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/imports/*" } },
+                { "Sid": "LinkExports", "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/link-exports/*" } },
+                { "Sid": "ParticipationExports", "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/participation-exports/*" } },
+                { "Sid": "ReportsDownload", "Effect": "Allow", "Action": ["s3:GetObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/reports/*" } },
+                { "Sid": "Attachments", "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/attachments/*" } }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ReportUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": { "Fn::Sub": "${NamePrefix}-report" },
+        "Policies": [
+          {
+            "PolicyName": "orgfit-storage",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                { "Sid": "Reports", "Effect": "Allow", "Action": ["s3:PutObject", "s3:DeleteObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/reports/*" } }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ScannerUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": { "Fn::Sub": "${NamePrefix}-scanner" },
+        "Policies": [
+          {
+            "PolicyName": "orgfit-storage",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                { "Sid": "Attachments", "Effect": "Allow", "Action": ["s3:GetObject", "s3:DeleteObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/attachments/*" } }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "OperatorUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "UserName": { "Fn::Sub": "${NamePrefix}-operator" },
+        "Policies": [
+          {
+            "PolicyName": "orgfit-storage",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                { "Sid": "AttachmentsRetention", "Effect": "Allow", "Action": ["s3:DeleteObject"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${FilesBucket}/attachments/*" } },
+                { "Sid": "LedgerList", "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}" }, "Condition": { "StringLike": { "s3:prefix": ["tombstones/*"] } } },
+                { "Sid": "LedgerLockConfig", "Effect": "Allow", "Action": ["s3:GetBucketObjectLockConfiguration"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}" } },
+                { "Sid": "LedgerAppend", "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:PutObjectRetention"], "Resource": { "Fn::Sub": "arn:${AWS::Partition}:s3:::${LedgerBucket}/tombstones/*" } }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "Region": { "Value": { "Ref": "AWS::Region" }, "Description": "AWS_REGION for every process that uses storage" },
+    "FilesBucketName": { "Value": { "Ref": "FilesBucket" }, "Description": "IMPORT_, LINK_EXPORT_, REPORT_, PARTICIPATION_EXPORT_ and ATTACHMENT_S3_BUCKET" },
+    "LedgerBucketName": { "Value": { "Ref": "LedgerBucket" }, "Description": "TOMBSTONE_LEDGER_S3_BUCKET (operator only)" },
+    "StaffUserName": { "Value": { "Ref": "StaffUser" } },
+    "ReportUserName": { "Value": { "Ref": "ReportUser" } },
+    "ScannerUserName": { "Value": { "Ref": "ScannerUser" } },
+    "OperatorUserName": { "Value": { "Ref": "OperatorUser" } }
+  }
+}
