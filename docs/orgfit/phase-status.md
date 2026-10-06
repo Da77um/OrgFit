@@ -1928,3 +1928,17 @@ Do not mark a checkpoint passed solely because its preceding phase is implemente
   - Four access keys, pasted into the staging files and later into Vercel.
   - Then `npm run storage:check`, which must be all PASS.
 - **Next:** after `storage:check` passes, run `tombstones:ship` once to prove ledger writes. Then step 4 (identity provider).
+
+### Vercel plan step 4, staff sign-in (2026-10-06): Auth0 chosen; ready for the owner; no tenant exists
+
+- **Built:**
+  - `docs/orgfit/auth0-setup.md`: the settings table traced to `src/auth.ts`, 10 owner steps, and how staff are added later.
+  - `deploy/auth0/post-login-require-mfa.js`.
+  - `src/oidc-check.ts` and `scripts/check-oidc.ts`: `npm run oidc:check`.
+  - `tests/oidc-provider.ts` answers a wrong client credential with `invalid_client`.
+  - D-167.
+  - Git-ignored staging files gained empty `OIDC_*` lines, local test origins (staff `http://127.0.0.1:3000`, respondent `http://localhost:3001`), `OIDC_MFA_ACR`, and empty `BOOTSTRAP_*` lines in the operator file.
+- **Tests run:** `typecheck` and `lint` clean; `test` 12/12; `test:oidc-check` 6/6; `test:storage` 10/10; `test:vercel-jobs` 8/8; `test:safeguards` 11/11.
+- **Preflight now:** respondent has no FAIL. Staff's only FAIL is `required`: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, which come from the Auth0 tenant. Operator has no FAIL.
+- **Not run:** anything against Auth0 (no tenant yet), a real MFA sign-in, and the bootstrap against staging.
+- **Next (owner):** create the tenant and app (guide steps 1–6), run `oidc:check`, bootstrap yourself (step 8), and sign in locally (step 9). Then steps 5–6 of the Vercel plan (managed key custody, malware scanning).

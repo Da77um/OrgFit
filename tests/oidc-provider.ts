@@ -109,10 +109,19 @@ export async function testProvider(
           code = form.get("code") ?? "",
           entry = codes.get(code);
         codes.delete(code);
+        // RFC 6749 §5.2: the client is authenticated before the grant is
+        // examined, and a failure is invalid_client (D-167, oidc:check).
+        if (
+          form.get("client_id") !== "orgfit-test" ||
+          form.get("client_secret") !== "synthetic-oidc-test-secret"
+        ) {
+          res
+            .writeHead(401, { "Content-Type": "application/json" })
+            .end('{"error":"invalid_client"}');
+          return;
+        }
         if (
           !entry ||
-          form.get("client_id") !== "orgfit-test" ||
-          form.get("client_secret") !== "synthetic-oidc-test-secret" ||
           form.get("redirect_uri") !== entry.redirect ||
           createHash("sha256")
             .update(form.get("code_verifier") ?? "")
