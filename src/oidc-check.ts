@@ -93,8 +93,10 @@ export async function checkOidc(
     const error = ((await res.json().catch(() => ({}))) as { error?: string }).error;
     if (res.ok) add("client-credential", "FAIL", "the provider issued tokens for a code that cannot exist");
     else if (error === "invalid_grant") add("client-credential", "PASS", "client id and secret accepted (the probe code was rejected, as it must be)");
-    else if (error === "invalid_client" || error === "unauthorized_client")
-      add("client-credential", "FAIL", `${error}: wrong OIDC_CLIENT_ID or OIDC_CLIENT_SECRET, or the application does not use client_secret_post`);
+    // RFC 6749 §5.2: HTTP 401 is a failed client authentication whatever the
+    // error code; Auth0 answers a wrong secret with 401 access_denied.
+    else if (res.status === 401 || error === "invalid_client" || error === "unauthorized_client")
+      add("client-credential", "FAIL", `${error ?? "HTTP 401"}: wrong OIDC_CLIENT_ID or OIDC_CLIENT_SECRET, or the application does not use client_secret_post`);
     else add("client-credential", "WARN", `inconclusive (${error ?? `HTTP ${res.status}`})`);
   } catch {
     add("client-credential", "FAIL", "token endpoint unreachable");
