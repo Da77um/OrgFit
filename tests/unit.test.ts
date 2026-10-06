@@ -227,3 +227,15 @@ test("employee messages: the stored row has no identity, correlation or instant 
   // The anonymous store is never touched.
   assert.doesNotMatch(source, /\banonymous\./);
 });
+
+test("readiness failures are logged as fixed codes, never as driver messages (D-168)", async () => {
+  const { readinessCode } = await import("../src/readiness-log");
+  assert.equal(readinessCode(Object.assign(new Error("ENOENT: no such file, open '/x/cert.crt'"), { code: "ENOENT" })), "ENOENT");
+  assert.equal(readinessCode(Object.assign(new Error("password authentication failed for user \"orgfit_gateway\""), { code: "28P01" })), "28P01");
+  assert.equal(readinessCode(new Error("timeout expired")), "CONNECT_TIMEOUT");
+  assert.equal(readinessCode(new Error("Unready")), "UNREADY");
+  // A code that is not a plain token, and any other message, never reach the log.
+  assert.equal(readinessCode(Object.assign(new Error("x"), { code: "postgres://u:secret@h/db" })), "UNKNOWN");
+  assert.equal(readinessCode(new Error("connect to postgres://u:secret@h failed")), "UNKNOWN");
+  assert.equal(readinessCode("text"), "UNKNOWN");
+});

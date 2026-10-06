@@ -1,5 +1,6 @@
 import { readiness } from "../../../../../src/db";
 import { safeError } from "../../../../../src/http";
+import { logReadinessFailure } from "../../../../../src/readiness-log";
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ kind: string }> },
@@ -18,6 +19,7 @@ export async function GET(
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {
+    logReadinessFailure("staff", e);
     return safeError(e);
   }
 }

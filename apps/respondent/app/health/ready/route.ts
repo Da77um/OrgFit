@@ -1,4 +1,5 @@
 import { gatewayReadiness } from "../../../../../src/gateway-db";
+import { logReadinessFailure } from "../../../../../src/readiness-log";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // Readiness for a load balancer: the gateway credential is the least-privileged
@@ -8,7 +9,8 @@ export async function GET() {
   try {
     await gatewayReadiness();
     return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
+  } catch (e) {
+    logReadinessFailure("respondent", e);
     return Response.json({ status: "unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 }
