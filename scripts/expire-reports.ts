@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { reportPool, reportReadiness, closeReportPool } from "../src/report-db";
 import { deleteReport, cleanLocalReports } from "../src/report-storage";
 import { purgeRevokedReports } from "../src/report-worker";
-import { runJob } from "../src/job-run";
+import { runDefinedJob, type JobDefinition } from "../src/job-run";
 
 // Report retention. The row is the authority: publication.expire_report_jobs
 // marks every READY artifact past its expiry as EXPIRED and hands back the
@@ -30,20 +30,23 @@ export async function expireReports(limit = 100) {
   }
 }
 
+export const reportsExpireJob: JobDefinition = {
+  name: "reports:expire",
+  unavailable:
+    "Report cleanup unavailable. Check the report credential and artifact storage configuration.",
+  work: async () => {
+    const { expired, revoked } = await expireReports();
+    const orphans = process.env.REPORT_S3_BUCKET ? 0 : await cleanLocalReports();
+    console.log(
+      `Expired report artifacts removed: ${expired}; revoked artifacts removed: ${revoked}; orphans removed: ${orphans}`,
+    );
+    return { outcome: "SUCCESS", counts: { expired, revoked, orphans } };
+  },
+};
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  await runJob(
-    "reports:expire",
-    "Report cleanup unavailable. Check the report credential and artifact storage configuration.",
-    async () => {
-      const { expired, revoked } = await expireReports();
-      const orphans = process.env.REPORT_S3_BUCKET ? 0 : await cleanLocalReports();
-      console.log(
-        `Expired report artifacts removed: ${expired}; revoked artifacts removed: ${revoked}; orphans removed: ${orphans}`,
-      );
-      return { outcome: "SUCCESS", counts: { expired, revoked, orphans } };
-    },
-  );
+  await runDefinedJob(reportsExpireJob);
 }

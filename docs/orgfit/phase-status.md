@@ -1884,3 +1884,31 @@ Do not mark a checkpoint passed solely because its preceding phase is implemente
 - **Changed in the repository:** this entry and D-164 only. No code, migration or role file changed.
 - **Unresolved inputs:** staging origins, the OIDC provider (P-005), managed key custody (P-003), retention approval (P-004), a production malware engine, and a direct TLS path to Postgres (IPv4 add-on or an IPv6 host). No deployment is authorized (P-008).
 - **Next:** choose the identity provider (P-005) and staging origins, then add them to `.env.staging.staff` and `.env.staging.respondent` and re-run preflight.
+
+### Vercel hosting steps 1–2 (2026-10-06): code ready; nothing deployed
+
+- **Built:**
+  - The two web apps are Vercel-ready: the certificate is in the repo and traced into each build, and each `vercel.json` pins `hnd1`.
+  - `apps/jobs` runs the scheduled jobs on Vercel Cron, as four projects with one credential set each.
+  - The shared `executeJob` runner (`src/job-run.ts`) and `src/vercel-cron.ts`.
+  - All 11 job scripts export their definition.
+  - The guide is `docs/orgfit/vercel-deployment.md` (D-165).
+- **Changed files:**
+  - `src/job-run.ts`, `src/vercel-cron.ts` (new).
+  - The 11 job scripts under `scripts/`.
+  - `apps/jobs/**` (new), the `next.config.ts` and `vercel.json` of staff and respondent.
+  - `deploy/certs/**` (new), `deploy/processes.json` (job processes may hold `ORGFIT_JOB_PROCESS` and `CRON_SECRET`).
+  - `package.json` (`test:vercel-jobs`, `dev:jobs`), `package-lock.json` (workspace link only; no new dependency), `eslint.config.mjs`, and the tests and docs.
+- **Tests run:**
+  - `typecheck`, `lint`: clean.
+  - `test` 12/12, `test:vercel-jobs` 8/8, `test:safeguards` 11/11.
+  - `build` (staff, respondent, jobs) and `check:boundaries`: pass.
+  - End-to-end against Supabase staging, using the built jobs app under `next start` with the relative certificate path: cron authorization is enforced, and the jobs either ran or were refused for the documented reasons.
+- **Not run:** a Vercel deployment, the database test suites (they provision their own databases), and Playwright.
+- **Staging side effect:** while finding why two jobs could not record their outcome (a 3 s connection timeout from this machine through the Tokyo pooler), two `DIAGNOSTIC` FAILURE rows were written to `ops.job_run`, for `campaigns:normalize` and `attachments:expire`. Later successful runs supersede them.
+- **Unresolved:**
+  - Owner inputs: Vercel Pro, a domain, buckets (step 3), the identity provider (P-005).
+  - Build work: managed custody (P-003), the scanner engine host (P-010).
+  - Decision: how to render report PDFs.
+  - The 800 s limit against the processor and retention timeouts.
+- **Next:** step 3 (buckets) and step 4 (identity provider). Both need owner accounts.

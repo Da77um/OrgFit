@@ -67,40 +67,65 @@ export async function recordJobRun(
   }
 }
 
+/** One scheduled job: its name, the safe message printed when it cannot run, and its work. */
+export type JobDefinition = {
+  name: JobName;
+  unavailable: string;
+  work: () => Promise<JobOutcome & { exitCode?: number }>;
+};
+
+/** What one run produced: the exit status, whether the outcome was recorded, and safe messages. */
+export type JobRunResult = { job: JobName; exitCode: number; recorded: boolean; errors: string[] };
+
 /**
- * The common shape of a scheduled job's entry point: refuse a foreign
- * credential before touching anything, run the work, print its safe summary,
- * record the outcome, and set the exit status. `work` returns the outcome;
- * a thrown error is recorded as UNAVAILABLE and printed as `unavailable` only,
- * because a driver message can quote a value.
+ * One run of a scheduled job, without touching the process: refuse a foreign
+ * credential before touching anything, run the work, record the outcome, and
+ * return the exit status. `work` returns the outcome; a thrown error is
+ * recorded as UNAVAILABLE and reported as `unavailable` only, because a driver
+ * message can quote a value. The command line (runJob) and the Vercel cron
+ * route (apps/jobs) both run jobs through this one function.
+ */
+export async function executeJob(
+  definition: JobDefinition,
+  options: { processes?: Parameters<typeof assertProcessEnvironment>[2] } = {},
+): Promise<JobRunResult> {
+  const { name: job, unavailable, work } = definition;
+  const started = new Date();
+  try {
+    assertProcessEnvironment(JOBS[job].process, process.env, options.processes);
+  } catch (e) {
+    return { job, exitCode: 1, recorded: false, errors: [guardMessage(e) ?? unavailable] };
+  }
+  let result: JobOutcome & { exitCode?: number };
+  try {
+    result = await work();
+  } catch (e) {
+    // A guard refusal of the job's own URL means there is no safe URL to
+    // record with either.
+    const recorded =
+      !(e instanceof RuntimeGuardError) &&
+      (await recordJobRun(job, started, { outcome: "FAILURE", failureCode: "UNAVAILABLE" }));
+    return { job, exitCode: 1, recorded, errors: [guardMessage(e) ?? unavailable] };
+  }
+  const exitCode = result.exitCode ? result.exitCode : result.outcome === "FAILURE" ? 1 : 0;
+  const recorded = await recordJobRun(job, started, result);
+  return { job, exitCode, recorded, errors: recorded ? [] : ["Job status could not be recorded."] };
+}
+
+/**
+ * The common shape of a scheduled job's command-line entry point: run it
+ * through executeJob, print its safe messages, and set the exit status.
  */
 export async function runJob(
   job: JobName,
   unavailable: string,
   work: () => Promise<JobOutcome & { exitCode?: number }>,
 ) {
-  const started = new Date();
-  try {
-    assertProcessEnvironment(JOBS[job].process);
-  } catch (e) {
-    console.error(guardMessage(e) ?? unavailable);
-    process.exitCode = 1;
-    return;
-  }
-  let result: JobOutcome & { exitCode?: number };
-  try {
-    result = await work();
-  } catch (e) {
-    console.error(guardMessage(e) ?? unavailable);
-    process.exitCode = 1;
-    // A guard refusal of the job's own URL means there is no safe URL to
-    // record with either.
-    if (!(e instanceof RuntimeGuardError))
-      await recordJobRun(job, started, { outcome: "FAILURE", failureCode: "UNAVAILABLE" });
-    return;
-  }
+  const result = await executeJob({ name: job, unavailable, work });
+  for (const line of result.errors) console.error(line);
   if (result.exitCode) process.exitCode = result.exitCode;
-  else if (result.outcome === "FAILURE") process.exitCode = 1;
-  if (!(await recordJobRun(job, started, result)))
-    console.error("Job status could not be recorded.");
 }
+
+/** The command-line entry point for an exported job definition. */
+export const runDefinedJob = (definition: JobDefinition) =>
+  runJob(definition.name, definition.unavailable, definition.work);

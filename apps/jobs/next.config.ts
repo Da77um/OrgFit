@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
+
+// Scheduled jobs on Vercel Cron (D-165). One route, no pages. Deployed as four
+// Vercel projects (processor, report, scanner, operator), each holding only its
+// own process's environment; see docs/orgfit/vercel-deployment.md.
 const config: NextConfig = {
-  // Test tooling only: lets the browser harness run beside another local dev
-  // server of this app, whose lock lives in the default directory.
-  ...(process.env.E2E_NEXT_DIST_DIR ? { distDir: process.env.E2E_NEXT_DIST_DIR } : {}),
   poweredByHeader: false,
   devIndicators: false,
   reactStrictMode: true,
-  serverExternalPackages: ["pg", "kysely", "openid-client"],
+  serverExternalPackages: ["pg", "kysely", "playwright", "playwright-core"],
   logging: { incomingRequests: false },
   experimental: { externalDir: true },
   // The database CA certificate is named by path in each database URL

@@ -26,6 +26,6 @@ export default [
         { argsIgnorePattern: "^_" },
       ],
     },
-    settings: { next: { rootDir: ["apps/staff/", "apps/respondent/"] } },
+    settings: { next: { rootDir: ["apps/staff/", "apps/respondent/", "apps/jobs/"] } },
   },
 ];

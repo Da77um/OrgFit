@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { corePool, anonymousPool, processCampaign, reconcile } from "../src/processor";
 import { custodyProviderName, loadCustodianSecretFromEnvironment } from "../src/key-custody";
-import { runJob } from "../src/job-run";
+import { runDefinedJob, type JobDefinition } from "../src/job-run";
 
 // Operator entry point for the privacy processor. It runs under the processor's
 // own credentials, which no staff or gateway process holds.
@@ -49,25 +49,29 @@ export async function processDueCampaigns(limit = 20) {
     await anon.end();
   }
 }
+
+export const privacyProcessJob: JobDefinition = {
+  name: "privacy:process",
+  unavailable:
+    "Privacy processing failed. Inspect batch state through the restricted processor channel.",
+  work: async () => {
+    const results = await processDueCampaigns();
+    for (const r of results)
+      console.log(
+        `campaign=${r.campaignId} batch=${r.batchId ?? "-"} state=${r.state} accepted=${r.acceptedCount ?? "-"} processed=${r.processedCount ?? "-"} blocked=${r.blocked ?? "-"}`,
+      );
+    const failed = results.filter((r) => r.state === "ERROR" || r.blocked === true).length;
+    return {
+      outcome: failed ? "FAILURE" : "SUCCESS",
+      failureCode: "CAMPAIGN_FAILED",
+      counts: { campaigns: results.length, failed },
+    };
+  },
+};
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  await runJob(
-    "privacy:process",
-    "Privacy processing failed. Inspect batch state through the restricted processor channel.",
-    async () => {
-      const results = await processDueCampaigns();
-      for (const r of results)
-        console.log(
-          `campaign=${r.campaignId} batch=${r.batchId ?? "-"} state=${r.state} accepted=${r.acceptedCount ?? "-"} processed=${r.processedCount ?? "-"} blocked=${r.blocked ?? "-"}`,
-        );
-      const failed = results.filter((r) => r.state === "ERROR" || r.blocked === true).length;
-      return {
-        outcome: failed ? "FAILURE" : "SUCCESS",
-        failureCode: "CAMPAIGN_FAILED",
-        counts: { campaigns: results.length, failed },
-      };
-    },
-  );
+  await runDefinedJob(privacyProcessJob);
 }

@@ -2,7 +2,7 @@ import pg from "pg";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { databaseUrl } from "../src/runtime-guard";
-import { runJob } from "../src/job-run";
+import { runDefinedJob, type JobDefinition } from "../src/job-run";
 
 // Durable schedule normalization. This job makes stored state catch up with the
 // clock; it is NOT what enforces the boundary. Every request already evaluates
@@ -33,17 +33,21 @@ export async function normalizeCampaigns(url: string, maxRows = 200) {
     await db.end();
   }
 }
+
+export const campaignsNormalizeJob: JobDefinition = {
+  name: "campaigns:normalize",
+  unavailable:
+    "Campaign scheduling unavailable. Inspect the restricted operator channel.",
+  work: async () => {
+    const normalized = await normalizeCampaigns(process.env.MIGRATION_DATABASE_URL ?? "");
+    console.log(`Campaigns normalized: ${normalized}`);
+    return { outcome: "SUCCESS", counts: { normalized } };
+  },
+};
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  await runJob(
-    "campaigns:normalize",
-    "Campaign scheduling unavailable. Inspect the restricted operator channel.",
-    async () => {
-      const normalized = await normalizeCampaigns(process.env.MIGRATION_DATABASE_URL ?? "");
-      console.log(`Campaigns normalized: ${normalized}`);
-      return { outcome: "SUCCESS", counts: { normalized } };
-    },
-  );
+  await runDefinedJob(campaignsNormalizeJob);
 }

@@ -10,7 +10,7 @@ import {
   cleanLocalAttachments,
   ATTACHMENT_ORPHAN_HOURS,
 } from "../src/attachment-storage";
-import { runJob } from "../src/job-run";
+import { runDefinedJob, type JobDefinition } from "../src/job-run";
 
 // Attachment retention. The row is the authority: core.expire_attachments
 // retires every clean attachment past its retention date, plus rejected, failed
@@ -41,22 +41,25 @@ export async function expireAttachments(limit = 100) {
   }
 }
 
+export const attachmentsExpireJob: JobDefinition = {
+  name: "attachments:expire",
+  unavailable:
+    "Attachment cleanup unavailable. Check the scanner credential and attachment storage configuration.",
+  work: async () => {
+    const expired = await expireAttachments();
+    const orphans = process.env.ATTACHMENT_S3_BUCKET
+      ? 0
+      : await cleanLocalAttachments();
+    console.log(
+      `Expired attachments removed: ${expired}; orphans removed: ${orphans}`,
+    );
+    return { outcome: "SUCCESS", counts: { expired, orphans } };
+  },
+};
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  await runJob(
-    "attachments:expire",
-    "Attachment cleanup unavailable. Check the scanner credential and attachment storage configuration.",
-    async () => {
-      const expired = await expireAttachments();
-      const orphans = process.env.ATTACHMENT_S3_BUCKET
-        ? 0
-        : await cleanLocalAttachments();
-      console.log(
-        `Expired attachments removed: ${expired}; orphans removed: ${orphans}`,
-      );
-      return { outcome: "SUCCESS", counts: { expired, orphans } };
-    },
-  );
+  await runDefinedJob(attachmentsExpireJob);
 }

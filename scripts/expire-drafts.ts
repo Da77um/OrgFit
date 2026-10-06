@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import pg from "pg";
 import { databaseUrl } from "../src/runtime-guard";
-import { runJob } from "../src/job-run";
+import { runDefinedJob, type JobDefinition } from "../src/job-run";
 
 // Expiry janitor for temporary respondent state: drafts past their idle TTL and
 // respondent sessions past their absolute limit. It deletes by expiry only and
@@ -22,17 +22,21 @@ export async function expireTemporary(url = process.env.MIGRATION_DATABASE_URL) 
     await db.end();
   }
 }
+
+export const draftsExpireJob: JobDefinition = {
+  name: "drafts:expire",
+  unavailable:
+    "Expiry failed. Inspect through the restricted operator channel.",
+  work: async () => {
+    const result = await expireTemporary();
+    console.log(`Expired drafts: ${result.drafts}; sessions: ${result.sessions}.`);
+    return { outcome: "SUCCESS", counts: { drafts: result.drafts, sessions: result.sessions } };
+  },
+};
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  await runJob(
-    "drafts:expire",
-    "Expiry failed. Inspect through the restricted operator channel.",
-    async () => {
-      const result = await expireTemporary();
-      console.log(`Expired drafts: ${result.drafts}; sessions: ${result.sessions}.`);
-      return { outcome: "SUCCESS", counts: { drafts: result.drafts, sessions: result.sessions } };
-    },
-  );
+  await runDefinedJob(draftsExpireJob);
 }

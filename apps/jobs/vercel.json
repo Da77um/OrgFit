@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["hnd1"],
+  "crons": [
+    { "path": "/api/cron/every-minute", "schedule": "* * * * *" },
+    { "path": "/api/cron/every-2-minutes", "schedule": "*/2 * * * *" },
+    { "path": "/api/cron/every-5-minutes", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/every-5-minutes-after", "schedule": "2-59/5 * * * *" },
+    { "path": "/api/cron/hourly", "schedule": "7 * * * *" },
+    { "path": "/api/cron/daily", "schedule": "17 3 * * *" }
+  ]
+}

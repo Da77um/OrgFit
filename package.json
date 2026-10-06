@@ -80,6 +80,8 @@
     "test:safeguards": "tsx --test tests/safeguards.test.ts",
     "intake:erase": "tsx scripts/erase-intake.ts",
     "test:adapters": "tsx --test tests/adapters.test.ts",
+    "test:vercel-jobs": "tsx --test tests/vercel-jobs.test.ts",
+    "dev:jobs": "npm run dev -w @orgfit/jobs",
     "test:adapters-db": "tsx --test --test-concurrency=1 tests/adapters-database.test.ts"
   },
   "dependencies": {
