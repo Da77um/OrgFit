@@ -57,9 +57,24 @@ export async function beginLogin() {
   });
   return { url, flow };
 }
+/**
+ * A refused staff sign-in. The caller still answers only SESSION_REQUIRED; the
+ * stage is a fixed name for the server log (D-169), never a value, a claim or
+ * a driver message.
+ */
+export class SignInRefused extends AppError {
+  constructor(public stage: string) {
+    super("SESSION_REQUIRED", 401);
+  }
+}
+const providerCode = (e: unknown) => {
+  const c = (e as { error?: unknown; code?: unknown }) ?? {};
+  const v = typeof c.error === "string" ? c.error : c.code;
+  return typeof v === "string" && /^[A-Za-z0-9_]{1,60}$/.test(v) ? v : "UNKNOWN";
+};
 export async function finishLogin(url: URL, flow: string | undefined) {
   if (!flow || !/^[A-Za-z0-9_-]{43}$/.test(flow))
-    throw new AppError("SESSION_REQUIRED", 401);
+    throw new SignInRefused("FLOW_COOKIE_MISSING");
   const { rows } = await sql<{
     state: string;
     nonce: string;
@@ -67,26 +82,35 @@ export async function finishLogin(url: URL, flow: string | undefined) {
   }>`select * from access.consume_oidc(${digest(flow)})`.execute(
     authDatabase(),
   );
-  if (!rows[0]) throw new AppError("SESSION_REQUIRED", 401);
+  if (!rows[0]) throw new SignInRefused("FLOW_EXPIRED_OR_REUSED");
   const c = readConfig(),
     f = rows[0];
-  const tokens = await oidc.authorizationCodeGrant(await client(), url, {
-    pkceCodeVerifier: f.verifier,
-    expectedState: f.state,
-    expectedNonce: f.nonce,
-    idTokenExpected: true,
-    maxAge: 300,
-  });
+  let tokens: Awaited<ReturnType<typeof oidc.authorizationCodeGrant>>;
+  try {
+    tokens = await oidc.authorizationCodeGrant(await client(), url, {
+      pkceCodeVerifier: f.verifier,
+      expectedState: f.state,
+      expectedNonce: f.nonce,
+      idTokenExpected: true,
+      maxAge: 300,
+    });
+  } catch (e) {
+    throw new SignInRefused(`TOKEN_EXCHANGE:${providerCode(e)}`);
+  }
   const claims = tokens.claims();
   if (!claims || claims.iss !== c.OIDC_ISSUER)
-    throw new AppError("SESSION_REQUIRED", 401);
-  assertMfa({ acr: claims.acr, amr: claims.amr }, c.OIDC_MFA_ACR);
+    throw new SignInRefused("ISSUER_MISMATCH");
+  try {
+    assertMfa({ acr: claims.acr, amr: claims.amr }, c.OIDC_MFA_ACR);
+  } catch {
+    throw new SignInRefused("MFA_NOT_PROVEN");
+  }
   const token = secret();
   const result = await sql<{
     ok: boolean;
   }>`select access.issue_session(${claims.iss},${claims.sub},${digest(token)}) as ok`.execute(
     authDatabase(),
   );
-  if (!result.rows[0].ok) throw new AppError("SESSION_REQUIRED", 401);
+  if (!result.rows[0].ok) throw new SignInRefused("NO_ACTIVE_STAFF_ACCOUNT");
   return token;
 }

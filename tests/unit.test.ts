@@ -239,3 +239,16 @@ test("readiness failures are logged as fixed codes, never as driver messages (D-
   assert.equal(readinessCode(new Error("connect to postgres://u:secret@h failed")), "UNKNOWN");
   assert.equal(readinessCode("text"), "UNKNOWN");
 });
+
+test("a refused staff sign-in answers SESSION_REQUIRED and carries only a fixed stage for the log (D-169)", async () => {
+  const { SignInRefused, finishLogin } = await import("../src/auth");
+  const e = new SignInRefused("MFA_NOT_PROVEN");
+  assert.equal(e.code, "SESSION_REQUIRED");
+  assert.equal(e.status, 401);
+  assert.equal(e.stage, "MFA_NOT_PROVEN");
+  // A missing or malformed flow cookie is refused before any database or provider call.
+  await assert.rejects(finishLogin(new URL("https://staff.example/api/v1/auth/callback?code=x"), undefined), (err: unknown) =>
+    err instanceof SignInRefused && err.stage === "FLOW_COOKIE_MISSING");
+  await assert.rejects(finishLogin(new URL("https://staff.example/api/v1/auth/callback?code=x"), "not-a-flow"), (err: unknown) =>
+    err instanceof SignInRefused && err.stage === "FLOW_COOKIE_MISSING");
+});

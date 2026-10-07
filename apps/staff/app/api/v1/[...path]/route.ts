@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   beginLogin,
   finishLogin,
+  SignInRefused,
   sessionCookie,
   flowCookie,
   cookieOptions,
@@ -97,7 +98,9 @@ async function handle(req: Request, ctx: Context) {
           maxAge: 31536000,
         });
         return res;
-      } catch {
+      } catch (e) {
+        // The answer is always SESSION_REQUIRED; the log names the stage (D-169).
+        console.error(`sign-in refused: ${e instanceof SignInRefused ? e.stage : "PROFILE_OR_UNKNOWN"}`);
         const res = safeError(new AppError("SESSION_REQUIRED", 401), locale);
         res.cookies.set(flowCookie(), "", { ...cookieOptions(), maxAge: 0 });
         return res;
