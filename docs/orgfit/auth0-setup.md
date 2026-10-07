@@ -29,6 +29,7 @@ Status: the owner chose Auth0 (D-167, P-005). OrgFit's code needs no change for 
    - OrgFit also refuses anyone it hasn't provisioned, but nobody should be able to create an account.
 4. **Require MFA on every login:**
    - **Security → Multi-factor Auth**: enable **One-time Password** (an authenticator app). Optionally enable **WebAuthn with FIDO Security Keys** too.
+   - On the same page, under **Additional Settings**, turn on **Customize MFA Factors using Actions**. Without it, Auth0 refuses every sign-in after the password with `invalid_request: MFA customized via PostLogin action but feature is not enabled` (found on the first staging sign-in, 2026-10-07).
    - **Actions → Library → Build Custom** → trigger **Login / Post Login**. Paste `deploy/auth0/post-login-require-mfa.js`, then **Deploy**.
    - **Actions → Triggers → post-login**: drag it into the flow and **Apply**.
 5. **Create your own user:**

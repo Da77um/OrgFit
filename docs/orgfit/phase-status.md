@@ -1956,3 +1956,10 @@ Do not mark a checkpoint passed solely because its preceding phase is implemente
 - **Super Admin repair (staging database):** the owner had run `db:bootstrap` on 2026-10-06 21:56 UTC with a non-Auth0 `BOOTSTRAP_ISSUER`. The account was right (Auth0 user id, email, SUPER_ADMIN, ACTIVE), but `access.issue_session` matches issuer + subject, so an Auth0 sign-in could never succeed. The issuer was corrected by a direct operator UPDATE, as `access.guard_staff_epoch` anticipates: one transaction as `orgfit_core_owner`, limited to that subject, email, role and status, committed only because exactly 1 row matched. The guard raised the account's `auth_epoch`; there were no sessions to revoke. No audit row was written for the repair.
 - **Tests run:** `test:oidc-check` 6/6, `lint` clean.
 - **Next:** owner imports `.env.vercel.staff` (now with the four `OIDC_*` values) into `orgfit-staff`, adds the Vercel callback URL in Auth0, and signs in. That is the first proof of the MFA `acr` claim.
+
+### Follow-up — first staff sign-in on Vercel, and sign-in diagnostics (2026-10-07)
+
+- **First successful sign-in:** the owner signed in at `orgfit-staff.vercel.app` through Auth0 with MFA, and the staging database issued a session (16:14 UTC). This is the first live proof that Auth0's ID token carries the MFA `acr` that `src/auth.ts` requires. It needed **Security → Multi-factor Auth → Additional Settings → Customize MFA Factors using Actions**; without it, Auth0 answered `invalid_request: MFA customized via PostLogin action but feature is not enabled`. `docs/orgfit/auth0-setup.md` step 4 now says so.
+- **A later sign-in was refused** (`SESSION_REQUIRED` after Auth0 returned a code). The database showed no unconsumed flow, so the flow cookie and its 5-minute window were not the cause. The other stages could not be told apart, hence D-169. Next attempt: read `sign-in refused: <stage>` in the `orgfit-staff` Vercel logs.
+- **Staging staff now:** 3 active Super Admin accounts. The owner registered two more through the Add staff form.
+- **Tests run:** unit 14/14, typecheck, lint, staff build, `check:boundaries`.
