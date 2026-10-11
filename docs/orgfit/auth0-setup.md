@@ -30,6 +30,7 @@ Status: the owner chose Auth0 (D-167, P-005). OrgFit's code needs no change for 
 4. **Require MFA on every login:**
    - **Security → Multi-factor Auth**: enable **One-time Password** (an authenticator app). Optionally enable **WebAuthn with FIDO Security Keys** too.
    - On the same page, under **Additional Settings**, turn on **Customize MFA Factors using Actions**. Without it, Auth0 refuses every sign-in after the password with `invalid_request: MFA customized via PostLogin action but feature is not enabled` (found on the first staging sign-in, 2026-10-07).
+   - On the same page, keep **Allow Users to Skip MFA on Trusted Browsers** **off**, then **Save**. When it's on, Auth0 skips the code on a remembered browser and the token carries no MFA `acr`, so OrgFit refuses with `MFA_NOT_PROVEN` (found 2026-10-11).
    - **Actions → Library → Build Custom** → trigger **Login / Post Login**. Paste `deploy/auth0/post-login-require-mfa.js`, then **Deploy**.
    - **Actions → Triggers → post-login**: drag it into the flow and **Apply**.
 5. **Create your own user:**
@@ -86,6 +87,6 @@ Status: the owner chose Auth0 (D-167, P-005). OrgFit's code needs no change for 
 | `FLOW_EXPIRED_OR_REUSED` | More than 5 minutes at Auth0, or a callback reloaded or replayed | Start again from the sign-in button |
 | `TOKEN_EXCHANGE:<code>` | The client secret, the callback URL (step 2) or PKCE | `npm run oidc:check` |
 | `ISSUER_MISMATCH` | `OIDC_ISSUER` differs from the token's `iss`, often the trailing `/` | Compare with the tenant's discovery document |
-| `MFA_NOT_PROVEN` | Auth0 returned no `acr` from `OIDC_MFA_ACR`: the Action is off, or Customize MFA Factors using Actions is off (step 4) | Do not widen `OIDC_MFA_ACR`; fix the Auth0 side |
+| `MFA_NOT_PROVEN` | Auth0 returned no `acr` from `OIDC_MFA_ACR`: the Action is off, Customize MFA Factors using Actions is off, or Allow Users to Skip MFA on Trusted Browsers is on (step 4). Auth0's logs then show a Success Login with no OTP Auth Succeed before it | Do not widen `OIDC_MFA_ACR`; fix the Auth0 side |
 | `NO_ACTIVE_STAFF_ACCOUNT` | No ACTIVE staff row with this issuer and Auth0 `user_id` | The Staff screen, or `select issuer, provider_subject, status from access.staff_user` |
 | `PROFILE_OR_UNKNOWN` | The session was issued but the profile could not be read | The other lines logged at the same time |
