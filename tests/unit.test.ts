@@ -252,3 +252,28 @@ test("a refused staff sign-in answers SESSION_REQUIRED and carries only a fixed 
   await assert.rejects(finishLogin(new URL("https://staff.example/api/v1/auth/callback?code=x"), "not-a-flow"), (err: unknown) =>
     err instanceof SignInRefused && err.stage === "FLOW_COOKIE_MISSING");
 });
+
+test("a sign-in refusal's mismatching values are logged only in local development (D-170)", async () => {
+  const { SignInRefused, signInRefusalLog } = await import("../src/auth");
+  const e = new SignInRefused("MFA_NOT_PROVEN", { accepted: "urn:mfa", acr: "urn:pwd\nforged", amr: ["pwd", "otp"] });
+  const local = { NODE_ENV: "development", STAFF_ORIGIN: "http://127.0.0.1:3000" };
+  const lines = signInRefusalLog(e, local);
+  assert.equal(lines[0], "sign-in refused: MFA_NOT_PROVEN");
+  assert.equal(lines.length, 2);
+  assert.match(lines[1], /^sign-in refused \(development detail\): MFA_NOT_PROVEN \{/);
+  // Provider values are JSON-quoted: a newline cannot start a forged log line.
+  assert.ok(!lines[1].includes("\n"));
+  assert.ok(lines[1].includes('"amr":"pwd otp"'));
+  // Production, a deployed origin, or no origin: the stage line only.
+  for (const env of [
+    { NODE_ENV: "production", STAFF_ORIGIN: "http://127.0.0.1:3000" },
+    { NODE_ENV: "development", STAFF_ORIGIN: "https://orgfit-staff.vercel.app" },
+    { NODE_ENV: "development" },
+    { NODE_ENV: "development", STAFF_ORIGIN: "not a url" },
+  ])
+    assert.deepEqual(signInRefusalLog(e, env), ["sign-in refused: MFA_NOT_PROVEN"]);
+  // A failure that is not a refusal names no stage and carries no detail.
+  assert.deepEqual(signInRefusalLog(new Error("postgres://u:secret@h"), local), ["sign-in refused: PROFILE_OR_UNKNOWN"]);
+  // A refusal without detail keeps the single line.
+  assert.deepEqual(signInRefusalLog(new SignInRefused("FLOW_COOKIE_MISSING"), local), ["sign-in refused: FLOW_COOKIE_MISSING"]);
+});

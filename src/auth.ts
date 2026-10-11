@@ -60,12 +60,53 @@ export async function beginLogin() {
 /**
  * A refused staff sign-in. The caller still answers only SESSION_REQUIRED; the
  * stage is a fixed name for the server log (D-169), never a value, a claim or
- * a driver message.
+ * a driver message. `detail` holds the mismatching values for a local
+ * development log only (D-170); see signInRefusalLog.
  */
 export class SignInRefused extends AppError {
-  constructor(public stage: string) {
+  constructor(
+    public stage: string,
+    public detail?: Record<string, unknown>,
+  ) {
     super("SESSION_REQUIRED", 401);
   }
+}
+const loopback = (origin: string | undefined) => {
+  try {
+    return ["127.0.0.1", "localhost", "[::1]"].includes(
+      new URL(origin ?? "").hostname,
+    );
+  } catch {
+    return false;
+  }
+};
+/**
+ * The server log lines for a refused sign-in. Everywhere: one fixed stage
+ * (D-169). Only outside production with a loopback STAFF_ORIGIN: one more line
+ * with the values that did not match (D-170). Never part of a response.
+ */
+export function signInRefusalLog(
+  e: unknown,
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  const stage = e instanceof SignInRefused ? e.stage : "PROFILE_OR_UNKNOWN";
+  const lines = [`sign-in refused: ${stage}`];
+  if (
+    e instanceof SignInRefused &&
+    e.detail &&
+    env.NODE_ENV !== "production" &&
+    loopback(env.STAFF_ORIGIN)
+  ) {
+    // Token claims are provider input: JSON quotes them, and each is capped.
+    const shown = Object.fromEntries(
+      Object.entries(e.detail).map(([k, v]) => [
+        k,
+        (Array.isArray(v) ? v.join(" ") : String(v ?? "")).slice(0, 200),
+      ]),
+    );
+    lines.push(`sign-in refused (development detail): ${stage} ${JSON.stringify(shown)}`);
+  }
+  return lines;
 }
 const providerCode = (e: unknown) => {
   const c = (e as { error?: unknown; code?: unknown }) ?? {};
@@ -99,11 +140,18 @@ export async function finishLogin(url: URL, flow: string | undefined) {
   }
   const claims = tokens.claims();
   if (!claims || claims.iss !== c.OIDC_ISSUER)
-    throw new SignInRefused("ISSUER_MISMATCH");
+    throw new SignInRefused("ISSUER_MISMATCH", {
+      expected: c.OIDC_ISSUER,
+      received: claims?.iss,
+    });
   try {
     assertMfa({ acr: claims.acr, amr: claims.amr }, c.OIDC_MFA_ACR);
   } catch {
-    throw new SignInRefused("MFA_NOT_PROVEN");
+    throw new SignInRefused("MFA_NOT_PROVEN", {
+      accepted: c.OIDC_MFA_ACR,
+      acr: claims.acr,
+      amr: claims.amr,
+    });
   }
   const token = secret();
   const result = await sql<{
@@ -111,6 +159,10 @@ export async function finishLogin(url: URL, flow: string | undefined) {
   }>`select access.issue_session(${claims.iss},${claims.sub},${digest(token)}) as ok`.execute(
     authDatabase(),
   );
-  if (!result.rows[0].ok) throw new SignInRefused("NO_ACTIVE_STAFF_ACCOUNT");
+  if (!result.rows[0].ok)
+    throw new SignInRefused("NO_ACTIVE_STAFF_ACCOUNT", {
+      issuer: claims.iss,
+      subject: claims.sub,
+    });
   return token;
 }

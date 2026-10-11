@@ -72,3 +72,20 @@ Status: the owner chose Auth0 (D-167, P-005). OrgFit's code needs no change for 
 
   The email invitation and activation flow is for local passwords only, so it stays unavailable here.
 - Development password sign-in stays switched off on Supabase (D-164). Auth0 is the only way in.
+
+## When sign-in answers `SESSION_REQUIRED`
+
+- **After a logout this is normal.** Every staff request answers `SESSION_REQUIRED` until you sign in again. A refusal happens only when Auth0 has sent you back to `/api/v1/auth/callback`.
+- **The browser is never told why** (D-169). The reason is in the server log, on one line that starts with `sign-in refused:`.
+  - On Vercel, open the `orgfit-staff` project → **Logs**, and filter for `sign-in refused`.
+  - Locally, look in the terminal that runs `npm run dev`. With a loopback `STAFF_ORIGIN` outside production, a second line (`sign-in refused (development detail):`) shows the values that did not match (D-170). It never appears on Vercel.
+
+| Stage | Usual cause | Check |
+|---|---|---|
+| `FLOW_COOKIE_MISSING` | The flow cookie did not come back: a different host or scheme from `STAFF_ORIGIN`, or `__Host-` cookies over `http:` | Open the app at exactly `STAFF_ORIGIN` |
+| `FLOW_EXPIRED_OR_REUSED` | More than 5 minutes at Auth0, or a callback reloaded or replayed | Start again from the sign-in button |
+| `TOKEN_EXCHANGE:<code>` | The client secret, the callback URL (step 2) or PKCE | `npm run oidc:check` |
+| `ISSUER_MISMATCH` | `OIDC_ISSUER` differs from the token's `iss`, often the trailing `/` | Compare with the tenant's discovery document |
+| `MFA_NOT_PROVEN` | Auth0 returned no `acr` from `OIDC_MFA_ACR`: the Action is off, or Customize MFA Factors using Actions is off (step 4) | Do not widen `OIDC_MFA_ACR`; fix the Auth0 side |
+| `NO_ACTIVE_STAFF_ACCOUNT` | No ACTIVE staff row with this issuer and Auth0 `user_id` | The Staff screen, or `select issuer, provider_subject, status from access.staff_user` |
+| `PROFILE_OR_UNKNOWN` | The session was issued but the profile could not be read | The other lines logged at the same time |

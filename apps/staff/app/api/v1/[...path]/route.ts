@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   beginLogin,
   finishLogin,
-  SignInRefused,
+  signInRefusalLog,
   sessionCookie,
   flowCookie,
   cookieOptions,
@@ -99,8 +99,9 @@ async function handle(req: Request, ctx: Context) {
         });
         return res;
       } catch (e) {
-        // The answer is always SESSION_REQUIRED; the log names the stage (D-169).
-        console.error(`sign-in refused: ${e instanceof SignInRefused ? e.stage : "PROFILE_OR_UNKNOWN"}`);
+        // The answer is always SESSION_REQUIRED; the log names the stage
+        // (D-169), plus the mismatching values in local development (D-170).
+        for (const line of signInRefusalLog(e)) console.error(line);
         const res = safeError(new AppError("SESSION_REQUIRED", 401), locale);
         res.cookies.set(flowCookie(), "", { ...cookieOptions(), maxAge: 0 });
         return res;

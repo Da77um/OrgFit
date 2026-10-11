@@ -1963,3 +1963,11 @@ Do not mark a checkpoint passed solely because its preceding phase is implemente
 - **A later sign-in was refused** (`SESSION_REQUIRED` after Auth0 returned a code). The database showed no unconsumed flow, so the flow cookie and its 5-minute window were not the cause. The other stages could not be told apart, hence D-169. Next attempt: read `sign-in refused: <stage>` in the `orgfit-staff` Vercel logs.
 - **Staging staff now:** 3 active Super Admin accounts. The owner registered two more through the Add staff form.
 - **Tests run:** unit 14/14, typecheck, lint, staff build, `check:boundaries`.
+
+### Follow-up — "permanent SESSION_REQUIRED" diagnosis, and development sign-in detail (2026-10-11)
+
+- **Diagnosis (staging core, read-only queries):** `access.staff_user` holds the 3 active Super Admins, all with the Auth0 issuer that `OIDC_ISSUER` names, trailing slash included. The owner's subject had an OIDC session with `mfa_verified=true` from 19:51 to 20:29 UTC, revoked by a `LOGOUT` audit row. The `SESSION_REQUIRED` that was reported came after that logout, not from a refused sign-in. `db:bootstrap` was not run; it would refuse anyway. The Vercel `sign-in refused:` line could not be read from this machine (no Vercel CLI).
+- **Built (D-170):** `signInRefusalLog` in `src/auth.ts`. The staff callback route uses it. Outside production with a loopback `STAFF_ORIGIN`, it adds the mismatching values after the stage line. The browser answer is unchanged. `docs/orgfit/auth0-setup.md` gained a stage-to-cause table.
+- **Tests run:** unit 15/15, typecheck, lint, staff build, `check:boundaries`.
+- **Not run:** a real refused sign-in through Auth0, locally or on Vercel. The detail line is proven only by unit tests.
+- **Next:** if a sign-in on `orgfit-staff.vercel.app` is refused, read `sign-in refused: <stage>` in the Vercel logs and use the table.
