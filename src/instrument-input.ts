@@ -356,11 +356,95 @@ export function moveItem<T>(list: T[], from: number, by: number) {
     [next[from], next[to]] = [next[to], next[from]];
   return next;
 }
-export type DefinitionIssue = { path: string; code: string };
+// Where an issue is, in terms a builder can find on screen: the positions the
+// editor shows ("Section 2", "Question 3"), the title or prompt of the
+// enclosing section, question, dimension or rule, and the field and language.
+// `path` stays the stable link target; this travels alongside it.
+export type IssueLocation = {
+  kind:
+    | "instrument"
+    | "sections"
+    | "section"
+    | "question"
+    | "option"
+    | "row"
+    | "column"
+    | "dimension"
+    | "band"
+    | "overall"
+    | "rule";
+  /** The stable id of the node the issue is on, when it is on one. */
+  id?: string;
+  /** A secondary text field; absent means the node's main text. */
+  field?: string;
+  locale?: "ar" | "en";
+  section?: { n: number; title: Translation };
+  question?: { n: number; prompt: Translation };
+  /** 1-based position of an option, matrix row/column or band. */
+  item?: number;
+  dimension?: { n: number; name: Translation };
+  rule?: { n: number; title: Translation };
+};
+export type DefinitionIssue = { path: string; code: string; location?: IssueLocation };
+/** Resolve an issue path (`<id>[.<field>][.<locale>]` or a root name) against
+ *  the definition it was found in. Unknown paths have no location. */
+export function locateIssue(d: Instrument, path: string): IssueLocation | undefined {
+  const parts = path.split(".");
+  const locale =
+    parts.length > 1 && (parts.at(-1) === "ar" || parts.at(-1) === "en")
+      ? (parts.pop() as "ar" | "en")
+      : undefined;
+  const [head, field] = parts;
+  const at = { ...(field ? { field } : {}), ...(locale ? { locale } : {}) };
+  if (head === "title" || head === "introduction" || head === "privacyText")
+    return { kind: "instrument", field: head, ...(locale ? { locale } : {}) };
+  if (head === "sections") return { kind: "sections" };
+  for (const [si, s] of d.sections.entries()) {
+    const section = { n: si + 1, title: s.title };
+    if (s.id === head) return { kind: "section", id: head, section, ...at };
+    for (const [qi, q] of s.questions.entries()) {
+      const question = { n: qi + 1, prompt: q.prompt };
+      if (q.id === head) return { kind: "question", id: head, section, question, ...at };
+      for (const kind of ["options", "rows", "columns"] as const) {
+        const i = q[kind].findIndex((o) => o.id === head);
+        if (i >= 0)
+          return {
+            kind: kind === "options" ? "option" : kind === "rows" ? "row" : "column",
+            id: head,
+            section,
+            question,
+            item: i + 1,
+            ...at,
+          };
+      }
+    }
+  }
+  for (const [di, dim] of d.dimensions.entries()) {
+    const dimension = { n: di + 1, name: dim.name };
+    if (dim.id === head) return { kind: "dimension", id: head, dimension, ...at };
+    const i = dim.bands.findIndex((b) => b.id === head);
+    if (i >= 0) return { kind: "band", id: head, dimension, item: i + 1, ...at };
+  }
+  if (head === "overall") return { kind: "overall" };
+  const band = d.overall.bands.findIndex((b) => b.id === head);
+  if (band >= 0) return { kind: "band", id: head, item: band + 1, ...at };
+  const ri = d.recommendations.findIndex((r) => r.id === head);
+  if (ri >= 0)
+    return { kind: "rule", id: head, rule: { n: ri + 1, title: d.recommendations[ri].title }, ...at };
+  return undefined;
+}
 export function definitionIssues(
   d: Instrument,
   publish = false,
 ): DefinitionIssue[] {
+  return [...structureIssues(d, publish), ...ruleIssues(d, publish), ...scoringDefinitionIssues(d)].map(
+    (issue) => {
+      const location = locateIssue(d, issue.path);
+      return location ? { ...issue, location } : issue;
+    },
+  );
+}
+function structureIssues(d: Instrument, publish: boolean): DefinitionIssue[] {
   const errors: DefinitionIssue[] = [],
     add = (path: string, code: string) => errors.push({ path, code });
   const ids = new Set<string>(),
@@ -385,8 +469,10 @@ export function definitionIssues(
         (q.type === "CONTENT" ? 0 : q.type === "MATRIX" ? q.rows.length : 1),
       0,
     );
-  if (answerItems > 200 || (publish && answerItems === 0))
-    add("sections", "QUESTION_COUNT");
+  // Two situations, two codes: nothing to answer yet (a publish-time
+  // instruction) and more answer items than a questionnaire may hold.
+  if (publish && answerItems === 0) add("sections", "NO_QUESTIONS");
+  if (answerItems > 200) add("sections", "QUESTION_COUNT");
   for (const s of d.sections) {
     unique(s, s.id);
     translated(s.title, s.id);
@@ -544,7 +630,7 @@ export function definitionIssues(
     if (!dim || (dim.direction !== d.overall.direction) !== i.invert)
       add("overall", "DIRECTION");
   }
-  return [...errors, ...ruleIssues(d, publish), ...scoringDefinitionIssues(d)];
+  return errors;
 }
 
 // Rule validation. A rule that cannot fire, cannot be read, or cannot be ranked

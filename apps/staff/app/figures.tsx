@@ -17,6 +17,14 @@
 
 import type { SVGProps } from "react";
 import type { LandingCopy } from "../../../src/landing-i18n";
+import { concernIndex } from "../../../src/brand-mark";
+
+// The one clay element of a figure: the single lowest released value below
+// the identity's threshold, or none. A withheld value is never a concern.
+const concernOf = (values: (number | null)[]) => {
+  const at = concernIndex(values.map((v) => v ?? Infinity));
+  return at === null ? -1 : at;
+};
 
 /* ------------------------------------------------------------------ icons -- */
 
@@ -156,13 +164,16 @@ function Hatch() {
 // The hero figure: one round's headline reading, its dimensions, and one
 // withheld cell with its reason. Numbers invented.
 export function RoundFigure({ copy, rtl }: { copy: LandingCopy; rtl: boolean }) {
-  const rows = [
-    { label: copy.previewDimensions[0], value: 78 },
-    { label: copy.previewDimensions[1], value: 61, accent: true },
-    { label: copy.previewDimensions[2], value: 72 },
-    { label: copy.previewDimensions[3], value: 69 },
-    { label: copy.previewDimensions[4], value: null },
-  ];
+  // Internal communication is the synthetic round's one concern, the same one
+  // the recommendation copy names. Clay is decided by the identity's own rule
+  // (src/brand-mark.ts), never chosen per figure.
+  const values = [78, 52, 72, 69, null];
+  const concern = concernOf(values);
+  const rows = values.map((value, i) => ({
+    label: copy.previewDimensions[i],
+    value,
+    accent: i === concern,
+  }));
   // SVG has no writing direction. The whole drawing is laid out left to right
   // and flipped as a unit under RTL, with the text nodes flipped back so they
   // stay readable.
@@ -236,6 +247,7 @@ export function RoundFigure({ copy, rtl }: { copy: LandingCopy; rtl: boolean }) 
 // Results board: a small department comparison with one withheld row.
 export function ResultsFigure({ rtl }: { rtl: boolean }) {
   const bars = [74, 66, 81, null, 59];
+  const concern = concernOf(bars);
   const flip = rtl ? "translate(280,0) scale(-1,1)" : undefined;
   return (
     <svg viewBox="0 0 280 120" role="img" aria-hidden="true">
@@ -252,7 +264,7 @@ export function ResultsFigure({ rtl }: { rtl: boolean }) {
               y={100 - height}
               width="34"
               height={height}
-              className={value === null ? "fig-hatch" : i === 2 ? "fig-fill-accent" : "fig-fill"}
+              className={value === null ? "fig-hatch" : i === concern ? "fig-fill-accent" : "fig-fill"}
             />
           );
         })}
@@ -326,7 +338,8 @@ export function StructureFigure({ rtl }: { rtl: boolean }) {
   return (
     <svg viewBox="0 0 300 150" role="img" aria-hidden="true">
       <g transform={flip}>
-        <rect x="110" y="6" width="80" height="26" className="fig-node-accent" />
+        {/* The organization is the core everything hangs from. */}
+        <rect x="110" y="6" width="80" height="26" className="fig-core" />
         <path d="M150 32v18M46 50h208M46 50v14M150 50v14M254 50v14" className="fig-link" />
         {[10, 114, 218].map((x) => (
           <rect key={x} x={x} y="64" width="72" height="24" className="fig-node" />

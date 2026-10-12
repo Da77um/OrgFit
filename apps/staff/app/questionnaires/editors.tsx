@@ -15,10 +15,14 @@ export function Translated({
   label,
   value,
   onChange,
+  anchor,
 }: {
   label: string;
   value: Translation;
   onChange: (v: Translation) => void;
+  /** The validation path this text answers to (without the language), so a
+   *  checklist entry can focus exactly this field: `field-<anchor>.<lang>`. */
+  anchor?: string;
 }) {
   return (
     <div className="form-grid">
@@ -26,6 +30,7 @@ export function Translated({
         <label key={l}>
           {label} — {l === "ar" ? "العربية" : "English"}
           <textarea
+            id={anchor ? `field-${anchor}.${l}` : undefined}
             lang={l}
             dir={l === "ar" ? "rtl" : "ltr"}
             value={value[l]}
@@ -101,9 +106,10 @@ export function QuestionEditor({
             : t("الخيارات", "Options")}
       </h4>
       {q[kind].map((o, i) => (
-        <fieldset key={o.id}>
+        <fieldset key={o.id} id={`item-${o.id}`}>
           <legend>{i + 1}</legend>
           <Translated
+            anchor={o.id}
             label={t("النص", "Label")}
             value={o.label}
             onChange={(label) =>
@@ -190,11 +196,13 @@ export function QuestionEditor({
   return (
     <div className="stack">
       <Translated
+        anchor={q.id}
         label={t("السؤال / المحتوى", "Prompt / content")}
         value={q.prompt}
         onChange={(prompt) => set({ prompt })}
       />
       <Translated
+        anchor={`${q.id}.help`}
         label={t(
           "إرشادات (وتسميات طرفي التقييم)",
           "Help (including rating endpoints)",
@@ -429,7 +437,7 @@ export function Bands({
         )}
       </p>
       {items.map((b, i) => (
-        <fieldset key={b.id}>
+        <fieldset key={b.id} id={`item-${b.id}`}>
           <legend>
             {t("نطاق", "Band")} {i + 1}
           </legend>
@@ -454,6 +462,7 @@ export function Bands({
             ))}
           </div>
           <Translated
+            anchor={b.id}
             label={t("تسمية النطاق", "Band label")}
             value={b.label}
             onChange={(label) =>
@@ -580,16 +589,18 @@ export function DimensionsEditor({
         )}
       </p>
       {d.dimensions.map((dim, i) => (
-        <fieldset key={dim.id}>
+        <fieldset key={dim.id} id={`item-${dim.id}`}>
           <legend>
             {t("البعد", "Dimension")} {i + 1}
           </legend>
           <Translated
+            anchor={dim.id}
             label={t("اسم البعد", "Dimension name")}
             value={dim.name}
             onChange={(name) => update(dim.id, { name })}
           />
           <Translated
+            anchor={`${dim.id}.description`}
             label={t("الوصف", "Description")}
             value={dim.description}
             onChange={(description) => update(dim.id, { description })}
@@ -734,7 +745,7 @@ export function DimensionsEditor({
       >
         {t("إضافة بعد", "Add dimension")}
       </button>
-      <fieldset>
+      <fieldset id="item-overall">
         <legend>{t("القياس الكلي", "Overall metric")}</legend>
         <label className="choice">
           <input

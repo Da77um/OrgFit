@@ -114,7 +114,7 @@ html {
 }
 .site-nav a:hover {
   color: var(--text);
-  border-block-end-color: var(--accent);
+  border-block-end-color: var(--border-strong);
 }
 .site-actions {
   display: flex;
@@ -217,13 +217,11 @@ html {
 
 /* --------------------------------------------------------------- hero --- */
 
+/* The hero is the identity's ground: core navy, set by .on-core in the
+   markup, so every role (text, mark, rule) flips together. */
 .hero {
-  border-block-end: var(--hairline) solid var(--border);
-  background: linear-gradient(
-    var(--surface) 0%,
-    var(--surface) 62%,
-    var(--surface-page) 100%
-  );
+  background: var(--surface);
+  color: var(--text);
 }
 .hero-inner {
   max-inline-size: var(--content-width);
@@ -247,6 +245,7 @@ html {
 }
 .hero-copy h1 {
   margin: 0;
+  color: var(--text);
   font-size: clamp(2.1rem, 6vw, 3.9rem);
   line-height: 1.12;
   font-weight: 800;
@@ -256,7 +255,7 @@ html {
 .hero-lede {
   margin: 0;
   font-size: clamp(var(--text-base), 1.5vw, var(--text-lg));
-  color: var(--text-soft);
+  color: var(--text);
   max-inline-size: 52ch;
 }
 .hero-actions {
@@ -268,14 +267,77 @@ html {
 .hero-note {
   margin: 0;
   padding-block-start: var(--space-2);
-  border-block-start: var(--hairline) solid var(--border);
+  border-block-start: var(--hairline) solid var(--border-strong);
   color: var(--text-muted);
   font-size: var(--text-sm);
   max-inline-size: 48ch;
   inline-size: 100%;
 }
 
+/* The mark at real scale: a figure, not a logo. It is drawn at 416 CSS px
+   (full detail) and never shown below 6rem, the size under which the full
+   figure stops being legible (detailFor in src/brand-mark.ts). */
+.hero-mark {
+  display: grid;
+  justify-items: center;
+  min-inline-size: 0;
+}
+.hero-mark svg {
+  display: block;
+  inline-size: min(100%, 26rem);
+  min-inline-size: 6rem;
+  block-size: auto;
+}
+@media (max-width: 63.99rem) {
+  .hero-mark svg {
+    inline-size: min(100%, 18rem);
+  }
+}
+
+/* The primary action on a core ground: paper on core, the default inverted.
+   The secondary uses the existing .button-on-dark. */
+.on-core .button:not(.button-on-dark) {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+}
+.on-core .button:not(.button-on-dark):hover {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--text);
+}
+.on-core :focus-visible {
+  outline-color: var(--accent-on-inverse);
+}
+
 /* ------------------------------------------------------------ preview --- */
+
+/* The synthetic product preview, on paper directly below the core ground. */
+.landing-preview {
+  padding-block: var(--space-5) 0;
+}
+.landing-preview .figure {
+  max-inline-size: 48rem;
+}
+
+/* ------------------------------------------------------------ channel --- */
+
+/* scatter → channel → core, as the page's structure. Every section heading
+   sits on a channel with the mark's own node at its head; the closing action
+   is the core the channel ends in. The rule and the node read the mark's
+   tokens, so on a core ground they flip with everything else. */
+.channel {
+  position: relative;
+  padding-inline-start: var(--space-3);
+  border-inline-start: var(--rule-strong) solid var(--mark-channel);
+}
+.channel-node {
+  position: absolute;
+  inset-block-start: 0.35rem;
+  inset-inline-start: calc(-0.75rem - var(--rule-strong) / 2);
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+}
 
 /* The drawn product figure. A frame, a caption strip that names it as
    synthetic, and an SVG. The label is not decorative and is not small print:
@@ -305,8 +367,8 @@ html {
   align-items: center;
   gap: 0.35rem;
   padding: 0.15rem 0.6rem;
-  border: var(--hairline) solid var(--accent-on-inverse);
-  color: var(--accent-on-inverse);
+  border: var(--hairline) solid var(--link-on-inverse);
+  color: var(--link-on-inverse);
   font-size: var(--text-xs);
   font-weight: 500;
 }
@@ -328,9 +390,10 @@ html {
   align-items: flex-start;
   gap: var(--space-1);
 }
+/* The withheld marker is the hatch, not a concern: it is never clay. */
 .figure-note-glyph {
   font-family: var(--font-mono);
-  color: var(--accent-text);
+  color: var(--text-muted);
 }
 
 /* Drawn chart parts, so a figure never needs an inline style. */
@@ -376,6 +439,10 @@ html {
   fill: var(--surface);
   stroke: var(--border-strong);
   stroke-width: 1;
+}
+/* The organization in a schematic: the solid core. */
+.fig-core {
+  fill: var(--surface-inverse);
 }
 .fig-node-accent {
   fill: var(--surface);
@@ -448,7 +515,7 @@ html {
 .cap-glyph {
   inline-size: 2rem;
   block-size: 2rem;
-  color: var(--accent);
+  color: var(--link);
   flex: none;
   align-self: center;
 }
@@ -481,7 +548,7 @@ html {
 .flow li {
   min-inline-size: 0;
   padding-block-start: var(--space-3);
-  border-block-start: var(--rule-strong) solid var(--border-strong);
+  border-block-start: var(--rule-strong) solid var(--mark-channel);
   display: grid;
   gap: var(--space-2);
   align-content: start;
@@ -500,11 +567,6 @@ html {
   align-items: center;
   justify-content: center;
   direction: ltr;
-}
-/* Deep clay, not clay: paper on #c4633c is 3.5:1, and the step number is
-   small text. */
-.flow li:first-child .flow-step {
-  background: var(--accent-text);
 }
 .flow h3 {
   margin: 0;
@@ -564,7 +626,7 @@ html {
 .privacy-glyph {
   inline-size: 1.75rem;
   block-size: 1.75rem;
-  color: var(--accent-on-inverse);
+  color: var(--link-on-inverse);
 }
 /* The limit, stated where the promise is. It is set quieter than the three
    points, not hidden below them, because the blueprint forbids letting the
@@ -572,7 +634,7 @@ html {
 .privacy-limit {
   margin: var(--space-5) 0 0;
   padding-inline-start: var(--space-3);
-  border-inline-start: var(--hairline) solid var(--accent-on-inverse);
+  border-inline-start: var(--rule-strong) solid var(--text-inverse);
   color: var(--text-inverse);
   font-size: var(--text-md);
   max-inline-size: 72ch;
@@ -612,7 +674,7 @@ html {
   align-items: center;
   gap: 0.35rem;
   font-size: var(--text-xs);
-  color: var(--accent-text);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -645,14 +707,14 @@ html {
   display: none;
 }
 .faq-item summary:hover {
-  color: var(--accent-text);
+  color: var(--link);
 }
 .faq-marker {
   inline-size: 1.25rem;
   block-size: 1.25rem;
   flex: none;
   margin-inline-start: auto;
-  color: var(--accent);
+  color: var(--link);
   transition: transform 160ms ease-out;
 }
 .faq-item[open] .faq-marker {
@@ -667,9 +729,14 @@ html {
 
 /* ------------------------------------------------------ closing action --- */
 
+/* Where the channel ends: the core ground, with the mark's core at its head. */
 .closing {
-  border-block-start: var(--rule-strong) solid var(--border-strong);
   background: var(--surface);
+  color: var(--text);
+}
+.closing-core {
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
 }
 .closing-inner {
   max-inline-size: var(--content-width);
@@ -682,12 +749,13 @@ html {
 }
 .closing h2 {
   margin: 0;
+  color: var(--text);
   font-size: clamp(1.7rem, 3.6vw, 2.6rem);
   line-height: var(--leading-tight);
 }
 .closing p {
   margin: 0;
-  color: var(--text-soft);
+  color: var(--text);
   max-inline-size: 56ch;
   font-size: var(--text-lg);
 }
@@ -700,6 +768,7 @@ html {
 .site-footer {
   background: var(--surface-inverse);
   color: var(--text-inverse);
+  border-block-start: var(--hairline) solid var(--border-inverse);
 }
 .site-footer-inner {
   max-inline-size: var(--content-width);
@@ -916,7 +985,7 @@ html {
    the animation shows the finished composition rather than an empty screen. */
 @media (prefers-reduced-motion: no-preference) {
   .hero-copy > *,
-  .hero-figure {
+  .hero-mark {
     animation: settle 620ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .hero-copy > *:nth-child(1) {
@@ -931,7 +1000,7 @@ html {
   .hero-copy > *:nth-child(4) {
     animation-delay: 220ms;
   }
-  .hero-figure {
+  .hero-mark {
     animation-delay: 140ms;
   }
 }

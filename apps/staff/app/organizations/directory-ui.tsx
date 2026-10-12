@@ -20,7 +20,8 @@ import {
   useLedger,
   type ChangeFailure,
 } from "../request-ui";
-import { useFormDirty, useUnsavedChanges, type SaveOutcome } from "../unsaved";
+import { navigateAfterSave, useFormDirty, useUnsavedChanges, type SaveOutcome } from "../unsaved";
+import { ArchiveForm } from "../archive-form";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
 import { directoryMessages } from "../../../../src/directory-i18n";
@@ -159,6 +160,12 @@ export function Directory({
                 </div>
               )}
             </div>
+            {/* The same archive as Settings, with the same gate: an active
+                organization, archived only by a Super Admin. */}
+            {profile.role === "SUPER_ADMIN" &&
+              organization?.status === "ACTIVE" && (
+                <OrganizationArchive locale={locale} organization={organization} />
+              )}
           </section>
         ) : section === "settings" ? (
           manage ? (
@@ -234,6 +241,48 @@ export function Directory({
     </Workspace>
   );
 }
+function OrganizationArchive({
+  locale,
+  organization,
+}: {
+  locale: Locale;
+  organization: DirectoryRecord;
+}) {
+  const m = directoryMessages(locale);
+  const ledger = useLedger();
+  const [open, setOpen] = useState(false);
+  const scope = `archive:${organization.id}`;
+  return (
+    <div className="card stack" data-testid="organization-archive">
+      {open ? (
+        <ArchiveForm
+          locale={locale}
+          ledger={ledger}
+          scope={scope}
+          submit={async (reason, again) => {
+            await api(
+              `organizations/${organization.id}/archive`,
+              locale,
+              "POST",
+              { reason },
+              String(organization.revision),
+              { ledger, scope, replace: true, retry: again },
+            );
+            // A full load re-reads the organization's status everywhere.
+            navigateAfterSave(`/organizations/${organization.id}/overview`);
+          }}
+          onCancel={() => setOpen(false)}
+        />
+      ) : (
+        <p>
+          <button type="button" className="button-secondary" onClick={() => setOpen(true)}>
+            {m.archive}
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
 function Records({
   locale,
   kind,
@@ -261,13 +310,8 @@ function Records({
     [archive, setArchive] = useState<DirectoryRecord | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(true),
-    [notice, setNotice] = useState(""),
-    [archiveProblem, setArchiveProblem] = useState<ChangeFailure | null>(null);
+    [notice, setNotice] = useState("");
   const ledger = useLedger();
-  const [archiveReason, setArchiveReason] = useState("");
-  // A typed archive reason is kept or discarded, never archived from the
-  // leave dialog: archiving is not a save.
-  useUnsavedChanges(!!archive && archiveReason.trim() !== "");
   async function load(next?: string) {
     setBusy(true);
     setError("");
@@ -292,26 +336,16 @@ function Records({
     }
   }
   async function archiveRecord(target: DirectoryRecord, reason: unknown, again = false) {
-    const scope = `archive:${target.id}`;
-    setBusy(true);
     setError("");
-    setArchiveProblem(null);
-    try {
-      await api(
-        `${endpoint}/${target.id}/archive`,
-        locale,
-        "POST",
-        { reason },
-        String(target.revision),
-        { ledger, scope, replace: true, retry: again },
-      );
-      await saved();
-    } catch (e) {
-      if (!silent(e))
-        setArchiveProblem({ failure: e, scope, retry: () => void archiveRecord(target, reason, true) });
-    } finally {
-      setBusy(false);
-    }
+    await api(
+      `${endpoint}/${target.id}/archive`,
+      locale,
+      "POST",
+      { reason },
+      String(target.revision),
+      { ledger, scope: `archive:${target.id}`, replace: true, retry: again },
+    );
+    await saved();
   }
   useEffect(() => {
     let alive = true;
@@ -426,33 +460,15 @@ function Records({
         />
       )}
       {archive && (
-        <form
-          className="panel stack"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void archiveRecord(archive, archiveReason);
-          }}
-        >
-          <h3>{m.archive}</h3>
-          <p>{m.archiveHelp}</p>
-          <ChangeProblem
-            locale={locale}
-            problem={archiveProblem}
-            ledger={ledger}
-            busy={busy}
-            onCheck={() => void load()}
-            onDismiss={() => setArchiveProblem(null)}
-          />
-          <label>
-            {m.reason} *<input name="reason" required maxLength={500} value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} />
-          </label>
-          <div className="row">
-            <button disabled={busy}>{m.archive}</button>
-            <button type="button" onClick={() => setArchive(null)}>
-              {m.cancel}
-            </button>
-          </div>
-        </form>
+        <ArchiveForm
+          key={archive.id}
+          locale={locale}
+          ledger={ledger}
+          scope={`archive:${archive.id}`}
+          submit={(reason, again) => archiveRecord(archive, reason, again)}
+          onCheck={() => void load()}
+          onCancel={() => setArchive(null)}
+        />
       )}
       {busy && !items.length && !error && <LoadingState label={m.loading} />}
       {/* An empty result and a failed request are different facts and get
@@ -566,7 +582,6 @@ function Records({
                     <button
                       onClick={() => {
                         setArchive(item);
-                        setArchiveReason("");
                         setEditor(null);
                       }}
                     >

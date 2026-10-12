@@ -8,7 +8,7 @@ Open Questionnaire library from home and choose the global or an authorized orga
 
 Edit Arabic/English text, sections, questions, options, fixed matrix rows/columns, required/optional settings and input limits. Native move/duplicate buttons support keyboard operation. Dimensions, row/item weights, aggregation, coverage, direction, overall orientation and interpretation bands are editable declarations only. Duplicate items get new IDs and keys; version/library copies get new IDs and retain item lineage keys. Custom questionnaires receive a new family key. Keys alone do not prove equivalence.
 
-Autosave runs after 1.4 seconds idle or through Save now. Invalid structure remains unsaved with an error. Save status reflects server acknowledgement, and unload warns on unsaved changes. Stale revisions fail without overwriting. Validate for publication lists issues; Publish and lock freezes the entire version. New draft versions support further edits. Retirement and library archive retain original content/hash.
+Autosave runs after 1.4 seconds idle or through Save now. Invalid structure remains unsaved with an error. Save status reflects server acknowledgement, and unload warns on unsaved changes. Stale revisions fail without overwriting. Validate for publication lists issues; Publish and lock freezes the entire version. New draft versions support further edits. Retirement and library archive retain original content/hash. Archive is offered on each custom, active entry of the library list and on the questionnaire's page. It asks first (D-173); the endpoint takes no reason. There is no delete; see [draft-delete-proposal.md](draft-delete-proposal.md).
 
 Preview supports all twelve types, Arabic/English and narrow width. Answers stay in React memory, never post to the server, clear on leaving preview/reload, and produce no score. Content blocks do not count toward progress/mandatory items. Free-text/date collection definitions do not imply permission for raw reporting.
 
@@ -23,13 +23,13 @@ Base B is `/api/v1/questionnaires` or `/api/v1/organizations/:org/questionnaires
 | GET B/:qid | Library metadata; up to 100 version summaries |
 | GET B/:qid/versions/:vid | Full definition/revision/state/hash |
 | PATCH same | Entire strict Instrument definition |
-| POST .../:vid/validate | `{}` → issue paths/codes |
+| POST .../:vid/validate | `{}` → issues `{path, code, location?}` |
 | POST .../:vid/publish | `{}` → immutable PUBLISHED version |
 | POST .../:vid/retire | `{}` → RETIRED, unchanged content/hash |
 | POST .../:vid/new-version | `{}` → copied new draft |
 | POST B/:qid/archive | `{}` → archive library entry |
 
-Mutations require UUID Idempotency-Key; existing-resource writes require quoted numeric If-Match. Different-content key reuse conflicts. Creation returns 201, writes 200; publish validation adds safe issue paths/codes to errors. No response/invitation/export/score routes exist.
+Mutations require UUID Idempotency-Key; existing-resource writes require quoted numeric If-Match. Different-content key reuse conflicts. Creation returns 201, writes 200; publish validation adds the same issues to errors. `path` is the stable id-based link target; `location` (D-172) adds the kind, positions, the enclosing section title / question prompt / dimension name / rule title, the field and the language, all taken from the version being checked. `NO_QUESTIONS` (publication with nothing to answer) and `QUESTION_COUNT` (more than 200 answer items) are separate codes. No response/invitation/export/score routes exist.
 
 ## Persistence and next phase
 

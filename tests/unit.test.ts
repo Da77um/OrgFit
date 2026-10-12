@@ -12,6 +12,24 @@ import {
 } from "../src/security";
 import { safeError } from "../src/http";
 import { z } from "zod";
+import { RequestFailure } from "../apps/staff/app/staff-request";
+import {
+  afterSetAside,
+  conflictOf,
+  isConflict,
+  recoverConflict,
+  settleSave,
+} from "../apps/staff/app/questionnaires/conflict";
+import {
+  blankInstrument,
+  definitionIssues,
+  newIdentity,
+  newQuestion,
+  tr,
+  type Instrument,
+} from "../src/instrument-input";
+import { describeLocation, issueMessage } from "../src/instrument-i18n";
+import type { Version } from "../src/instruments";
 test("Arabic default and complete English catalog/direction", () => {
   assert.equal(localeOf(undefined), "ar");
   assert.equal(direction("ar"), "rtl");
@@ -276,4 +294,129 @@ test("a sign-in refusal's mismatching values are logged only in local developmen
   assert.deepEqual(signInRefusalLog(new Error("postgres://u:secret@h"), local), ["sign-in refused: PROFILE_OR_UNKNOWN"]);
   // A refusal without detail keeps the single line.
   assert.deepEqual(signInRefusalLog(new SignInRefused("FLOW_COOKIE_MISSING"), local), ["sign-in refused: FLOW_COOKIE_MISSING"]);
+});
+// The questionnaire editor's conflict recovery (the deadlock: one stale
+// revision used to freeze the editor with no way back to a clean save).
+const draftVersion = (
+  revision: string,
+  document: Instrument = blankInstrument(),
+  state: Version["state"] = "DRAFT",
+): Version => ({
+  id: "v",
+  scope_id: "s",
+  questionnaire_id: "q",
+  organization_id: null,
+  version_number: 1,
+  state,
+  revision,
+  document,
+  schema_hash: null,
+  engine_version: "e",
+});
+const refusal = (code: string) => new RequestFailure("refused", "REJECTED", { status: 409, code });
+test("questionnaire editor: a stale-revision conflict always leaves a reachable path back to a clean save", () => {
+  // A minimal server: a save is accepted only against its current revision.
+  let server = draftVersion("2"); // another window already saved revision 2
+  const patch = (page: Version, document: Instrument) => {
+    if (page.revision !== server.revision) throw refusal("REVISION_CONFLICT");
+    server = draftVersion(String(Number(server.revision) + 1), document);
+    return server;
+  };
+  const edits = { ...blankInstrument(), title: { ar: "تعديلاتي", en: "My edits" } };
+  // The page's save is refused, and recognised as a conflict, not an error.
+  assert.throws(
+    () => patch(draftVersion("1"), edits),
+    (e) => isConflict(e) && conflictOf(e) === "STALE",
+  );
+  assert.equal(isConflict(refusal("IDEMPOTENCY_CONFLICT")), false);
+  // "Keep my edits": the fresh revision is adopted and the edits are untouched.
+  const kept = recoverConflict(server, edits);
+  assert.ok(kept.outcome === "KEPT");
+  assert.equal(kept.doc, edits);
+  assert.equal(kept.dirty, true);
+  // The normal save now succeeds and the page is clean: validate/publish reopen.
+  const saved = patch(kept.version, kept.doc);
+  assert.equal(settleSave(kept.doc, kept.doc, saved).dirty, false);
+  assert.deepEqual(server.document.title, edits.title);
+  // A version that stopped being editable never silently takes or drops edits.
+  assert.equal(recoverConflict(draftVersion("9", blankInstrument(), "PUBLISHED"), edits).outcome, "NOT_DRAFT");
+  assert.equal(recoverConflict(server, edits, false).outcome, "NOT_DRAFT");
+  assert.equal(conflictOf(refusal("STATE_CONFLICT")), "NOT_DRAFT");
+  // Without edits, reloading simply shows the server document.
+  const loaded = recoverConflict(server, null);
+  assert.ok(loaded.outcome === "LOADED" && loaded.doc === server.document);
+});
+test("questionnaire editor: a set-aside save is adopted only when the fresh revision is provably that save", () => {
+  const sent = blankInstrument();
+  const mine = { ...sent, title: { ar: "أحدث", en: "Newer" } };
+  // It landed: the server holds exactly what was sent, one revision on.
+  const landed = afterSetAside({ body: sent, revision: "4" }, draftVersion("5", structuredClone(sent)), mine);
+  assert.ok(landed.outcome === "KEPT" && landed.version.revision === "5" && landed.doc === mine);
+  // It did not land: the revision is unchanged and the edits are kept.
+  assert.equal(afterSetAside({ body: sent, revision: "4" }, draftVersion("4", sent), mine).outcome, "KEPT");
+  // Someone else wrote: never adopted silently over their content.
+  const other = { ...sent, title: { ar: "زميل", en: "Colleague" } };
+  assert.equal(afterSetAside({ body: sent, revision: "4" }, draftVersion("5", other), mine).outcome, "CONFLICT");
+});
+test("questionnaire editor: a confirmed save never replaces edits typed while it was in flight", () => {
+  const sent = blankInstrument();
+  const typed = { ...sent, title: { ar: "كتبت أثناء الحفظ", en: "Typed during save" } };
+  const saved = draftVersion("3", structuredClone(sent));
+  assert.deepEqual(settleSave(sent, typed, saved), { doc: typed, dirty: true });
+  assert.deepEqual(settleSave(sent, sent, saved), { doc: saved.document, dirty: false });
+});
+// The publish checklist names the place, not an identifier (Phase 2).
+const checklistFixture = () => {
+  const d = blankInstrument();
+  d.locales = ["ar", "en"];
+  d.title = tr("استبيان", "Survey");
+  d.privacyText = tr("خصوصية", "Privacy");
+  const question = (prompt: ReturnType<typeof tr>) => ({ ...newQuestion("MULTIPLE_CHOICE"), prompt });
+  d.sections = [1, 2].map((n) => ({
+    ...newIdentity(),
+    title: tr(`القسم رقم ${n}`, `Part ${n}`),
+    content: tr(),
+    questions: [question(tr("سؤال أول", "First")), question(tr("سؤال ثان", "Second")), question(tr("", ""))],
+  }));
+  return d;
+};
+test("publish checklist: every issue keeps its stable path and names its section, question and language", () => {
+  const d = checklistFixture();
+  const target = d.sections[1].questions[2];
+  const issues = definitionIssues(d, true);
+  const prompt = issues.find((i) => i.path === `${target.id}.en` && i.code === "TRANSLATION_REQUIRED");
+  assert.ok(prompt, "the empty English prompt is reported against its stable id");
+  assert.deepEqual(
+    { kind: prompt.location?.kind, id: prompt.location?.id, section: prompt.location?.section?.n, question: prompt.location?.question?.n, locale: prompt.location?.locale },
+    { kind: "question", id: target.id, section: 2, question: 3, locale: "en" },
+  );
+  assert.equal(describeLocation(prompt.location!, "ar"), "القسم 2 «القسم رقم 2» · السؤال 3 — English");
+  assert.equal(describeLocation(prompt.location!, "en"), "Section 2 «Part 2» · Question 3 — English");
+  // An option names the question it belongs to, by position and prompt.
+  const option = issues.find((i) => i.location?.kind === "option");
+  assert.ok(option);
+  assert.match(describeLocation(option.location!, "en"), /^Section 1 «Part 1» · Question 1 «First» · Option [0-9]+ — (العربية|English)$/);
+  // A secondary field is named; instrument-level text names itself.
+  d.sections[0].questions[0].help = tr("مساعدة", "");
+  const help = definitionIssues(d, true).find((i) => i.path === `${d.sections[0].questions[0].id}.help.en`);
+  assert.equal(describeLocation(help!.location!, "en"), "Section 1 «Part 1» · Question 1 «First» · Help — English");
+  d.privacyText = tr("خصوصية", "");
+  const privacy = definitionIssues(d, true).find((i) => i.path === "privacyText.en");
+  assert.equal(describeLocation(privacy!.location!, "ar"), "إشعار الخصوصية — English");
+  // No issue on a known node is left as a bare identifier.
+  for (const i of definitionIssues(d, true)) assert.ok(i.location, `${i.code} at ${i.path} has a location`);
+});
+test("publish checklist: no questions and too many answer items are different instructions", () => {
+  const empty = blankInstrument();
+  assert.ok(definitionIssues(empty, true).some((i) => i.code === "NO_QUESTIONS"));
+  assert.ok(!definitionIssues(empty, true).some((i) => i.code === "QUESTION_COUNT"));
+  assert.ok(!definitionIssues(empty, false).some((i) => i.code === "NO_QUESTIONS"), "only publication asks");
+  const large = checklistFixture();
+  large.sections[0].questions = Array.from({ length: 201 }, () => newQuestion("SHORT_TEXT"));
+  const codes = definitionIssues(large, false).map((i) => i.code);
+  assert.ok(codes.includes("QUESTION_COUNT") && !codes.includes("NO_QUESTIONS"));
+  assert.equal(issueMessage("NO_QUESTIONS", "en").startsWith("Add at least one question before publishing"), true);
+  assert.equal(issueMessage("NO_QUESTIONS", "ar").startsWith("أضف سؤالاً واحداً على الأقل قبل النشر"), true);
+  assert.notEqual(issueMessage("QUESTION_COUNT", "ar"), issueMessage("NO_QUESTIONS", "ar"));
+  assert.equal(issueMessage("NOT_A_CODE", "en"), "Review the referenced field.");
 });

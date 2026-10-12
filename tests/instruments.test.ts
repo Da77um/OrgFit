@@ -92,7 +92,7 @@ test("publication rejects missing languages, unsafe markup, conditional config a
   }, "TRANSLATION_REQUIRED");
   mutate((d) => {
     d.sections = [];
-  }, "QUESTION_COUNT");
+  }, "NO_QUESTIONS");
   mutate((d) => {
     d.sections[0].questions[2].options = [];
   }, "OPTIONS_REQUIRED");

@@ -17,7 +17,7 @@
 import { cookies } from "next/headers";
 import { direction, localeOf, messages } from "../../../src/i18n";
 import { landing } from "../../../src/landing-i18n";
-import { Lockup } from "../../../src/brand";
+import { ChannelNode, CoreNode, Lockup, Mark } from "../../../src/brand";
 import "../../../src/landing.css";
 import { SiteHeader, LanguageSwitch } from "./landing-ui";
 import {
@@ -67,7 +67,11 @@ export default async function Overview() {
       <SiteHeader locale={locale} />
       <main id="main">
         {/* ---------------------------------------------------------- hero */}
-        <section className="hero" id="overview">
+        {/* The identity's ground. The balanced mark at real scale is the
+            page's opening figure: its scatter field is where the page's
+            scatter → channel → core begins. Full detail is earned by size:
+            416 CSS px, and the stylesheet never lets it fall below 96. */}
+        <section className="hero on-core" id="overview">
           <div className="hero-inner">
             <div className="hero-copy">
               <h1>{c.heroHeadline}</h1>
@@ -76,36 +80,41 @@ export default async function Overview() {
                 <a className="button" href="/login">
                   {c.signIn}
                 </a>
-                <a className="button button-secondary" href="#capabilities">
+                <a className="button button-on-dark" href="#capabilities">
                   {c.heroSecondary}
                 </a>
               </div>
               <p className="hero-note">{c.heroNote}</p>
             </div>
-            <div className="hero-figure figure">
-              <div className="figure-head">
-                <span className="figure-title">{c.previewTitle}</span>
-                <span className="figure-synthetic">
-                  <span aria-hidden="true">◆</span>
-                  {c.previewSynthetic}
-                </span>
-              </div>
-              <div className="figure-body">
-                <RoundFigure copy={c} rtl={rtl} />
-                <p className="figure-note">
-                  <span className="figure-note-glyph" aria-hidden="true">
-                    ▨
-                  </span>
-                  {c.previewWithheldNote}
-                </p>
-              </div>
+            <div className="hero-mark">
+              <Mark size={416} concern={false} />
             </div>
           </div>
         </section>
 
+        {/* The product preview, on paper, where its chart tokens read. */}
+        <div className="section landing-preview">
+          <div className="hero-figure figure">
+            <div className="figure-head">
+              <span className="figure-title">{c.previewTitle}</span>
+              <span className="figure-synthetic">{c.previewSynthetic}</span>
+            </div>
+            <div className="figure-body">
+              <RoundFigure copy={c} rtl={rtl} />
+              <p className="figure-note">
+                <span className="figure-note-glyph" aria-hidden="true">
+                  ▨
+                </span>
+                {c.previewWithheldNote}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* -------------------------------------------------- capabilities */}
         <section className="section" id="capabilities">
-          <div className="section-head">
+          <div className="section-head channel">
+            <ChannelNode className="channel-node" />
             <h2>{c.capabilitiesTitle}</h2>
             <p>{c.capabilitiesLead}</p>
           </div>
@@ -138,7 +147,8 @@ export default async function Overview() {
 
         {/* ------------------------------------------------------ workflow */}
         <section className="section" id="workflow">
-          <div className="section-head">
+          <div className="section-head channel">
+            <ChannelNode className="channel-node" />
             <h2>{c.workflowTitle}</h2>
             <p>{c.workflowLead}</p>
           </div>
@@ -156,9 +166,10 @@ export default async function Overview() {
         </section>
 
         {/* ------------------------------------------------------- privacy */}
-        <div className="band-ink">
+        <div className="band-ink on-core">
           <section className="section">
-            <div className="section-head">
+            <div className="section-head channel">
+            <ChannelNode className="channel-node" />
               <h2>{c.privacyTitle}</h2>
               <p>{c.privacyLead}</p>
             </div>
@@ -180,7 +191,8 @@ export default async function Overview() {
 
         {/* ------------------------------------------------ product panels */}
         <section className="section">
-          <div className="section-head">
+          <div className="section-head channel">
+            <ChannelNode className="channel-node" />
             <h2>{c.productTitle}</h2>
             <p>{c.productLead}</p>
           </div>
@@ -194,10 +206,7 @@ export default async function Overview() {
                       <Figure rtl={rtl} />
                     </div>
                   </div>
-                  <span className="panel-caption">
-                    <span aria-hidden="true">◆</span>
-                    {panel.caption}
-                  </span>
+                  <span className="panel-caption">{panel.caption}</span>
                   <h3>{panel.title}</h3>
                   <p>{panel.body}</p>
                 </article>
@@ -208,7 +217,8 @@ export default async function Overview() {
 
         {/* ----------------------------------------------------------- faq */}
         <section className="section" id="faq">
-          <div className="section-head">
+          <div className="section-head channel">
+            <ChannelNode className="channel-node" />
             <h2>{c.faqTitle}</h2>
           </div>
           <div className="faq">
@@ -225,8 +235,9 @@ export default async function Overview() {
         </section>
 
         {/* ------------------------------------------------ closing action */}
-        <section className="closing">
+        <section className="closing on-core">
           <div className="closing-inner">
+            <CoreNode className="closing-core" />
             <h2>{c.ctaTitle}</h2>
             <p>{c.ctaBody}</p>
             <a className="button" href="/login">

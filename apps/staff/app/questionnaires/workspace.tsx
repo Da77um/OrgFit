@@ -2,8 +2,20 @@
 import { ChangeProblem, silent, useStaffApi, type ChangeFailure } from "../request-ui";
 import { RequestFailure } from "../staff-request";
 import { navigateAfterSave, useUnsavedChanges, type SaveOutcome } from "../unsaved";
+import { ConfirmAction } from "../admin-controls";
+import { ArchiveForm } from "../archive-form";
+import { adminMessages } from "../../../../src/admin-i18n";
+import {
+  afterSetAside,
+  conflictOf,
+  isConflict,
+  recoverConflict,
+  settleSave,
+  type Conflict,
+  type Recovered,
+} from "./conflict";
 /* Full navigation deliberately clears organization context and draft state. */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { Profile } from "../../../../src/db";
 import type { Version } from "../../../../src/instruments";
 import {
@@ -12,6 +24,9 @@ import {
   type QuestionType,
   instrumentSchema,
   definitionIssues,
+  locateIssue,
+  type DefinitionIssue,
+  type IssueLocation,
   newQuestion,
   newIdentity,
   tr,
@@ -21,7 +36,9 @@ import {
 import { Translated, Order, QuestionEditor, DimensionsEditor } from "./editors";
 import { RulesEditor } from "./rules-editor";
 import { AppBar } from "../shell";
+import { describeLocation, instrumentMessages, issueMessage } from "../../../../src/instrument-i18n";
 import {
+  Alert,
   Badge,
   EmptyState,
   ErrorState,
@@ -60,6 +77,13 @@ type LibraryDetail = LibraryItem & {
     revision: string;
   }[];
 };
+// The element a checklist entry links to: the exact text field when the issue
+// names a language, otherwise the section, question, item or editor part.
+function anchorOf(path: string, loc: IssueLocation) {
+  if (loc.locale) return `field-${path}`;
+  if (loc.kind === "sections" || loc.kind === "overall") return `item-${loc.kind}`;
+  return `item-${loc.id ?? path}`;
+}
 export function InstrumentWorkspace({
   profile,
   organizations,
@@ -92,7 +116,11 @@ export function InstrumentWorkspace({
     [title, setTitle] = useState(tr()),
     [creating, setCreating] = useState(false),
     [cloneTarget, setCloneTarget] = useState(org ?? ""),
-    [issues, setIssues] = useState<{ path: string; code: string }[]>([]),
+    [issues, setIssues] = useState<DefinitionIssue[]>([]),
+    // A checklist entry the reader chose to go to, focused once its tab shows.
+    [revealing, setRevealing] = useState<string | null>(null),
+    // The questionnaire whose archive confirmation is open, if any.
+    [archiving, setArchiving] = useState<string | null>(null),
     [newTypes, setNewTypes] = useState<Record<string, QuestionType>>({}),
     // Department targeting beneath the organization. Changing an organization
     // clears its department selection in the same event, so identifiers from
@@ -119,6 +147,15 @@ export function InstrumentWorkspace({
   // not. `again` re-sends the scope's unconfirmed attempt unchanged.
   const client = useStaffApi(locale);
   const [problem, setProblem] = useState<ChangeFailure | null>(null);
+  // A refused stale revision. Autosave and Save now stop until the user picks
+  // a way out in the conflict alert; the edits stay on the page meanwhile.
+  const [conflict, setConflict] = useState<Conflict | null>(null);
+  // The document as last typed, read when a save returns: edits made while it
+  // was in flight must not be replaced by the server's copy of the older one.
+  const docRef = useRef(doc);
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
   const scopeOptions = useDepartmentOptions(client.read, org),
     createOptions = useDepartmentOptions(client.read, createOrg || null),
     cloneOptions = useDepartmentOptions(client.read, cloneTarget || null);
@@ -234,7 +271,8 @@ export function InstrumentWorkspace({
   // document saved against the revision it produced.
   const save = useCallback(async (): Promise<SaveOutcome> => {
     if (!dirty) return { ok: true };
-    if (!doc || !version || busy || !editable) return { ok: false };
+    // A known-stale revision is refused again; the conflict alert is the way on.
+    if (!doc || !version || busy || !editable || conflict) return { ok: false };
     const parsed = instrumentSchema.safeParse(doc);
     if (!parsed.success) {
       setError(
@@ -273,26 +311,36 @@ export function InstrumentWorkspace({
           ? current
           : await api(url, "PATCH", parsed.data, current.revision, scope);
       setVersion(v);
-      setDoc(v.document);
-      // Clean only now that the server has confirmed this document.
-      setDirty(false);
+      // Clean only now that the server has confirmed this document, and only
+      // if nothing was typed while it was in flight.
+      const settled = settleSave(doc, docRef.current ?? doc, v);
+      setDoc(settled.doc);
+      setDirty(settled.dirty);
       setIssues([]);
-      setMessage(t("تم الحفظ.", "Saved."));
-      return { ok: true };
+      setMessage(
+        settled.dirty
+          ? t("تعديلات غير محفوظة…", "Unsaved changes…")
+          : t("تم الحفظ.", "Saved."),
+      );
+      return settled.dirty ? { ok: false } : { ok: true };
     } catch (e) {
-      fail(e, scope, () => void save());
+      if (isConflict(e)) {
+        setConflict(conflictOf(e));
+        setMessage("");
+      } else fail(e, scope, () => void save());
       return { ok: false };
     } finally {
       setBusy(false);
     }
-  }, [dirty, doc, version, busy, editable, api, base, t, client, fail]);
-  // Autosave pauses while a save is unconfirmed: the reader chooses to send it
-  // again, and the edits stay protected by the leave guard meanwhile.
+  }, [dirty, doc, version, busy, editable, conflict, api, base, t, client, fail]);
+  // Autosave pauses while a save is unconfirmed or its revision is stale: the
+  // reader chooses the way on, and the edits stay protected by the leave guard
+  // meanwhile.
   useEffect(() => {
-    if (!dirty || busy || error || problem) return;
+    if (!dirty || busy || error || problem || conflict) return;
     const timer = setTimeout(() => void save(), 1400);
     return () => clearTimeout(timer);
-  }, [dirty, busy, error, problem, save]);
+  }, [dirty, busy, error, problem, conflict, save]);
   useUnsavedChanges(dirty && editable, save);
   const change = (d: Instrument) => {
     setDoc(d);
@@ -328,9 +376,79 @@ export function InstrumentWorkspace({
         setMessage(t("تم تحديث حالة النسخة.", "Version status updated."));
       }
     } catch (e) {
-      fail(e, `POST ${base}/${version.questionnaire_id}/versions/${version.id}/${name}`, () => void action(name, true));
+      if (isConflict(e)) setConflict(conflictOf(e));
+      else fail(e, `POST ${base}/${version.questionnaire_id}/versions/${version.id}/${name}`, () => void action(name, true));
     } finally {
       setBusy(false);
+    }
+  };
+  const adopt = (next: Exclude<Recovered, { outcome: "NOT_DRAFT" }>, note: string) => {
+    setVersion(next.version);
+    setDoc(next.doc);
+    docRef.current = next.doc;
+    setDirty(next.dirty);
+    setConflict(null);
+    setIssues([]);
+    setMessage(note);
+  };
+  // The conflict alert's way out. `keep` puts the typed edits on top of the
+  // fresh revision (the normal save then writes them); otherwise the server's
+  // document is shown, which the alert only offers after asking.
+  const reload = async (keep: boolean) => {
+    if (!version) return;
+    setBusy(true);
+    setError("");
+    try {
+      const [fresh, info]: [Version, LibraryDetail] = await Promise.all([
+        api(`${base}/${version.questionnaire_id}/versions/${version.id}`),
+        api(`${base}/${version.questionnaire_id}`),
+      ]);
+      const next = recoverConflict(
+        fresh,
+        keep && dirty ? docRef.current : null,
+        info.status === "ACTIVE",
+      );
+      // The edits cannot go into this version; the page is left as it is, so
+      // the leave guard still protects them until the reader discards.
+      if (next.outcome === "NOT_DRAFT") {
+        setConflict("NOT_DRAFT");
+        return;
+      }
+      showDetail(info);
+      adopt(
+        next,
+        next.outcome === "KEPT"
+          ? t(
+              "حُمّلت النسخة الأحدث وما زالت تعديلاتك هنا؛ ستُحفظ فوقها تلقائياً.",
+              "The newer revision is loaded and your edits are still here; they will be saved over it automatically.",
+            )
+          : t("حُمّلت النسخة الحالية.", "The current version is loaded."),
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  // An unconfirmed change was set aside, but it may have landed and moved the
+  // server a revision ahead. The fresh revision is adopted only when it is
+  // provably that change; anything else is shown as a conflict.
+  const recheck = async (failure: unknown) => {
+    if (!version) return;
+    try {
+      const fresh: Version = await api(
+        `${base}/${version.questionnaire_id}/versions/${version.id}`,
+      );
+      const next = afterSetAside(
+        failure instanceof RequestFailure ? failure.attempt : undefined,
+        fresh,
+        dirty ? docRef.current : null,
+      );
+      if (next.outcome === "CONFLICT") setConflict("STALE");
+      else if (next.outcome === "NOT_DRAFT") setConflict("NOT_DRAFT");
+      else adopt(next, next.dirty ? t("تعديلات غير محفوظة…", "Unsaved changes…") : "");
+    } catch (e) {
+      fail(e);
     }
   };
   const create = async (clone = false, again = false) => {
@@ -395,6 +513,74 @@ export function InstrumentWorkspace({
       setBusy(false);
     }
   };
+  // Archive keeps the questionnaire and every version as they are; it is never
+  // a delete. A stale revision means the entry changed since it was shown: the
+  // fresh state is loaded and the reader is asked to try again.
+  const archiveQuestionnaire = async (id: string, revision: string, again: boolean) => {
+    const url = `${base}/${id}/archive`;
+    try {
+      await api(url, "POST", {}, revision, `POST ${url}`, again);
+    } catch (e) {
+      if (!isConflict(e)) throw e;
+      if (path[0]) showDetail(await api(`${base}/${id}`));
+      else await loadList();
+      throw new RequestFailure(
+        t(
+          "تغيّر هذا الاستبيان منذ عرضه؛ حُمّلت حالته الحالية، فأعد المحاولة.",
+          "This questionnaire changed since it was shown; its current state is loaded, so try again.",
+        ),
+        "REJECTED",
+        { status: 409, code: "REVISION_CONFLICT" },
+      );
+    }
+  };
+  const archiveHelp = t(
+    "تحتفظ الأرشفة بالاستبيان وكل نسخه كما هي، ولا يمكن تعديله بعدها. لا يُحذف شيء.",
+    "Archiving keeps the questionnaire and all its versions as they are; it can no longer be edited. Nothing is deleted.",
+  );
+  // A checklist entry names its place from the definition that was checked;
+  // an older answer without a location is placed against the page's copy.
+  const where = (x: DefinitionIssue) =>
+    x.location ?? (doc ? locateIssue(doc, x.path) : undefined);
+  const tabOf = (loc: IssueLocation) =>
+    loc.kind === "dimension" || loc.kind === "band" || loc.kind === "overall"
+      ? "dimensions"
+      : loc.kind === "rule"
+        ? "recommendations"
+        : "build";
+  const reveal = (x: DefinitionIssue) => {
+    const loc = where(x);
+    if (!loc) return;
+    setTab(tabOf(loc));
+    setRevealing(x.path);
+  };
+  // After the tab renders: open the enclosing question, bring the field into
+  // view and focus it, or the first control of its section, question or item.
+  useEffect(() => {
+    if (!revealing) return;
+    const x = issues.find((i) => i.path === revealing);
+    const loc = x && where(x);
+    setRevealing(null);
+    if (!loc) return;
+    const el =
+      document.getElementById(`field-${revealing}`) ??
+      // A field named without a language (a placeholder in a rule's text):
+      // its text in the reader's language.
+      (loc.field ? document.getElementById(`field-${revealing}.${locale}`) : null) ??
+      (loc.kind === "sections"
+        ? document.querySelector<HTMLElement>("[data-add-question]")
+        : null) ??
+      document.getElementById(anchorOf(revealing, loc));
+    if (!el) return;
+    for (let p = el.parentElement; p; p = p.parentElement)
+      if (p instanceof HTMLDetailsElement) p.open = true;
+    if (el instanceof HTMLDetailsElement) el.open = true;
+    const target = el.matches("textarea, input, select, button")
+      ? el
+      : el.querySelector<HTMLElement>("textarea, input, select, button");
+    el.scrollIntoView({ block: "center" });
+    (target ?? el).focus({ preventScroll: true });
+  }, [revealing, tab, issues]);
   const labels = [
     t("نص قصير", "Short text"),
     t("نص طويل", "Long text"),
@@ -409,90 +595,6 @@ export function InstrumentWorkspace({
     t("تاريخ", "Date"),
     t("محتوى قسم", "Section content"),
   ];
-  const issueText = (code: string) =>
-    ({
-      TRANSLATION_REQUIRED: t(
-        "أكمل نصوص اللغات المفعلة.",
-        "Complete enabled-language content.",
-      ),
-      DUPLICATE_KEY: t("معرّف مكرر.", "Duplicate identifier."),
-      QUESTION_COUNT: t(
-        "يلزم سؤال واحد على الأقل وبحد أقصى ٢٠٠ عنصر إجابة.",
-        "Provide 1–200 answer items.",
-      ),
-      TYPE_CONFIG: t(
-        "إعداد غير متوافق مع نوع السؤال.",
-        "Configuration does not match question type.",
-      ),
-      OPTIONS_REQUIRED: t(
-        "أضف خيارات أو صفوفاً مكتملة.",
-        "Complete options or matrix rows.",
-      ),
-      SELECTION_RANGE: t(
-        "راجع الحدين الأدنى والأعلى للاختيارات.",
-        "Check minimum and maximum selections.",
-      ),
-      RANGE: t(
-        "الحد الأدنى يجب أن يسبق الحد الأعلى.",
-        "Minimum must precede maximum.",
-      ),
-      REFERENCE: t(
-        "مرجع مفقود أو بعد بلا أسئلة مقاسة.",
-        "Missing reference or dimension without scored items.",
-      ),
-      SCORING_ELIGIBILITY: t(
-        "نوع السؤال غير متوافق مع إعداد القياس.",
-        "Question type is incompatible with scoring configuration.",
-      ),
-      BOUNDS_REQUIRED: t(
-        "يلزم نطاق قياس معلوم وغير ثابت.",
-        "Scoring requires known nonconstant bounds.",
-      ),
-      ATTAINABLE_BOUNDS: t(
-        "راجع حدود الخيارات ودقة الأرقام؛ يجب أن تسمح بقيم مختلفة قابلة للإجابة.",
-        "Check selection bounds and number precision; distinct attainable values are required.",
-      ),
-      WEIGHT_MODE: t(
-        "استخدم المتوسط المرجح للأوزان المختلفة، أو أعد الأوزان إلى ١.",
-        "Use weighted average for unequal weights, or reset weights to 1.",
-      ),
-      MIXED_SUM_SCALES: t(
-        "يتطلب الجمع نطاقاً مشتركاً؛ استخدم متوسط القيم المعيارية للمقاييس المختلفة.",
-        "Sum requires a common scale; use normalized averages for different scales.",
-      ),
-      BANDS: t(
-        "النطاقات يجب أن تغطي ٠–١٠٠ بالترتيب بلا فجوات.",
-        "Bands must cover 0–100 in order without gaps.",
-      ),
-      COVERAGE: t(
-        "التغطية أكبر من صفر ولا تتجاوز واحداً.",
-        "Coverage must be greater than zero and at most one.",
-      ),
-      ALL_REQUIRED: t(
-        "المجموع والنسبة يتطلبان أسئلة مطلوبة وتغطية كاملة.",
-        "Sum and percentage require mandatory items and full coverage.",
-      ),
-      DENOMINATOR: t(
-        "المقام يساوي عدد أسئلة نعم/لا المطلوبة غير المعكوسة.",
-        "Denominator must equal the required unreversed yes/no item count.",
-      ),
-      DIRECTION: t(
-        "راجع اتجاه البعد والتحويل الكلي.",
-        "Check dimension direction and overall inversion.",
-      ),
-      UNSCORED: t(
-        "أزل مراجع القياس غير المفعلة.",
-        "Remove inactive scoring references.",
-      ),
-      CONTENT_UNSCORED: t(
-        "المحتوى لا يتطلب إجابة ولا يدخل القياس.",
-        "Content cannot require answers or be scored.",
-      ),
-      YES_NO_MAPPING: t(
-        "نعم/لا يتطلب قيمتي ٠ و١ الثابتتين.",
-        "Yes/no requires canonical 0 and 1 mappings.",
-      ),
-    })[code] ?? t("راجع الحقل المشار إليه.", "Review the referenced field.");
   return (
     <>
       <AppBar
@@ -528,9 +630,71 @@ export function InstrumentWorkspace({
               problem={problem}
               ledger={client.ledger}
               busy={busy}
-              onDismiss={() => setProblem(null)}
+              onDismiss={() => {
+                const failure = problem?.failure;
+                setProblem(null);
+                if (version) void recheck(failure);
+              }}
               testId="questionnaire-problem"
             />
+            {conflict && version && (
+              <div data-testid="questionnaire-conflict" data-conflict={conflict}>
+                <Alert tone="warning" role="alert">
+                  <p>
+                    <strong>
+                      {conflict === "NOT_DRAFT"
+                        ? t("لم تعد هذه النسخة قابلة للتعديل", "This version can no longer be edited")
+                        : t("حُفظت نسخة أحدث في مكان آخر", "A newer revision was saved elsewhere")}
+                    </strong>
+                  </p>
+                  <p>
+                    {conflict === "NOT_DRAFT"
+                      ? dirty
+                        ? t(
+                            "نُشرت هذه النسخة أو تقاعدت أو أُرشف الاستبيان من نافذة أخرى أو بيد زميل، فلا يمكن حفظ تعديلاتك فيها. اضغط «تجاهل تعديلاتي» لعرض النسخة الحالية.",
+                            "This version was published or retired, or the questionnaire was archived, in another window or by a colleague, so your edits cannot be saved to it. Press “Discard my edits” to show the current version.",
+                          )
+                        : t(
+                            "نُشرت هذه النسخة أو تقاعدت أو أُرشف الاستبيان من نافذة أخرى أو بيد زميل. اضغط «إعادة تحميل النسخة» لعرض حالتها الحالية.",
+                            "This version was published or retired, or the questionnaire was archived, in another window or by a colleague. Press “Reload the version” to show its current state.",
+                          )
+                      : dirty
+                        ? t(
+                            "لم تُحفظ تعديلاتك ولم يُستبدل شيء، وما زالت تعديلاتك في هذه الصفحة. اضغط «الاحتفاظ بتعديلاتي» لتحميل النسخة الأحدث وحفظ تعديلاتك فوقها، أو «تجاهل تعديلاتي» لعرض النسخة الأحدث كما هي.",
+                            "Your edits were not saved and nothing was overwritten; they are still on this page. Press “Keep my edits” to load the newer revision and save your edits over it, or “Discard my edits” to show the newer revision as it is.",
+                          )
+                        : t(
+                            "هذه الصفحة تعرض نسخة أقدم. اضغط «إعادة تحميل النسخة» ثم أعد المحاولة.",
+                            "This page shows an older revision. Press “Reload the version”, then try again.",
+                          )}
+                  </p>
+                  <div className="row">
+                    {conflict === "STALE" && dirty && (
+                      <button type="button" disabled={busy} onClick={() => void reload(true)}>
+                        {t("الاحتفاظ بتعديلاتي", "Keep my edits")}
+                      </button>
+                    )}
+                    {dirty ? (
+                      <ConfirmAction
+                        a={adminMessages(locale)}
+                        label={t("تجاهل تعديلاتي", "Discard my edits")}
+                        confirmLabel={t("تجاهل التعديلات وتحميل النسخة", "Discard edits and load the version")}
+                        body={t(
+                          "ستُحذف تعديلاتك غير المحفوظة من هذه الصفحة ولا يمكن استعادتها.",
+                          "Your unsaved edits will be removed from this page and cannot be recovered.",
+                        )}
+                        disabled={busy}
+                        onConfirm={() => reload(false)}
+                      />
+                    ) : (
+                      <button type="button" disabled={busy} onClick={() => void reload(false)}>
+                        {t("إعادة تحميل النسخة", "Reload the version")}
+                      </button>
+                    )}
+                  </div>
+                </Alert>
+              </div>
+            )}
             <p role="status" aria-live="polite">
               {busy ? t("جارٍ الحفظ…", "Saving…") : message}
             </p>
@@ -538,36 +702,44 @@ export function InstrumentWorkspace({
                 a publish is refused until it is empty, so it is an assertive
                 alert rather than a polite one. */}
             {!!issues.length && (
-              <div className="alert alert-danger stack" role="alert">
-                <h2>{t("قائمة التحقق", "Validation checklist")}</h2>
-                <ul>
-                  {issues.map((x, i) => (
-                    <li key={i}>
-                      {issueText(x.code)}{" "}
-                      <bdi>
-                        {doc?.sections
-                          .flatMap((s) => [
-                            s,
-                            ...s.questions,
-                            ...s.questions.flatMap((q) => [
-                              ...q.options,
-                              ...q.rows,
-                              ...q.columns,
-                            ]),
-                          ])
-                          .find((n) => x.path.startsWith(n.id))?.id ===
-                        x.path ? (
-                          <a href={`#item-${x.path}`}>
-                            {t("انتقل إلى العنصر", "Go to item")}
-                          </a>
-                        ) : (
-                          <small>{x.path}</small>
-                        )}
-                      </bdi>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <Alert tone="danger" role="alert">
+                <div className="stack">
+                  <h2>{t("قائمة التحقق", "Validation checklist")}</h2>
+                  <ul>
+                    {issues.map((x, i) => {
+                      const loc = where(x);
+                      return (
+                        <li key={i}>
+                          {loc && (
+                            <>
+                              <strong>
+                                <bdi>{describeLocation(loc, locale)}</bdi>
+                              </strong>
+                              {": "}
+                            </>
+                          )}
+                          {issueMessage(x.code, locale)}{" "}
+                          {loc ? (
+                            <a
+                              href={`#${anchorOf(x.path, loc)}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                reveal(x);
+                              }}
+                            >
+                              {instrumentMessages(locale).goTo}
+                            </a>
+                          ) : (
+                            <small>
+                              <bdi>{x.path}</bdi>
+                            </small>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </Alert>
             )}
             {!path.length && (
               <>
@@ -745,6 +917,38 @@ export function InstrumentWorkspace({
                       {org && (
                         <TargetSummary t={t} locale={locale} organization={orgLabel(org)} target={item} />
                       )}
+                      {canManage &&
+                        item.source !== "BUILTIN" &&
+                        item.status === "ACTIVE" &&
+                        (archiving === item.id ? (
+                          <ArchiveForm
+                            locale={locale}
+                            ledger={client.ledger}
+                            scope={`POST ${base}/${item.id}/archive`}
+                            withReason={false}
+                            title={t("أرشفة الاستبيان", "Archive questionnaire")}
+                            help={archiveHelp}
+                            confirmLabel={t("أرشفة الاستبيان", "Archive questionnaire")}
+                            testId="questionnaire-archive"
+                            submit={async (_, again) => {
+                              await archiveQuestionnaire(item.id, item.revision, again);
+                              setArchiving(null);
+                              setMessage(t("تمت أرشفة الاستبيان.", "Questionnaire archived."));
+                              await loadList();
+                            }}
+                            onCancel={() => setArchiving(null)}
+                          />
+                        ) : (
+                          <p>
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              onClick={() => setArchiving(item.id)}
+                            >
+                              {t("أرشفة", "Archive")}
+                            </button>
+                          </p>
+                        ))}
                     </li>
                   ))}
                 </ul>
@@ -834,26 +1038,27 @@ export function InstrumentWorkspace({
                 {canManage &&
                   detail.source !== "BUILTIN" &&
                   detail.status === "ACTIVE" && (
-                    <button
-                      disabled={busy}
-                      onClick={async () => {
-                        const url = `${base}/${detail.id}/archive`;
-                        const archiveOnce = async (again: boolean) => {
-                          setBusy(true);
-                          setProblem(null);
-                          try {
-                            await api(url, "POST", {}, detail.revision, `POST ${url}`, again);
-                            navigateAfterSave(`/questionnaires${suffix}`);
-                          } catch (e) {
-                            fail(e, `POST ${url}`, () => void archiveOnce(true));
-                            setBusy(false);
-                          }
-                        };
-                        await archiveOnce(false);
-                      }}
-                    >
-                      {t("أرشفة الاستبيان", "Archive questionnaire")}
-                    </button>
+                    archiving === detail.id ? (
+                      <ArchiveForm
+                        locale={locale}
+                        ledger={client.ledger}
+                        scope={`POST ${base}/${detail.id}/archive`}
+                        withReason={false}
+                        title={t("أرشفة الاستبيان", "Archive questionnaire")}
+                        help={archiveHelp}
+                        confirmLabel={t("أرشفة الاستبيان", "Archive questionnaire")}
+                        testId="questionnaire-archive"
+                        submit={async (_, again) => {
+                          await archiveQuestionnaire(detail.id, detail.revision, again);
+                          navigateAfterSave(`/questionnaires${suffix}`);
+                        }}
+                        onCancel={() => setArchiving(null)}
+                      />
+                    ) : (
+                      <button disabled={busy} onClick={() => setArchiving(detail.id)}>
+                        {t("أرشفة الاستبيان", "Archive questionnaire")}
+                      </button>
+                    )
                   )}
               </>
             )}
@@ -907,31 +1112,53 @@ export function InstrumentWorkspace({
                 {editable && (
                   <div className="row">
                     <button
-                      disabled={busy || !dirty}
+                      disabled={busy || !dirty || !!conflict}
                       onClick={() => void save()}
                     >
                       {t("حفظ الآن", "Save now")}
                     </button>
                     <button
-                      disabled={busy || dirty}
+                      disabled={busy || dirty || !!conflict}
+                      aria-describedby={dirty || conflict ? "publish-gate" : undefined}
                       onClick={() => void action("validate")}
                     >
                       {t("التحقق للنشر", "Validate for publication")}
                     </button>
                     <button
-                      disabled={busy || dirty}
+                      disabled={busy || dirty || !!conflict}
+                      aria-describedby={dirty || conflict ? "publish-gate" : undefined}
                       onClick={() => void action("publish")}
                     >
                       {t("نشر النسخة وتثبيتها", "Publish and lock version")}
                     </button>
                   </div>
                 )}
+                {/* Validation and publication read the saved version, so they
+                    wait for a clean save; the reason is always on screen. */}
+                {editable && (dirty || conflict) && (
+                  <p id="publish-gate" className="field-hint" data-testid="publish-gate">
+                    {conflict
+                      ? t(
+                          "التحقق والنشر متوقفان حتى تختار حلاً للتعارض أعلاه.",
+                          "Validation and publication wait until you resolve the conflict above.",
+                        )
+                      : error
+                        ? t(
+                            "التحقق والنشر متوقفان حتى تُحفظ التعديلات؛ أصلح الخطأ المعروض أعلاه.",
+                            "Validation and publication wait until your edits are saved; fix the error shown above.",
+                          )
+                        : t(
+                            "التحقق والنشر متاحان بعد حفظ التعديلات؛ يجري الحفظ تلقائياً بعد لحظات، أو اضغط «حفظ الآن».",
+                            "Validation and publication are available once your edits are saved; saving happens automatically after a moment, or press “Save now”.",
+                          )}
+                  </p>
+                )}
                 {canManage &&
                   detail?.source !== "BUILTIN" &&
                   detail?.status === "ACTIVE" && (
                     <div className="row">
                       <button
-                        disabled={busy || dirty}
+                        disabled={busy || dirty || !!conflict}
                         onClick={() => void action("new-version")}
                       >
                         {t(
@@ -979,11 +1206,13 @@ export function InstrumentWorkspace({
                     ) : (
                       <div className="stack">
                         <Translated
+                          anchor="title"
                           label={t("عنوان الاستبيان", "Questionnaire title")}
                           value={doc.title}
                           onChange={(title) => change({ ...doc, title })}
                         />
                         <Translated
+                          anchor="introduction"
                           label={t("المقدمة", "Introduction")}
                           value={doc.introduction}
                           onChange={(introduction) =>
@@ -991,6 +1220,7 @@ export function InstrumentWorkspace({
                           }
                         />
                         <Translated
+                          anchor="privacyText"
                           label={t("إشعار الخصوصية", "Privacy notice")}
                           value={doc.privacyText}
                           onChange={(privacyText) =>
@@ -1025,6 +1255,7 @@ export function InstrumentWorkspace({
                               {t("القسم", "Section")} {i + 1}
                             </h3>
                             <Translated
+                              anchor={s.id}
                               label={t("عنوان القسم", "Section title")}
                               value={s.title}
                               onChange={(title) =>
@@ -1037,6 +1268,7 @@ export function InstrumentWorkspace({
                               }
                             />
                             <Translated
+                              anchor={`${s.id}.content`}
                               label={t("محتوى القسم", "Section content")}
                               value={s.content}
                               onChange={(content) =>
@@ -1185,6 +1417,7 @@ export function InstrumentWorkspace({
                               </label>
                               <button
                                 type="button"
+                                data-add-question
                                 onClick={() =>
                                   change({
                                     ...doc,
@@ -1211,6 +1444,7 @@ export function InstrumentWorkspace({
                         ))}
                         <button
                           type="button"
+                          id="item-sections"
                           onClick={() =>
                             change({
                               ...doc,

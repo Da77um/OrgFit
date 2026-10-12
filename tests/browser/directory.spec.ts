@@ -218,3 +218,43 @@ test("HTTP directory access, substitution and mutation preconditions", async ({
     ).status(),
   ).toBe(400);
 });
+// Archive is reachable from the organization overview, through the same
+// reason-and-confirm form as Settings, and only for a Super Admin.
+test("organization overview archives with a typed reason; ordinary staff sees no control", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  await login(page);
+  const suffix = randomUUID().slice(0, 6).toUpperCase();
+  const r = await page.request.post("/api/v1/organizations", {
+    headers: { Origin: baseURL!, "Idempotency-Key": randomUUID() },
+    data: { code: `ARC_${suffix}`, nameAr: `منظمة أرشفة ${suffix}` },
+  });
+  expect(r.ok()).toBe(true);
+  const created = (await r.json()).data;
+  await page.goto(`/organizations/${created.id}/overview`);
+  const panel = page.getByTestId("organization-archive");
+  await panel.getByRole("button", { name: "أرشفة", exact: true }).click();
+  // The reason is required, as in Settings.
+  await panel.getByRole("button", { name: "أرشفة", exact: true }).click();
+  await expect(panel.getByLabel("سبب الأرشفة *")).toBeFocused();
+  await panel.getByLabel("سبب الأرشفة *").fill("Synthetic overview archive");
+  await panel.getByRole("button", { name: "أرشفة", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/organizations/${created.id}/overview$`));
+  await expect(page.locator(".tiles")).toContainText("مؤرشف");
+  await expect(page.getByTestId("organization-archive")).toHaveCount(0);
+
+  // Ordinary staff, in a separate session.
+  const context = await browser.newContext({ baseURL });
+  const staff = await context.newPage();
+  await staff.goto("/login");
+  await staff.getByRole("link", { name: "المتابعة عبر موفر الهوية" }).click();
+  await staff.getByLabel("Identity").selectOption("staff");
+  await staff.getByRole("button", { name: "Sign in" }).click();
+  await expect(staff).toHaveURL(/\/workspace$/);
+  await staff.goto(`/organizations/${ids.orgA}/overview`);
+  await expect(staff.locator(".tiles")).toBeVisible();
+  await expect(staff.getByTestId("organization-archive")).toHaveCount(0);
+  await context.close();
+});

@@ -177,7 +177,7 @@ export function RulesEditor({
         )}
       </p>
       {rules.map((rule, index) => (
-        <fieldset key={rule.id}>
+        <fieldset key={rule.id} id={`item-${rule.id}`}>
           <legend>
             {t("قاعدة", "Rule")} {index + 1}
           </legend>
@@ -350,21 +350,25 @@ export function RulesEditor({
             )}
           </fieldset>
           <Translated
+            anchor={`${rule.id}.title`}
             label={t("العنوان", "Title")}
             value={rule.title}
             onChange={(title) => update(rule.id, { title })}
           />
           <Translated
+            anchor={`${rule.id}.body`}
             label={t("الشرح", "Body")}
             value={rule.body}
             onChange={(body) => update(rule.id, { body })}
           />
           <Translated
+            anchor={`${rule.id}.action`}
             label={t("الإجراء المقترح", "Suggested action")}
             value={rule.action}
             onChange={(action) => update(rule.id, { action })}
           />
           <Translated
+            anchor={`${rule.id}.rationale`}
             label={t(
               "المسوّغ — يقبل {score} و{band} و{metric} و{group}",
               "Rationale — accepts {score}, {band}, {metric} and {group}",

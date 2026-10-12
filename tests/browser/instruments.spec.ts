@@ -359,3 +359,153 @@ test("English dimension and band editors persist scoring declarations without co
     fullPage: true,
   });
 });
+// The editor deadlock: a revision saved elsewhere used to leave the editor
+// dirty forever, autosave refused, and validate/publish permanently disabled
+// with no way to reload. The conflict must offer a reachable path back to a
+// clean save that keeps the typed edits, and a discard that asks first.
+test("Arabic draft conflict: keep my edits saves over the newer revision; discard asks first", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page);
+  await page.goto("/questionnaires");
+  await page.getByRole("button", { name: "إنشاء استبيان فارغ" }).click();
+  await page
+    .getByLabel("عنوان الاستبيان — العربية", { exact: true })
+    .fill("استبيان تعارض النسخ");
+  await page.getByRole("button", { name: "إنشاء", exact: true }).click();
+  await expect(page).toHaveURL(/versions/);
+  const [, qid, vid] = new URL(page.url()).pathname.match(/questionnaires\/([^/]+)\/versions\/([^/?]+)/)!;
+  const url = `/api/v1/questionnaires/${qid}/versions/${vid}`;
+  // "Another window" saves a newer revision behind the page's back.
+  const elsewhere = async (introduction: string) => {
+    const current = (await (await page.request.get(url)).json()).data;
+    const r = await page.request.patch(url, {
+      headers: {
+        Origin: baseURL!,
+        "Idempotency-Key": randomUUID(),
+        "If-Match": `"${current.revision}"`,
+      },
+      data: { ...current.document, introduction: tr(introduction) },
+    });
+    expect(r.ok()).toBe(true);
+  };
+  const intro = page.getByLabel("المقدمة — العربية");
+  const conflict = page.getByTestId("questionnaire-conflict");
+  const validate = page.getByRole("button", { name: "التحقق للنشر" });
+
+  // The page must hold its revision before the other window moves past it.
+  await expect(intro).toBeEditable();
+  await elsewhere("من نافذة أخرى");
+  await intro.fill("تعديلي");
+  await expect(conflict).toBeVisible();
+  await expect(conflict).toContainText("الاحتفاظ بتعديلاتي");
+  // Gated, with the reason on screen; Save now cannot loop on the stale revision.
+  await expect(validate).toBeDisabled();
+  await expect(page.getByTestId("publish-gate")).toBeVisible();
+  await expect(page.getByRole("button", { name: "حفظ الآن" })).toBeDisabled();
+  await conflict.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "work/instrument-conflict-ar.png" });
+  await conflict.getByRole("button", { name: "الاحتفاظ بتعديلاتي" }).click();
+  await expect(conflict).toHaveCount(0);
+  await expect(intro).toHaveValue("تعديلي");
+  await expect(page.getByText("تم الحفظ.", { exact: true })).toBeVisible();
+  await expect(validate).toBeEnabled();
+  await validate.click();
+  await expect(page.getByText("راجع قائمة التحقق.", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(intro).toHaveValue("تعديلي");
+
+  // Discard is the only path that drops typed text, so it asks first.
+  await elsewhere("نسخة الزميل");
+  await intro.fill("سأتجاهل هذا");
+  await expect(conflict).toBeVisible();
+  await conflict.getByRole("button", { name: "تجاهل تعديلاتي" }).click();
+  await expect(conflict).toContainText("لا يمكن استعادتها");
+  await expect(intro).toHaveValue("سأتجاهل هذا");
+  await conflict.getByRole("button", { name: "تجاهل التعديلات وتحميل النسخة" }).click();
+  await expect(conflict).toHaveCount(0);
+  await expect(intro).toHaveValue("نسخة الزميل");
+  await expect(validate).toBeEnabled();
+});
+// The publish checklist names the place, not an identifier, and takes the
+// reader to the field — from another tab, into the exact language.
+test("Arabic publish checklist names the section, question and language and focuses the field", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/questionnaires");
+  await page.getByRole("button", { name: "إنشاء استبيان فارغ" }).click();
+  await page
+    .getByLabel("عنوان الاستبيان — العربية", { exact: true })
+    .fill("استبيان قائمة التحقق");
+  await page.getByRole("button", { name: "إنشاء", exact: true }).click();
+  await expect(page).toHaveURL(/versions/);
+  const validate = page.getByRole("button", { name: "التحقق للنشر" });
+  const checklist = page.getByRole("alert").filter({ hasText: "قائمة التحقق" });
+  await validate.click();
+  await expect(checklist).toContainText(
+    "أقسام الاستبيان: أضف سؤالاً واحداً على الأقل قبل النشر",
+  );
+  await expect(checklist).toContainText("إشعار الخصوصية — العربية: أكمل النص في هذه اللغة.");
+  await expect(checklist).not.toContainText(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+  await checklist
+    .getByRole("listitem")
+    .filter({ hasText: "أقسام الاستبيان" })
+    .getByRole("link", { name: "انتقل إلى الحقل" })
+    .click();
+  await expect(page.locator("#item-sections")).toBeFocused();
+
+  await page.getByRole("button", { name: "إضافة قسم", exact: true }).click();
+  await page.getByLabel("عنوان القسم — العربية").fill("بيئة العمل");
+  await page.getByRole("button", { name: "إضافة سؤال", exact: true }).click();
+  await page.getByLabel("إشعار الخصوصية — العربية").fill("إشعار تجريبي.");
+  await expect(page.getByText("تم الحفظ.", { exact: true })).toBeVisible();
+  await expect(validate).toBeEnabled();
+  await validate.click();
+  const entry = checklist
+    .getByRole("listitem")
+    .filter({ hasText: "القسم 1 «بيئة العمل» · السؤال 1 — العربية" });
+  await expect(entry).toContainText("أكمل النص في هذه اللغة.");
+  await expect(checklist).not.toContainText(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+  await page.setViewportSize({ width: 375, height: 900 });
+  await checklist.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "work/instrument-checklist-ar-375.png" });
+  // From another tab: the link returns to the builder and focuses the prompt.
+  await page.getByRole("button", { name: "الأبعاد والتفسير" }).click();
+  await entry.getByRole("link", { name: "انتقل إلى الحقل" }).click();
+  await expect(page.getByLabel("السؤال / المحتوى — العربية")).toBeFocused();
+});
+// Archive is reachable from the library list. It asks first, says nothing is
+// deleted, and the questionnaire moves to the archived filter unchanged.
+test("Arabic library list archives a custom questionnaire after confirmation", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page);
+  const name = `استبيان للأرشفة ${randomUUID().slice(0, 6)}`;
+  const r = await page.request.post("/api/v1/questionnaires", {
+    headers: { Origin: baseURL!, "Idempotency-Key": randomUUID() },
+    data: { title: tr(name, "") },
+  });
+  expect(r.ok()).toBe(true);
+  await page.goto("/questionnaires");
+  const card = page.locator("li.card").filter({ hasText: name });
+  // Built-in templates offer no archive.
+  await expect(
+    page.locator("li.card").filter({ hasText: "قالب توضيحي" }).first().getByRole("button", { name: "أرشفة" }),
+  ).toHaveCount(0);
+  await card.getByRole("button", { name: "أرشفة", exact: true }).click();
+  const confirm = card.getByTestId("questionnaire-archive");
+  await expect(confirm).toContainText("لا يُحذف شيء.");
+  await confirm.getByRole("button", { name: "إلغاء" }).click();
+  await expect(confirm).toHaveCount(0);
+  await card.getByRole("button", { name: "أرشفة", exact: true }).click();
+  await card.getByTestId("questionnaire-archive").getByRole("button", { name: "أرشفة الاستبيان" }).click();
+  await expect(page.getByText("تمت أرشفة الاستبيان.", { exact: true })).toBeVisible();
+  await expect(card).toHaveCount(0);
+  await page.getByLabel("الحالة").selectOption("ARCHIVED");
+  await page.getByRole("button", { name: "بحث", exact: true }).click();
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: "أرشفة" })).toHaveCount(0);
+});

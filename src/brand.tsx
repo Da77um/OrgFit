@@ -169,6 +169,34 @@ export function Wordmark({ cap = 40, monochrome = false, ...rest }: WordmarkProp
   );
 }
 
+// --- the motif as structure -------------------------------------------------
+// The mark's own parts, used by a page to carry scatter → channel → core in
+// its layout: a CHANNEL node (the ringed node every axis ends in) and the
+// CORE (ring, solid centre, punched heart). Same roles, same tokens as the
+// mark, so they flip with `.on-core` exactly as the mark does. Always
+// decorative: the structure they mark is already in the document. They are
+// symmetric, so unlike the mark they carry no direction="ltr": a page places
+// them with logical insets, which must resolve in the page's own direction.
+
+export function ChannelNode(props: Omit<SVGProps<SVGSVGElement>, "role">) {
+  return (
+    <svg viewBox="-12 -12 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" {...props}>
+      <circle cx={0} cy={0} r={8} fill={TOKENS.ground} stroke={TOKENS.channel} strokeWidth={2.5} />
+      <circle cx={0} cy={0} r={3.4} fill={TOKENS.channelLight} />
+    </svg>
+  );
+}
+
+export function CoreNode(props: Omit<SVGProps<SVGSVGElement>, "role">) {
+  return (
+    <svg viewBox="-30 -30 60 60" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" {...props}>
+      <circle cx={0} cy={0} r={27} fill="none" stroke={TOKENS.channel} strokeWidth={1.5} />
+      <circle cx={0} cy={0} r={20} fill={TOKENS.core} />
+      <circle cx={0} cy={0} r={7.6} fill={TOKENS.ground} />
+    </svg>
+  );
+}
+
 /**
  * Mark and wordmark together with the rule between them. `descriptor` is the
  * Arabic line; it leads, and the Latin name sits above it.
