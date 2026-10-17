@@ -3,7 +3,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import manifest from "../deploy/processes.json";
 import { JOBS, executeJob, type JobDefinition } from "../src/job-run";
-import { JOB_PROCESSES, TICKS, authorizeCron, isJobProcess, isTick, jobsForTick, tickOf } from "../src/vercel-cron";
+import {
+  DAILY_ALL_SCHEDULE,
+  DAILY_ALL_TICK,
+  JOB_PROCESSES,
+  TICKS,
+  authorizeCron,
+  isJobProcess,
+  isTick,
+  jobsForProcess,
+  jobsForTick,
+  tickOf,
+} from "../src/vercel-cron";
 import { privacyProcessJob } from "../scripts/process-campaigns";
 import { publicationReleaseJob } from "../scripts/publish-campaigns";
 import { reportsGenerateJob } from "../scripts/generate-reports";
@@ -52,8 +63,30 @@ test("the collection group runs the operator close first, then the processor job
   assert.deepEqual(jobsForTick("processor", "every-5-minutes", manifest.schedule), []);
 });
 
-test("apps/jobs/vercel.json schedules exactly the ticks the route understands", () => {
+// D-181: the owner's account is Vercel Hobby, which allows a cron job at most
+// once a day (a more frequent expression fails the deployment) and functions
+// of at most 300 s. vercel.json is that schedule; the Pro schedule is kept in
+// vercel.pro.json, to be swapped in on a Pro plan.
+test("apps/jobs/vercel.json (Hobby) runs every job of the project once a day, within Hobby's limits", () => {
   const vercel = JSON.parse(readFileSync("apps/jobs/vercel.json", "utf8")) as { crons: { path: string; schedule: string }[] };
+  assert.deepEqual(vercel.crons, [{ path: `/api/cron/${DAILY_ALL_TICK}`, schedule: DAILY_ALL_SCHEDULE }]);
+  assert.match(DAILY_ALL_SCHEDULE, /^\d{1,2} \d{1,2} \* \* \*$/, "at most once a day");
+  assert.equal(isTick(DAILY_ALL_TICK), false, "not one of the Pro ticks");
+  // Processing before publication, in one call: a release never runs before
+  // the batch it would publish.
+  assert.deepEqual(jobsForProcess("processor", manifest.schedule), ["privacy:process", "publication:release"]);
+  // Every job of every process runs exactly once on that one daily call.
+  assert.deepEqual(
+    JOB_PROCESSES.flatMap((p) => jobsForProcess(p, manifest.schedule)).sort(),
+    Object.keys(JOBS).sort(),
+  );
+  const route = readFileSync("apps/jobs/app/api/cron/[tick]/route.ts", "utf8");
+  const duration = Number(/export const maxDuration = (\d+);/.exec(route)?.[1]);
+  assert.ok(duration > 0 && duration <= 300, `maxDuration ${duration} must fit Hobby's 300 s`);
+});
+
+test("apps/jobs/vercel.pro.json schedules exactly the ticks the route understands", () => {
+  const vercel = JSON.parse(readFileSync("apps/jobs/vercel.pro.json", "utf8")) as { crons: { path: string; schedule: string }[] };
   assert.deepEqual(
     vercel.crons.map((c) => [c.path, c.schedule]).sort(),
     Object.entries(TICKS).map(([tick, schedule]) => [`/api/cron/${tick}`, schedule]).sort(),

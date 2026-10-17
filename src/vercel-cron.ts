@@ -26,7 +26,8 @@ import type { JobName } from "./job-run";
 export const JOB_PROCESSES = ["processor", "report", "scanner", "operator"] as const;
 export type JobProcess = (typeof JOB_PROCESSES)[number];
 
-/** Each tick and its cron expression. apps/jobs/vercel.json must list exactly these. */
+/** Each tick and its cron expression, on a Vercel plan that allows cron jobs
+ *  more often than daily. apps/jobs/vercel.pro.json lists exactly these. */
 export const TICKS = {
   "every-minute": "* * * * *",
   "every-2-minutes": "*/2 * * * *",
@@ -51,6 +52,17 @@ export type Schedule = {
 };
 
 export const isTick = (value: string): value is Tick => Object.hasOwn(TICKS, value);
+
+// Vercel Hobby (D-181, the owner's plan): a cron job may run at most once a
+// day, and a more frequent expression fails the deployment. apps/jobs/vercel.json
+// therefore calls this one tick daily, and each project runs every job of its
+// own process once, in manifest order, so a group keeps its order: the
+// processor publishes only after it has processed. Scores then appear up to a
+// day after a campaign closes; running the two processor commands by hand is
+// the way to get them sooner. Cadences in ops.job_status stay as designed, so
+// ops:check reports these jobs as late; that is expected on Hobby.
+export const DAILY_ALL_TICK = "daily-all" as const;
+export const DAILY_ALL_SCHEDULE = "17 3 * * *";
 export const isJobProcess = (value: string | undefined): value is JobProcess =>
   (JOB_PROCESSES as readonly string[]).includes(value ?? "");
 
@@ -67,6 +79,13 @@ export function tickOf(job: string, schedule: Schedule): Tick {
   const after = `${base}-after`;
   if (!isTick(after)) throw new Error(`UNSUPPORTED_GROUP_CADENCE:${job}`);
   return after;
+}
+
+/** Every job of one process, in manifest order (a group keeps its order). */
+export function jobsForProcess(processName: JobProcess, schedule: Schedule): JobName[] {
+  return [...Object.values(schedule.groups).flatMap((g) => g.jobs), ...Object.keys(schedule.jobs)]
+    .filter((job, i, all) => all.indexOf(job) === i)
+    .filter((job) => schedule.jobs[job]?.process === processName) as JobName[];
 }
 
 /** The jobs one process runs on one tick, in manifest order (a group keeps its order). */

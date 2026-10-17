@@ -21,7 +21,7 @@ Settings for every project:
 - **Include files outside the Root Directory:** on. The apps import `src/`, `scripts/` and `deploy/`.
 - **Region:** `hnd1` (Tokyo), set in each app's `vercel.json`, beside the core Supabase database (`ap-northeast-1`). The anonymous database is in `ap-south-1`.
 - **NODE_ENV:** do not set it. Vercel runs with `production`, so every production guard applies.
-- **Plan:** Vercel **Pro**. The jobs need per-minute crons and functions up to 800 s, and Hobby allows daily crons only.
+- **Plan:** the owner's account is **Hobby** (D-181). Hobby runs a cron job at most once a day (a more frequent expression fails the deployment) and a function for at most 300 s. So `apps/jobs/vercel.json` calls one tick, `/api/cron/daily-all`, at 03:17 UTC (Hobby fires it within that hour). Each job project then runs every job of its own process once, in manifest order: the processor runs `privacy:process` and then `publication:release`. The route's `maxDuration` is 300. Scores therefore appear up to a day after a campaign closes; for results sooner, run the two processor commands by hand (`npx tsx --env-file=.env.staging.processor scripts/process-campaigns.ts`, then `scripts/publish-campaigns.ts`). **On Pro:** copy `apps/jobs/vercel.pro.json` over `vercel.json` (the original 1–5 minute ticks) and raise `maxDuration` to 800 in `apps/jobs/app/api/cron/[tick]/route.ts`.
 
 ## Database URLs on Vercel
 

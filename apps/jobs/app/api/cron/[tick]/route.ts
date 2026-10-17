@@ -1,6 +1,13 @@
 import manifest from "../../../../../../deploy/processes.json";
 import { executeJob, type JobDefinition, type JobName } from "../../../../../../src/job-run";
-import { authorizeCron, isJobProcess, isTick, jobsForTick } from "../../../../../../src/vercel-cron";
+import {
+  DAILY_ALL_TICK,
+  authorizeCron,
+  isJobProcess,
+  isTick,
+  jobsForProcess,
+  jobsForTick,
+} from "../../../../../../src/vercel-cron";
 import { privacyProcessJob } from "../../../../../../scripts/process-campaigns";
 import { publicationReleaseJob } from "../../../../../../scripts/publish-campaigns";
 import { reportsGenerateJob } from "../../../../../../scripts/generate-reports";
@@ -33,10 +40,12 @@ const DEFINITIONS: Record<JobName, JobDefinition> = {
 };
 
 export const dynamic = "force-dynamic";
-// The longest a Vercel Pro function may run. The manifest allows privacy:process
-// 1800 s and retention:run 3600 s; a run cut short here is recorded as no
-// success and raised by ops:check (see docs/orgfit/vercel-deployment.md).
-export const maxDuration = 800;
+// The longest a Vercel Hobby function may run (D-181; a larger value fails the
+// deployment there). On Pro it may be raised to 800 together with swapping in
+// vercel.pro.json. The manifest allows privacy:process 1800 s and
+// retention:run 3600 s; a run cut short here is recorded as no success and
+// raised by ops:check (see docs/orgfit/vercel-deployment.md).
+export const maxDuration = 300;
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -44,13 +53,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ tick: string }>
   if (!authorizeCron(req.headers.get("authorization"), process.env.CRON_SECRET))
     return new Response(null, { status: 401, headers: noStore });
   const { tick } = await ctx.params;
-  if (!isTick(tick)) return new Response(null, { status: 404, headers: noStore });
+  if (tick !== DAILY_ALL_TICK && !isTick(tick))
+    return new Response(null, { status: 404, headers: noStore });
   const processName = process.env.ORGFIT_JOB_PROCESS;
   if (!isJobProcess(processName))
     return Response.json({ error: "ORGFIT_JOB_PROCESS_INVALID" }, { status: 503, headers: noStore });
 
   const results = [];
-  for (const job of jobsForTick(processName, tick, manifest.schedule)) {
+  const jobs =
+    tick === DAILY_ALL_TICK
+      ? jobsForProcess(processName, manifest.schedule)
+      : jobsForTick(processName, tick, manifest.schedule);
+  for (const job of jobs) {
     const result = await executeJob(DEFINITIONS[job], { processes: manifest.processes });
     for (const line of result.errors) console.error(`${job}: ${line}`);
     results.push({ job, exitCode: result.exitCode, recorded: result.recorded });
