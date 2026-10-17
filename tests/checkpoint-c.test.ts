@@ -219,6 +219,11 @@ test("Checkpoint C: privacy and submission reliability gate", async (t) => {
           [
             "intake.batch_cleanup",
             "intake.batch_payload",
+            // D-180, changed deliberately and recorded in phase-status.md:
+            // returns the SEALED campaign keys of one batch the processor
+            // holds the lease on, only while that batch is PROCESSING. Opening
+            // them still needs the custodian secret only the processor has.
+            "intake.batch_sealed_keys",
             "intake.batch_state",
             "intake.freeze_batch",
             "intake.keys_destroyed",

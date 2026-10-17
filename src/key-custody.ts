@@ -22,6 +22,15 @@ import { RuntimeGuardError } from "./runtime-guard";
 //                      (CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY); release preflight
 //                      fails it in production regardless.
 //
+//   database-sealed    the owner's choice for hosting (D-180, P-003 option C):
+//                      the same sealed key, stored in the core database
+//                      (intake.campaign_key, migration 026) so separate
+//                      deployments can share it. NOT managed custody and NO
+//                      crypto-erasure: database backups keep sealed keys for
+//                      their retention. Accepted in production only with an
+//                      explicit acknowledgement of exactly that
+//                      (CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK).
+//
 // Any other name is refused (KEY_CUSTODY_PROVIDER_UNSUPPORTED) until a real
 // provider adapter is written against the custodian the owner names. The plan
 // for that adapter, and what it must prove before a campaign may be called
@@ -41,7 +50,13 @@ import { RuntimeGuardError } from "./runtime-guard";
 // Both directions use crypto_box_seal exactly as documented. Nothing here is a
 // new construction.
 // ---------------------------------------------------------------------------
-export type CampaignKey = { keyReference: string; publicKey: Buffer };
+export type CampaignKey = {
+  keyReference: string;
+  publicKey: Buffer;
+  /** database-sealed only: the private key sealed to the custodian, for the
+   *  launch transaction to store. It cannot be opened without the secret. */
+  sealedPrivateKey?: Buffer;
+};
 
 /**
  * What a provider can truthfully say about a destruction request. The
@@ -52,7 +67,12 @@ export type DestructionEvidence = {
   provider: CustodyProviderName;
   /** LOCAL_COPY_REMOVED / ALREADY_ABSENT (development), or SCHEDULED /
    *  DESTROYED as reported by a managed provider. */
-  outcome: "LOCAL_COPY_REMOVED" | "ALREADY_ABSENT" | "SCHEDULED" | "DESTROYED";
+  outcome:
+    | "LOCAL_COPY_REMOVED"
+    | "ALREADY_ABSENT"
+    | "DATABASE_COPY_CLEARED"
+    | "SCHEDULED"
+    | "DESTROYED";
   /** false unless a managed provider attests that every usable copy and
    *  wrapping key is gone. The development provider can never set it. */
   cryptoErasure: false | "PROVIDER_ATTESTED";
@@ -63,17 +83,24 @@ export type DestructionEvidence = {
   summary: string;
 };
 
-export type CustodyProviderName = "development-file";
+export type CustodyProviderName = "development-file" | "database-sealed";
 
 export interface CustodyProvider {
   readonly name: CustodyProviderName;
   readonly managed: boolean;
   createCampaignKey(): Promise<CampaignKey>;
-  openCampaignKey(keyReference: string): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array }>;
+  /** `sealed` is the stored copy for database-sealed; the file provider reads its own. */
+  openCampaignKey(
+    keyReference: string,
+    sealed?: Buffer,
+  ): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array }>;
   destroyCampaignKey(keyReference: string): Promise<DestructionEvidence>;
 }
 
 export const REHEARSAL_ACKNOWLEDGEMENT = "development-file-is-not-managed-custody";
+// The owner's written acceptance, as configuration, of what database-sealed
+// gives up. Without it a production process refuses the provider.
+export const DATABASE_CUSTODY_RISK_ACCEPTANCE = "database-sealed-no-crypto-erasure";
 
 /**
  * The provider this environment is configured for, or a fixed refusal code.
@@ -83,6 +110,11 @@ export function custodyProviderName(env: Record<string, string | undefined> = pr
   const production = env.NODE_ENV === "production";
   const name = env.CAMPAIGN_KEY_CUSTODY_PROVIDER || (production ? "" : "development-file");
   if (!name) throw new RuntimeGuardError("KEY_CUSTODY_PROVIDER_REQUIRED");
+  if (name === "database-sealed") {
+    if (production && env.CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK !== DATABASE_CUSTODY_RISK_ACCEPTANCE)
+      throw new RuntimeGuardError("KEY_CUSTODY_RISK_NOT_ACCEPTED");
+    return name;
+  }
   if (name !== "development-file") throw new RuntimeGuardError("KEY_CUSTODY_PROVIDER_UNSUPPORTED");
   if (production && env.CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY !== REHEARSAL_ACKNOWLEDGEMENT)
     throw new RuntimeGuardError("KEY_CUSTODY_DEVELOPMENT_IN_PRODUCTION");
@@ -90,8 +122,7 @@ export function custodyProviderName(env: Record<string, string | undefined> = pr
 }
 
 export function custodyProvider(env: Record<string, string | undefined> = process.env): CustodyProvider {
-  custodyProviderName(env);
-  return developmentFileProvider;
+  return custodyProviderName(env) === "database-sealed" ? databaseSealedProvider : developmentFileProvider;
 }
 
 export async function ready() {
@@ -193,9 +224,57 @@ const developmentFileProvider: CustodyProvider = {
   },
 };
 
+// --- the database-sealed provider (D-180) ----------------------------------------
+// The same sealed box as the file provider; only the place it is kept differs.
+// The launch transaction stores the sealed copy (core.register_campaign_key,
+// 5 arguments); the processor receives it for one batch it holds the lease on
+// (intake.batch_sealed_keys) and opens it with the custodian secret.
+const databaseSealedProvider: CustodyProvider = {
+  name: "database-sealed",
+  managed: false,
+  async createCampaignKey() {
+    const s = await ready();
+    const custodian = keyFromEnv("CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY");
+    const pair = s.crypto_box_keypair();
+    const sealed = Buffer.from(s.crypto_box_seal(pair.privateKey, custodian));
+    pair.privateKey.fill(0);
+    return {
+      keyReference: `ck_${randomBytes(16).toString("hex")}`,
+      publicKey: Buffer.from(pair.publicKey),
+      sealedPrivateKey: sealed,
+    };
+  },
+  async openCampaignKey(_keyReference, sealed) {
+    if (!sealed || sealed.length !== 80) throw new Error("Key custody is unavailable");
+    const s = await ready();
+    const privateKey = s.crypto_box_seal_open(
+      new Uint8Array(sealed),
+      keyFromEnv("CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY"),
+      decodeKey(custodianSecret),
+    );
+    return { publicKey: s.crypto_scalarmult_base(privateKey), privateKey };
+  },
+  // The live copy is cleared by the database itself when the key leaves
+  // DECRYPT_ONLY (migration 026), before this runs. What it cannot clear is
+  // every earlier copy, and the evidence says so.
+  async destroyCampaignKey(keyReference) {
+    return {
+      keyReference,
+      provider: "database-sealed",
+      outcome: "DATABASE_COPY_CLEARED",
+      cryptoErasure: false,
+      recoverableUntil: null,
+      backupCopiesMayExist: true,
+      summary:
+        "database-sealed custody: sealed key cleared from the live database; not crypto-erasure; database backups, WAL and replicas keep it for their retention",
+    };
+  },
+};
+
 // --- the calls the rest of the code makes ------------------------------------------
 export const createCampaignKey = () => custodyProvider().createCampaignKey();
-export const openCampaignKey = (keyReference: string) => custodyProvider().openCampaignKey(keyReference);
+export const openCampaignKey = (keyReference: string, sealed?: Buffer) =>
+  custodyProvider().openCampaignKey(keyReference, sealed);
 export const destroyCampaignKey = (keyReference: string) => custodyProvider().destroyCampaignKey(keyReference);
 
 export async function custodyInventory() {

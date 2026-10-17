@@ -3,15 +3,29 @@ import assert from "node:assert/strict";
 import { scoringFixture, pin } from "./scoring-fixtures";
 import {
   scoreInstrument,
+  scoreDraft,
   respondentMean,
   ScoringError,
   type Answers,
 } from "../src/scoring";
+import { illustrativeTemplates } from "../src/instrument-templates";
+import { submitTestAnswers } from "../src/test-submission";
+import {
+  instrumentFixture,
+  releaseInput,
+  respondent,
+  DIMENSION_ID,
+  DEPT_A,
+} from "./publication-fixtures";
+import { buildReleasePlan } from "../src/disclosure";
+import { selectRecommendations } from "../src/recommendation-select";
+import { scoredAuthoringSteps } from "./instrument-steps";
 import { N, normalize } from "../src/score-number";
 import {
   definitionIssues,
   newIdentity,
   newQuestion,
+  newRule,
   tr,
   type Instrument,
 } from "../src/instrument-input";
@@ -379,4 +393,462 @@ test("boundary fixtures stay local and valid; optional empty checkboxes are miss
   const d = scoringFixture(1, "NUMBER");
   d.sections[0].questions[0].validation.min = "0.1";
   assert.throws(() => metric(d, {}));
+});
+
+// ---------------------------------------------------------------------------
+// Draft scoring (questionnaire pipeline repair, Phase 2). The staff sandbox
+// scores a draft without requiring it to be publishable: translations, the
+// introduction and privacy text and recommendation copy are not needed to
+// compute a score. It reuses the strict engine's core, so on any document the
+// strict engine accepts the two must agree exactly.
+// ---------------------------------------------------------------------------
+function equivalenceFixtures(): { name: string; doc: Instrument }[] {
+  const withBands = (d: Instrument) => {
+    for (const dim of d.dimensions)
+      dim.bands = [
+        {
+          ...newIdentity(),
+          lower: "0",
+          upper: "50",
+          label: tr("منخفض", "Low"),
+          severity: "HIGH",
+          semantic: "RISK",
+        },
+        {
+          ...newIdentity(),
+          lower: "50",
+          upper: "100",
+          label: tr("مرتفع", "High"),
+          severity: "NONE",
+          semantic: "HEALTH",
+        },
+      ];
+    d.overall = {
+      enabled: true,
+      direction: "HIGH_GOOD",
+      inputs: d.dimensions.map((x) => ({
+        dimensionId: x.id,
+        weight: "1",
+        invert: x.direction !== "HIGH_GOOD",
+      })),
+      bands: d.dimensions[0].bands.map((b) => ({ ...b, ...newIdentity() })),
+    };
+    return d;
+  };
+  const reversed = scoringFixture(3);
+  reversed.sections[0].questions[1].scoring.reverse = true;
+  const weighted = scoringFixture(3, "RATING_10", "WEIGHTED_AVERAGE");
+  weighted.sections[0].questions[0].scoring.weight = "2.5";
+  const checkboxes = scoringFixture(3, "CHECKBOXES", "AVERAGE");
+  for (const q of checkboxes.sections[0].questions)
+    q.scoring.mode = "OPTION_SUM";
+  const percentage = scoringFixture(3, "CHECKBOXES", "AVERAGE");
+  for (const q of percentage.sections[0].questions) {
+    q.scoring.mode = "SELECTED_PERCENTAGE";
+    q.options.push({
+      ...newIdentity(),
+      label: tr("خيار", "Option"),
+      score: null,
+    });
+  }
+  const risk = scoringFixture(2, "MATRIX", "AVERAGE");
+  risk.dimensions[0].direction = "HIGH_RISK";
+  const publication = instrumentFixture();
+  publication.sections[0].questions[1].validation = {
+    minSelections: 1,
+    maxSelections: 2,
+  };
+  publication.sections[0].questions[0].scoring.enabled = true;
+  publication.sections[0].questions[0].dimensionId =
+    publication.dimensions[0].id;
+  return [
+    { name: "rating 5 average, reversed", doc: withBands(reversed) },
+    { name: "rating 10 weighted", doc: withBands(weighted) },
+    {
+      name: "yes/no percentage",
+      doc: withBands(scoringFixture(4, "YES_NO", "PERCENTAGE")),
+    },
+    { name: "number sum", doc: withBands(scoringFixture(3, "NUMBER", "SUM")) },
+    { name: "matrix, high risk", doc: withBands(risk) },
+    { name: "checkboxes option sum", doc: withBands(checkboxes) },
+    { name: "checkboxes selected percentage", doc: withBands(percentage) },
+    { name: "disclosure fixture", doc: publication },
+    ...illustrativeTemplates().map((doc, i) => ({
+      name: `illustrative template ${i + 1}`,
+      doc,
+    })),
+    { name: "built step by step", doc: scoredAuthoringSteps().at(-1)!.doc },
+  ];
+}
+function answerSets(d: Instrument): { name: string; answers: Answers }[] {
+  const high = syntheticBoundaryAnswers(d, true),
+    low = syntheticBoundaryAnswers(d, false),
+    keys = Object.keys(high);
+  return [
+    { name: "lowest", answers: low },
+    { name: "highest", answers: high },
+    { name: "none", answers: {} },
+    {
+      name: "first half",
+      answers: Object.fromEntries(
+        keys.slice(0, Math.ceil(keys.length / 2)).map((k) => [k, high[k]]),
+      ),
+    },
+    {
+      name: "alternating",
+      answers: Object.fromEntries(
+        keys.map((k, i) => [k, i % 2 ? high[k] : low[k]]),
+      ),
+    },
+  ];
+}
+test("draft scoring is byte-identical to the strict engine on every publishable fixture", () => {
+  let compared = 0;
+  for (const { name, doc } of equivalenceFixtures()) {
+    assert.deepEqual(definitionIssues(doc, true), [], `${name} is publishable`);
+    for (const set of answerSets(doc)) {
+      const strict = scoreInstrument(doc, set.answers, pin),
+        draft = scoreDraft(doc, set.answers, pin);
+      assert.equal(
+        JSON.stringify(draft.scores),
+        JSON.stringify(strict),
+        `${name}, ${set.name}`,
+      );
+      assert.deepEqual(
+        draft.blocked,
+        { dimensions: {}, overall: [], unassigned: [] },
+        `${name}, ${set.name}`,
+      );
+      compared++;
+    }
+  }
+  assert.ok(compared >= 55, `${compared} comparisons`);
+});
+test("draft scoring scores each complete dimension and says exactly why the others cannot be", () => {
+  const d = scoringFixture(2);
+  const complete = d.dimensions[0];
+  // Copy that a score does not need is missing, and so is a rule's text.
+  d.title.en = "";
+  d.privacyText = tr();
+  d.recommendations = [
+    newRule({ kind: "DIMENSION", dimensionId: complete.id }),
+  ];
+  // A second dimension mid-build: its scored question has a new option
+  // without a score, and its bands stop short of 100.
+  const pending = {
+    ...structuredClone(complete),
+    ...newIdentity(),
+    name: tr(),
+    bands: [
+      {
+        ...newIdentity(),
+        lower: "0",
+        upper: "60",
+        label: tr(),
+        severity: "NONE" as const,
+        semantic: "NEUTRAL" as const,
+      },
+    ],
+  };
+  d.dimensions.push(pending);
+  const choice = newQuestion("MULTIPLE_CHOICE");
+  choice.scoring.enabled = true;
+  choice.dimensionId = pending.id;
+  choice.options.push({ ...newIdentity(), label: tr(), score: null });
+  // A scored question no dimension has been chosen for yet.
+  const orphan = newQuestion("RATING_5");
+  orphan.scoring.enabled = true;
+  d.sections[0].questions.push(choice, orphan);
+  d.overall = {
+    enabled: true,
+    direction: "HIGH_GOOD",
+    inputs: [complete.id, pending.id].map((dimensionId) => ({
+      dimensionId,
+      weight: "1",
+      invert: false,
+    })),
+    bands: [],
+  };
+  // The strict engine is unchanged: it refuses the whole draft.
+  assert.throws(
+    () => scoreInstrument(d, {}, pin),
+    (e: unknown) =>
+      e instanceof ScoringError &&
+      e.issues.some((i) => i.code === "TRANSLATION_REQUIRED"),
+  );
+  const a: Answers = {
+    [d.sections[0].questions[0].id]: "4",
+    [d.sections[0].questions[1].id]: "2",
+    [choice.id]: choice.options[1].id,
+  };
+  const draft = scoreDraft(d, a, pin);
+  // The complete dimension is scored exactly as it would be on its own.
+  const alone = structuredClone(d);
+  alone.dimensions = [complete];
+  alone.sections[0].questions = alone.sections[0].questions.slice(0, 2);
+  alone.overall = {
+    enabled: false,
+    direction: "HIGH_GOOD",
+    inputs: [],
+    bands: [],
+  };
+  alone.recommendations = [];
+  alone.title.en = "Synthetic";
+  alone.privacyText = tr("تجربة", "Synthetic");
+  assert.deepEqual(
+    draft.scores.dimensions[complete.id],
+    scoreInstrument(
+      alone,
+      Object.fromEntries(Object.entries(a).filter(([id]) => id !== choice.id)),
+      pin,
+    ).dimensions[complete.id],
+  );
+  assert.equal(draft.scores.dimensions[complete.id].normalized, 50);
+  // The pending one is not scored, and the reasons are located.
+  assert.equal(draft.scores.dimensions[pending.id], undefined);
+  const reasons = draft.blocked.dimensions[pending.id];
+  assert.deepEqual(reasons.map((i) => i.code).sort(), [
+    "ATTAINABLE_BOUNDS",
+    "BANDS",
+    "BOUNDS_REQUIRED",
+  ]);
+  assert.deepEqual(
+    reasons.find((i) => i.code === "BOUNDS_REQUIRED")?.location,
+    {
+      kind: "question",
+      id: choice.id,
+      section: { n: 1, title: d.sections[0].title },
+      question: { n: 3, prompt: choice.prompt },
+    },
+  );
+  assert.equal(
+    reasons.find((i) => i.code === "BANDS")?.location?.kind,
+    "dimension",
+  );
+  // Overall waits for every input, and names the one that is not ready.
+  assert.equal(draft.scores.overall, null);
+  assert.deepEqual(
+    draft.blocked.overall.map((i) => [i.code, i.path]),
+    [["INPUT_INCOMPLETE", pending.id]],
+  );
+  assert.equal(draft.blocked.overall[0].location?.kind, "dimension");
+  // The scored question without a dimension is not counted anywhere, and says so.
+  assert.deepEqual(
+    draft.blocked.unassigned.map((i) => [i.code, i.path]),
+    [["SCORING_ELIGIBILITY", orphan.id]],
+  );
+  // Nothing about copy, translations or rules is reported as a scoring reason.
+  const all = [
+    ...Object.values(draft.blocked.dimensions).flat(),
+    ...draft.blocked.overall,
+    ...draft.blocked.unassigned,
+  ];
+  assert.ok(
+    all.every(
+      (i) => i.code !== "TRANSLATION_REQUIRED" && i.location?.kind !== "rule",
+    ),
+  );
+  // Required answers are still checked as a respondent's would be.
+  assert.deepEqual(draft.scores.missingRequired, [orphan.id]);
+});
+// Phase 3: the preview's "submit test answers". The respondent's own final
+// check (validateAnswers, then nothing required may be missing), then draft
+// scoring. It is a pure function: no request, storage or log.
+test("a test submission checks required answers like a respondent's and scores like the sandbox", () => {
+  const d = scoringFixture(3);
+  d.sections[0].questions[2].required = false;
+  d.dimensions[0].coverage = "0.6";
+  const [q1, q2] = d.sections[0].questions;
+  const offline = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("a test submission must not make a request");
+  };
+  try {
+    const incomplete = submitTestAnswers(d, { [q1.id]: "4" }, pin);
+    assert.deepEqual(incomplete, {
+      status: "INCOMPLETE",
+      missingRequired: [q2.id],
+    });
+    const range = submitTestAnswers(d, { [q1.id]: "4", [q2.id]: "9" }, pin);
+    assert.equal(range.status, "REFUSED");
+    assert.deepEqual(
+      range.status === "REFUSED" &&
+        range.issues.map((i) => [i.code, i.path, i.location?.kind]),
+      [["ANSWER_RANGE", q2.id, "question"]],
+    );
+    const answers = { [q1.id]: "4", [q2.id]: "2" };
+    const scored = submitTestAnswers(d, answers, pin);
+    assert.equal(scored.status, "SCORED");
+    assert.deepEqual(
+      scored.status === "SCORED" && scored.result,
+      scoreDraft(d, answers, pin),
+    );
+    // The optional third question is missing, not a refusal, and not zero.
+    assert.equal(
+      scored.status === "SCORED" &&
+        scored.result.scores.dimensions[d.dimensions[0].id].normalized,
+      50,
+    );
+    assert.deepEqual(
+      answers,
+      { [q1.id]: "4", [q2.id]: "2" },
+      "answers are not mutated",
+    );
+  } finally {
+    globalThis.fetch = offline;
+  }
+});
+// Option A (D-179): the test screen lists the rules that would fire, using
+// the release's own evaluator (recommendation-select.ts) on the test scores
+// as if they were a published company result.
+test("test recommendations are the release's own, evaluated on the test scores as a company result", () => {
+  const d = instrumentFixture();
+  const choice = d.sections[0].questions[0];
+  choice.scoring.enabled = true;
+  choice.dimensionId = DIMENSION_ID;
+  d.sections[0].questions[1].validation = {
+    minSelections: 1,
+    maxSelections: 2,
+  };
+  const dimension = { kind: "DIMENSION" as const, dimensionId: DIMENSION_ID };
+  const compare = (operator: "LT" | "GTE", value: string) => ({
+    mode: "ALL" as const,
+    clauses: [
+      {
+        mode: "ALL" as const,
+        comparisons: [{ metric: dimension, operator, value, upper: null }],
+      },
+    ],
+  });
+  const low = {
+    ...newRule(dimension),
+    priority: 10,
+    dedupKey: "low",
+    condition: compare("LT", "60"),
+  };
+  low.title = tr("دعم منخفض: {score}", "Low support: {score}");
+  low.body = tr("ضمن {band} في {metric}.", "Within {band} for {metric}.");
+  low.action = tr("راجع الدعم.", "Review support.");
+  const high = {
+    ...newRule(dimension),
+    priority: 20,
+    dedupKey: "high",
+    condition: compare("GTE", "60"),
+  };
+  high.title = tr("دعم جيد", "Good support");
+  high.action = tr("حافظ عليه.", "Keep it.");
+  const department = {
+    ...structuredClone(low),
+    ...newIdentity(),
+    groupScope: "DEPARTMENT" as const,
+    dedupKey: "dept",
+  };
+  const unfinished = { ...newRule(dimension), dedupKey: "draft" };
+  unfinished.condition.clauses[0].comparisons[0] = {
+    metric: dimension,
+    operator: "BETWEEN",
+    value: "10",
+    upper: null,
+  };
+  d.recommendations = [low, high, department, unfinished];
+  const [, checkbox, text, number] = d.sections[0].questions;
+  const answers = {
+    [choice.id]: choice.options[1].id,
+    [checkbox.id]: [checkbox.options[0].id],
+    [text.id]: "x",
+    [number.id]: "10",
+  };
+  const outcome = submitTestAnswers(d, answers, pin);
+  assert.equal(outcome.status, "SCORED");
+  if (outcome.status !== "SCORED") return;
+  assert.equal(outcome.result.scores.dimensions[DIMENSION_ID].display, "50.0");
+  const tested = outcome.recommendations;
+  assert.deepEqual(
+    tested.fired.map((r) => r.ruleKey),
+    [low.key],
+  );
+  assert.deepEqual(
+    tested.fired[0].text.title,
+    tr("دعم منخفض: 50.0", "Low support: 50.0"),
+  );
+  assert.deepEqual(
+    tested.fired[0].text.body,
+    tr("ضمن مرتفع في الرضا.", "Within High for Satisfaction."),
+  );
+  // The unfinished rule is not evaluated, and says why, where.
+  assert.deepEqual([...new Set(tested.skipped.map((i) => i.code))].sort(), [
+    "IMPOSSIBLE_CONDITION",
+    "RANGE",
+  ]);
+  assert.ok(
+    tested.skipped.every(
+      (i) => i.path === unfinished.id && i.location?.kind === "rule",
+    ),
+  );
+  // The same rules over a real release of five people whose company score is
+  // the test score: what fires for the company is what the test screen shows.
+  const release = buildReleasePlan(
+    releaseInput(
+      // Five different scores averaging 50: identical ones would be
+      // suppressed as homogeneous, since they would reveal every person.
+      ["40", "45", "50", "55", "60"].map((v) => respondent(DEPT_A, v)),
+      5,
+      d.recommendations.filter((r) => r.id !== unfinished.id),
+    ),
+  );
+  const published = selectRecommendations({
+    instrument: {
+      ...d,
+      recommendations: d.recommendations.filter((r) => r.id !== unfinished.id),
+    },
+    groups: release.groups,
+    metrics: release.metrics,
+    cells: release.cells,
+    companyGroupKey: release.companyGroupKey,
+  }).filter((r) => r.groupKey === release.companyGroupKey);
+  const comparable = (r: {
+    ruleKey: string;
+    metricKey: string;
+    severity: string;
+    text: { title: unknown; body: unknown; action: unknown };
+  }) => [
+    r.ruleKey,
+    r.metricKey,
+    r.severity,
+    r.text.title,
+    r.text.body,
+    r.text.action,
+  ];
+  assert.deepEqual(tested.fired.map(comparable), published.map(comparable));
+  // One real respondent would publish nothing at all: below the threshold.
+  assert.throws(
+    () => buildReleasePlan(releaseInput([respondent(DEPT_A, "50")], 5, [low])),
+    /BELOW_THRESHOLD/,
+  );
+});
+test("draft scoring still refuses unsafe documents, foreign answers and a substituted engine", () => {
+  const d = scoringFixture(2);
+  d.sections[0].questions.push(structuredClone(d.sections[0].questions[0]));
+  assert.throws(
+    () => scoreDraft(d, {}, pin),
+    (e: unknown) =>
+      e instanceof ScoringError &&
+      e.issues.some((i) => i.code === "DUPLICATE_KEY"),
+  );
+  const ok = scoringFixture(2);
+  assert.throws(
+    () => scoreDraft(ok, { [newIdentity().id]: "3" }, pin),
+    (e: unknown) =>
+      e instanceof ScoringError && e.issues[0].code === "UNKNOWN_ANSWER",
+  );
+  assert.throws(
+    () => scoreDraft(ok, {}, { ...pin, engineVersion: "9.9.9" }),
+    (e: unknown) =>
+      e instanceof ScoringError && e.issues[0].code === "UNSUPPORTED_VERSION",
+  );
+  assert.throws(
+    () => scoreDraft({ ...ok, branch: [] }, {}, pin),
+    (e: unknown) =>
+      e instanceof ScoringError && e.issues[0].code === "DEFINITION_FORMAT",
+  );
 });

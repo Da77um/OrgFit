@@ -17,6 +17,7 @@ import {
   parseInstreamReply,
 } from "../src/malware-engine";
 import {
+  DATABASE_CUSTODY_RISK_ACCEPTANCE,
   REHEARSAL_ACKNOWLEDGEMENT,
   custodyProvider,
   custodyProviderName,
@@ -304,6 +305,90 @@ test("[policy] AP-7 key custody: an explicit provider, refused in production, de
     const reopened = await provider.openCampaignKey(key.keyReference);
     assert.deepEqual(Buffer.from(reopened.publicKey), key.publicKey);
     reopened.privateKey.fill(0);
+  } finally {
+    setCustodianSecret(undefined);
+    process.env = saved;
+  }
+});
+
+// D-180: the owner's choice for hosting. Accepted in production only with the
+// written acceptance of what it gives up; preflight always says so; the
+// evidence never claims erasure; and a process without the secret cannot open.
+test("[policy] AP-7b database-sealed custody: accepted only with the risk acknowledged, one-way, never called erasure", async () => {
+  const production = { NODE_ENV: "production", CAMPAIGN_KEY_CUSTODY_PROVIDER: "database-sealed" };
+  assert.equal(code(() => custodyProviderName(production)), "KEY_CUSTODY_RISK_NOT_ACCEPTED");
+  assert.equal(
+    code(() => custodyProviderName({ ...production, CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK: "yes" })),
+    "KEY_CUSTODY_RISK_NOT_ACCEPTED",
+  );
+  const accepted = { ...production, CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK: DATABASE_CUSTODY_RISK_ACCEPTANCE };
+  assert.equal(custodyProviderName(accepted), "database-sealed");
+  assert.equal(custodyProviderName({ NODE_ENV: "development", CAMPAIGN_KEY_CUSTODY_PROVIDER: "database-sealed" }), "database-sealed");
+  // The development stand-in is still refused in production, and the rehearsal
+  // acknowledgement does not stand in for this one.
+  assert.equal(
+    code(() => custodyProviderName({ ...production, CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY: REHEARSAL_ACKNOWLEDGEMENT })),
+    "KEY_CUSTODY_RISK_NOT_ACCEPTED",
+  );
+  assert.equal(
+    code(() => custodyProviderName({ NODE_ENV: "production", CAMPAIGN_KEY_CUSTODY_PROVIDER: "development-file", CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK: DATABASE_CUSTODY_RISK_ACCEPTANCE })),
+    "KEY_CUSTODY_DEVELOPMENT_IN_PRODUCTION",
+  );
+  // Preflight: FAIL without the acceptance, WARN (never PASS) with it, and no
+  // custody directory is needed.
+  const manifest = loadManifest();
+  for (const processName of ["staff", "processor"]) {
+    const refused = checkEnvironment(processName, production, { production: true, manifest });
+    assert.equal(refused.find((f) => f.check === "key-custody")?.outcome, "FAIL", processName);
+    const findings = checkEnvironment(processName, accepted, { production: true, manifest });
+    const custody = findings.find((f) => f.check === "key-custody");
+    assert.equal(custody?.outcome, "WARN", processName);
+    assert.match(custody?.detail ?? "", /no crypto-erasure/);
+    assert.equal(findings.find((f) => f.check === "custody-directory"), undefined, processName);
+    assert.doesNotMatch(
+      findings.find((f) => f.check === "required")?.detail ?? "",
+      /CAMPAIGN_KEY_CUSTODY_DIRECTORY/,
+      processName,
+    );
+  }
+  // The file stand-in still needs its directory.
+  const file = checkEnvironment("processor", { NODE_ENV: "development" }, { production: false, manifest });
+  assert.equal(file.find((f) => f.check === "custody-directory")?.outcome, "FAIL");
+
+  const pair = await generateCustodianKeypair();
+  const saved = { ...process.env };
+  Object.assign(process.env, {
+    NODE_ENV: "test",
+    CAMPAIGN_KEY_CUSTODY_PROVIDER: "database-sealed",
+    CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY: pair.publicKey,
+  });
+  delete process.env.CAMPAIGN_KEY_CUSTODY_DIRECTORY;
+  try {
+    const provider = custodyProvider();
+    assert.equal(provider.name, "database-sealed");
+    assert.equal(provider.managed, false);
+    const key = await provider.createCampaignKey();
+    assert.match(key.keyReference, /^ck_[0-9a-f]{32}$/);
+    assert.equal(key.sealedPrivateKey?.length, 80);
+    // The launch side holds no secret and cannot open what it sealed.
+    setCustodianSecret(undefined);
+    await assert.rejects(provider.openCampaignKey(key.keyReference, key.sealedPrivateKey));
+    // The processor side can, and gets the matching key pair.
+    setCustodianSecret(pair.secretKey);
+    const opened = await provider.openCampaignKey(key.keyReference, key.sealedPrivateKey);
+    assert.deepEqual(Buffer.from(opened.publicKey), key.publicKey);
+    opened.privateKey.fill(0);
+    await assert.rejects(provider.openCampaignKey(key.keyReference));
+    const evidence = await provider.destroyCampaignKey(key.keyReference);
+    assert.equal(evidence.outcome, "DATABASE_COPY_CLEARED");
+    assert.equal(evidence.cryptoErasure, false);
+    assert.equal(evidence.backupCopiesMayExist, true);
+    assert.match(evidence.summary, /not crypto-erasure/);
+    // Not erasure, demonstrated: a copy taken before destruction (a backup)
+    // plus the custodian secret still opens the key.
+    const fromBackup = await provider.openCampaignKey(key.keyReference, key.sealedPrivateKey);
+    assert.deepEqual(Buffer.from(fromBackup.publicKey), key.publicKey);
+    fromBackup.privateKey.fill(0);
   } finally {
     setCustodianSecret(undefined);
     process.env = saved;

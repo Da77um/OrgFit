@@ -37,7 +37,7 @@ export const DISCLOSURE_VERSION = "1.0.0" as const;
 // is a configured composite rather than a declared dimension.
 export const OVERALL_DEFINITION_KEY = "00000000-0000-0000-0000-000000000000";
 export const OVERALL_METRIC_KEY = "overall";
-const OVERALL_LABEL: Translation = {
+export const OVERALL_LABEL: Translation = {
   ar: "النتيجة العامة",
   en: "Overall score",
 };

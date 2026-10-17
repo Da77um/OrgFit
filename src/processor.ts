@@ -259,8 +259,21 @@ export async function processCampaign(
     const keys = new Map<string, Awaited<ReturnType<typeof openCampaignKey>>>();
     let rows: AnonymousRow[];
     try {
+      // Sealed copies kept in the database (D-180) arrive for this batch only;
+      // with the file provider this is empty and the provider reads its own.
+      const sealed = await one<Record<string, string>>(
+        core,
+        "SELECT intake.batch_sealed_keys($1,$2) AS data",
+        [batch.batchId, lease],
+      );
       for (const reference of new Set(payload.envelopes.map((e) => e.keyReference)))
-        keys.set(reference, await openCampaignKey(reference));
+        keys.set(
+          reference,
+          await openCampaignKey(
+            reference,
+            sealed[reference] ? Buffer.from(sealed[reference], "base64") : undefined,
+          ),
+        );
       rows = await transform(payload, document, keys);
       await fault("afterDecrypt");
     } finally {

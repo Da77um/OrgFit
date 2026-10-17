@@ -1,6 +1,6 @@
 # Campaign key custody — provider interface and integration plan
 
-2026-09-15, Post-Audit Repair Pass 4 (D-158). **No managed key custody provider has been selected (P-003 open), so none is integrated.** This document records what exists, what production refuses, and exactly what a real custody adapter must do and prove. It changes nothing in the privacy protocol ([privacy-protocol.md](privacy-protocol.md) §4–5) or the service separation it depends on.
+2026-09-15, Post-Audit Repair Pass 4 (D-158). **No managed key custody provider has been selected (P-003 open), so none is integrated.** **2026-10-17 (D-180): for hosting, the owner chose `database-sealed`: the same sealed key, kept in the core database, accepted without crypto-erasure. Options and costs: [key-custody-vercel-proposal.md](key-custody-vercel-proposal.md).** This document records what exists, what production refuses, and exactly what a real custody adapter must do and prove. It changes nothing in the privacy protocol ([privacy-protocol.md](privacy-protocol.md) §4–5) or the service separation it depends on.
 
 ## 1. What exists today
 
@@ -8,7 +8,7 @@
 |---|---|
 | Protocol | Per-campaign libsodium sealed-box key pair (IN1). Staff launch holds only the custodian public key; only the processor can open a campaign private key. Unchanged. |
 | Provider interface | `CustodyProvider` in `src/key-custody.ts`: `createCampaignKey`, `openCampaignKey`, `destroyCampaignKey` → `DestructionEvidence` |
-| Implemented providers | **`development-file` only.** Sealed key files in a directory; destruction unlinks the file. |
+| Implemented providers | **`development-file`**: sealed key files in a directory; destruction unlinks the file. **`database-sealed`** (D-180): the sealed key in `intake.campaign_key.sealed_private_key` (migration 026), written by the staff launch, readable only by the processor for a batch it holds the lease on, cleared when the key leaves DECRYPT_ONLY. Not managed custody; no crypto-erasure. |
 | Configuration | `CAMPAIGN_KEY_CUSTODY_PROVIDER`. Unset outside production = `development-file`. |
 | Production at runtime | Unset → `KEY_CUSTODY_PROVIDER_REQUIRED`; `development-file` → `KEY_CUSTODY_DEVELOPMENT_IN_PRODUCTION`; any other name → `KEY_CUSTODY_PROVIDER_UNSUPPORTED`. Staff launch and the processor both refuse before any key is created or opened. The only exception is `CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY=development-file-is-not-managed-custody`, used by the local TLS release rehearsal. |
 | Production at preflight | `key-custody` **FAIL** for staff and processor, always, until a managed adapter exists; the rehearsal acknowledgement is itself a FAIL (`key-custody-rehearsal`). No deployment environment passes preflight today. |

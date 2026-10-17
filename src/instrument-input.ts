@@ -433,29 +433,61 @@ export function locateIssue(d: Instrument, path: string): IssueLocation | undefi
     return { kind: "rule", id: head, rule: { n: ri + 1, title: d.recommendations[ri].title }, ...at };
   return undefined;
 }
+// Two tiers. The publication tier is every check below, and nothing publishes
+// without passing all of it here and in PostgreSQL (006/007). The save tier
+// is the small part a DRAFT must already satisfy: what makes the document
+// unsafe or unrepresentable, or what the relational write would refuse.
+// Everything else (unscored options, unchosen dimensions, half-built bands,
+// unfinished rules, missing translations) is ordinary work in progress: it
+// saves, and the editor lists it as what is left before publishing.
+type Tiered = DefinitionIssue & { blocksSave?: true };
+function located(d: Instrument, issues: Tiered[]): DefinitionIssue[] {
+  return issues.map(({ path, code }) => {
+    const location = locateIssue(d, path);
+    return location ? { path, code, location } : { path, code };
+  });
+}
+/** Everything that stands between this document and publication. */
 export function definitionIssues(
   d: Instrument,
   publish = false,
 ): DefinitionIssue[] {
-  return [...structureIssues(d, publish), ...ruleIssues(d, publish), ...scoringDefinitionIssues(d)].map(
-    (issue) => {
-      const location = locateIssue(d, issue.path);
-      return location ? { ...issue, location } : issue;
-    },
+  return located(d, [
+    ...structureIssues(d, publish),
+    ...ruleChecks(d, publish),
+    ...scoringDefinitionIssues(d),
+  ]);
+}
+/** What stops a draft from being saved at all. Always a subset of
+ *  `definitionIssues(d, true)`; the schema itself is checked separately. */
+export function saveIssues(d: Instrument): DefinitionIssue[] {
+  return located(
+    d,
+    [...structureIssues(d, false), ...ruleChecks(d, false)].filter((i) => i.blocksSave),
   );
 }
-function structureIssues(d: Instrument, publish: boolean): DefinitionIssue[] {
-  const errors: DefinitionIssue[] = [],
-    add = (path: string, code: string) => errors.push({ path, code });
+// PostgreSQL's trim() removes spaces only, so the publication trigger treats
+// an optional field holding just a line break, a tab or a no-break space as
+// written, and then requires it in every language. "Written" is decided the
+// same way here; otherwise a document that passes this check is refused there
+// with no explanation. Emptiness inside a language stays JavaScript's trim(),
+// which is the stricter of the two.
+const written = (v: string) => v.replace(/^ +| +$/g, "").length > 0;
+function structureIssues(d: Instrument, publish: boolean): Tiered[] {
+  const errors: Tiered[] = [],
+    add = (path: string, code: string) => errors.push({ path, code }),
+    // Refused on save as well: unsafe, unrepresentable, or refused by the
+    // relational write (foreign keys, unique keys).
+    block = (path: string, code: string) => errors.push({ path, code, blocksSave: true });
   const ids = new Set<string>(),
     keys = new Set<string>();
   const unique = (v: { id: string; key: string }, path: string) => {
-    if (ids.has(v.id) || keys.has(v.key)) add(path, "DUPLICATE_KEY");
+    if (ids.has(v.id) || keys.has(v.key)) block(path, "DUPLICATE_KEY");
     ids.add(v.id);
     keys.add(v.key);
   };
   const translated = (v: Translation, path: string, required = true) => {
-    if (publish && (required || v.ar.trim() || v.en.trim()))
+    if (publish && (required || written(v.ar) || written(v.en)))
       for (const l of d.locales)
         if (!v[l].trim()) add(path + "." + l, "TRANSLATION_REQUIRED");
   };
@@ -472,7 +504,7 @@ function structureIssues(d: Instrument, publish: boolean): DefinitionIssue[] {
   // Two situations, two codes: nothing to answer yet (a publish-time
   // instruction) and more answer items than a questionnaire may hold.
   if (publish && answerItems === 0) add("sections", "NO_QUESTIONS");
-  if (answerItems > 200) add("sections", "QUESTION_COUNT");
+  if (answerItems > 200) block("sections", "QUESTION_COUNT");
   for (const s of d.sections) {
     unique(s, s.id);
     translated(s.title, s.id);
@@ -500,12 +532,12 @@ function structureIssues(d: Instrument, publish: boolean): DefinitionIssue[] {
                 ? ["minDate", "maxDate"]
                 : [];
       if (Object.keys(v).some((k) => !allowed.includes(k)))
-        add(q.id, "TYPE_CONFIG");
+        block(q.id, "TYPE_CONFIG");
       if (
         (!choice && q.options.length) ||
         (!matrix && (q.rows.length || q.columns.length))
       )
-        add(q.id, "TYPE_CONFIG");
+        block(q.id, "TYPE_CONFIG");
       if (
         publish &&
         ((choice && q.options.length < 2) ||
@@ -542,9 +574,10 @@ function structureIssues(d: Instrument, publish: boolean): DefinitionIssue[] {
         q.type === "CONTENT" &&
         (q.required || q.dimensionId || q.scoring.enabled)
       )
-        add(q.id, "CONTENT_UNSCORED");
+        block(q.id, "CONTENT_UNSCORED");
+      // A foreign key in PostgreSQL (question.dimension_id).
       if (q.dimensionId && !d.dimensions.some((x) => x.id === q.dimensionId))
-        add(q.id, "REFERENCE");
+        block(q.id, "REFERENCE");
       if (
         !q.scoring.enabled &&
         (q.dimensionId || q.scoring.reverse || q.scoring.mode !== "VALUE")
@@ -637,8 +670,12 @@ function structureIssues(d: Instrument, publish: boolean): DefinitionIssue[] {
 // deterministically is a defect at edit time, not a surprise months later when
 // a release is generated and nothing appears.
 export function ruleIssues(d: Instrument, publish = false): DefinitionIssue[] {
-  const errors: DefinitionIssue[] = [],
-    add = (path: string, code: string) => errors.push({ path, code });
+  return ruleChecks(d, publish).map(({ path, code }) => ({ path, code }));
+}
+function ruleChecks(d: Instrument, publish: boolean): Tiered[] {
+  const errors: Tiered[] = [],
+    add = (path: string, code: string) => errors.push({ path, code }),
+    block = (path: string, code: string) => errors.push({ path, code, blocksSave: true });
   const seen = new Set<string>();
   const known = (ref: MetricRef) =>
     ref.kind === "OVERALL"
@@ -662,10 +699,14 @@ export function ruleIssues(d: Instrument, publish = false): DefinitionIssue[] {
             ? [Number(c.value), 101]
             : [Number(c.value), Number(c.upper ?? c.value)];
   for (const rule of d.recommendations) {
-    if (seen.has(rule.id) || seen.has(rule.key)) add(rule.id, "DUPLICATE_KEY");
+    if (seen.has(rule.id) || seen.has(rule.key)) block(rule.id, "DUPLICATE_KEY");
     seen.add(rule.id);
     seen.add(rule.key);
-    if (!known(rule.target)) add(rule.id, "REFERENCE");
+    // A dimension target is a foreign key in PostgreSQL (recommendation_rule
+    // .dimension_id); an overall target and the comparisons are not, and only
+    // publication refuses them.
+    if (!known(rule.target))
+      (rule.target.kind === "DIMENSION" ? block : add)(rule.id, "REFERENCE");
     const comparisons = rule.condition.clauses.flatMap((c) => c.comparisons);
     if (comparisons.length > MAX_RULE_COMPARISONS) add(rule.id, "RULE_TOO_LARGE");
     for (const c of comparisons) {

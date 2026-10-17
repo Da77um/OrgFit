@@ -476,6 +476,92 @@ test("Arabic publish checklist names the section, question and language and focu
   await entry.getByRole("link", { name: "انتقل إلى الحقل" }).click();
   await expect(page.getByLabel("السؤال / المحتوى — العربية")).toBeFocused();
 });
+// Cause 1 of the questionnaire pipeline repair: scoring is built one control
+// at a time, and every state in between used to be refused before it was
+// sent, so the draft never saved and Validate/Publish never enabled. Each
+// step must save; the checklist says what is left; publication succeeds only
+// once it is complete.
+test("Arabic scored question built step by step saves after every step and publishes once complete", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/questionnaires");
+  await page.getByRole("button", { name: "إنشاء استبيان فارغ" }).click();
+  await page
+    .getByLabel("عنوان الاستبيان — العربية", { exact: true })
+    .fill("استبيان مقاس خطوة بخطوة");
+  await page.getByRole("button", { name: "إنشاء", exact: true }).click();
+  await expect(page).toHaveURL(/versions/);
+  const publish = page.getByRole("button", { name: "نشر النسخة وتثبيتها" });
+  const checklist = page.getByTestId("questionnaire-checklist");
+  // Saved: the status says so, nothing is pending and publication is open.
+  const saved = async (step: string) => {
+    await expect(page.getByText("تم الحفظ.", { exact: true }), step).toBeVisible();
+    await expect(page.getByTestId("publish-gate"), step).toHaveCount(0);
+    await expect(publish, step).toBeEnabled();
+  };
+  const tab = (name: string) => page.getByRole("button", { name, exact: true }).click();
+  // By accessible name: a wrapping label's text also holds the textarea's
+  // current text, so label matching shifts as options are filled in.
+  const optionText = page.getByRole("textbox", { name: "النص — العربية", exact: true });
+  await page.getByLabel("إشعار الخصوصية — العربية").fill("إشعار تجريبي فقط.");
+  await page.getByRole("button", { name: "إضافة قسم", exact: true }).click();
+  await page.getByLabel("عنوان القسم — العربية").fill("الدعم");
+  await page.getByLabel("نوع السؤال الجديد").selectOption("MULTIPLE_CHOICE");
+  await page.getByRole("button", { name: "إضافة سؤال", exact: true }).click();
+  await page.getByLabel("السؤال / المحتوى — العربية").fill("كيف تقيّم الدعم؟");
+  await optionText.nth(0).fill("ضعيف");
+  await optionText.nth(1).fill("مقبول");
+  await saved("an unscored question");
+
+  await tab("الأبعاد والتفسير");
+  await page.getByRole("button", { name: "إضافة بعد", exact: true }).click();
+  await saved("a dimension without a name or a scored question");
+  await expect(checklist).toContainText("تُحفظ المسودة كما هي");
+  await expect(checklist).toContainText("مرجع مفقود أو بعد بلا أسئلة مقاسة.");
+
+  await tab("بناء الاستبيان");
+  await page.getByRole("button", { name: "إضافة عنصر", exact: true }).click();
+  await saved("an option without a label or a score");
+  await page.getByLabel("إدراج في القياس").check();
+  await saved("scored, no dimension chosen");
+  await expect(checklist).toContainText("نوع السؤال غير متوافق مع إعداد القياس.");
+  await expect(checklist.locator("[data-blocks-save]")).toHaveCount(0);
+  await page.getByLabel("البعد الأساسي").selectOption({ label: "بعد دون اسم" });
+  await saved("a dimension chosen, the new option still unscored");
+  await expect(checklist).toContainText("يلزم نطاق قياس معلوم وغير ثابت.");
+  await page.getByLabel("قيمة الخيار للقياس (فارغ لغير المقاس)").nth(2).fill("2");
+  await saved("the new option scored");
+
+  await tab("الأبعاد والتفسير");
+  await page.getByRole("button", { name: "إضافة نطاق", exact: true }).click();
+  await saved("one band, no label");
+  await page.getByRole("button", { name: "إضافة نطاق", exact: true }).click();
+  await saved("a second band, 100 to 100");
+  await expect(checklist).toContainText("النطاقات يجب أن تغطي ٠–١٠٠ بالترتيب بلا فجوات.");
+  await page.getByLabel("إلى", { exact: true }).nth(0).fill("50");
+  await saved("a gap from 50 to 100");
+  await page.getByLabel("من (شامل)", { exact: true }).nth(1).fill("50");
+  const bandLabel = page.getByRole("textbox", { name: "تسمية النطاق — العربية", exact: true });
+  await bandLabel.nth(0).fill("منخفض");
+  await bandLabel.nth(1).fill("مرتفع");
+  await saved("bands complete");
+  // Still incomplete: publication is refused and the checklist names why.
+  await publish.click();
+  await expect(page.getByRole("alert").filter({ hasText: "قائمة التحقق" })).toContainText(
+    "البعد 1 — العربية: أكمل النص في هذه اللغة.",
+  );
+  await expect(page.getByRole("heading", { name: /منشور وثابت/ })).toHaveCount(0);
+  await page.getByLabel("اسم البعد — العربية").fill("الدعم");
+  await tab("بناء الاستبيان");
+  await optionText.nth(2).fill("ممتاز");
+  await saved("complete");
+  await expect(checklist).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel("إدراج في القياس")).toBeChecked();
+  await publish.click();
+  await expect(page.getByRole("heading", { name: /منشور وثابت/ })).toBeVisible();
+});
 // Archive is reachable from the library list. It asks first, says nothing is
 // deleted, and the questionnaire moves to the archived filter unchanged.
 test("Arabic library list archives a custom questionnaire after confirmation", async ({

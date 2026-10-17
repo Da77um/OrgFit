@@ -7,6 +7,7 @@ import { response } from "./http";
 import {
   instrumentSchema,
   definitionIssues,
+  saveIssues,
   blankInstrument,
   copyInstrument,
   type Instrument,
@@ -211,7 +212,9 @@ export async function saveInstrument(
   const d = args.document;
   if (d) {
     instrumentSchema.parse(d);
-    if (definitionIssues(d, args.action === "PUBLISH").length)
+    // A draft saves while incomplete; publication requires everything, and
+    // PostgreSQL checks it again (006/007) when the state changes.
+    if ((args.action === "PUBLISH" ? definitionIssues(d, true) : saveIssues(d)).length)
       throw new AppError("VALIDATION_FAILED", 422);
   }
   const result = await sql<{

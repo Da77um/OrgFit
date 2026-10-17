@@ -603,6 +603,75 @@ test("PostgreSQL privacy processing: anonymous batch, faults and forbidden field
       assert.equal(orphans.rows[0].n, 0);
     });
 
+    // D-180: the sealed key kept in the core database, as on Vercel.
+    await t.test(
+      "database-sealed custody: staff writes a sealed key it cannot read back, only the processor opens it, cleanup clears it",
+      async () => {
+        const saved = process.env.CAMPAIGN_KEY_CUSTODY_PROVIDER;
+        process.env.CAMPAIGN_KEY_CUSTODY_PROVIDER = "database-sealed";
+        const files = async () =>
+          (await readdir(process.env.CAMPAIGN_KEY_CUSTODY_DIRECTORY!).catch(() => [])).length;
+        const before = await files();
+        try {
+          const { campaignId: id } = await f.launchedCampaign(f.people);
+          assert.equal(await files(), before, "no custody file is written");
+          const stored = await f.operator.query(
+            "select octet_length(sealed_private_key) n,state from intake.campaign_key where campaign_id=$1",
+            [id],
+          );
+          assert.deepEqual(stored.rows, [{ n: 80, state: "ACTIVE" }]);
+          // The staff credential cannot name the table, and the gateway's
+          // routine hands out the public key only.
+          const staffDb = new pg.Client({ connectionString: f.fixture.url("orgfit_staff") });
+          await staffDb.connect();
+          try {
+            await assert.rejects(
+              staffDb.query("select sealed_private_key from intake.campaign_key"),
+              /permission denied/,
+            );
+            await assert.rejects(
+              staffDb.query("select intake.batch_sealed_keys($1,$2)", [randomUUID(), 1]),
+              /permission denied/,
+            );
+          } finally {
+            await staffDb.end();
+          }
+          // The processor's routine is batch-scoped and lease-checked.
+          await assert.rejects(
+            core.query("select intake.batch_sealed_keys($1,$2)", [randomUUID(), 1]),
+            /NOT_FOUND/,
+          );
+          const links = await f.issueLinks(id);
+          await submitAll(links);
+          await f.closeCampaign(id);
+          const outcome = await processCampaign(core, anon, id);
+          assert.equal(outcome.state, "CLEANED");
+          const responses = await anon.query(
+            "select count(*)::int n from anonymous.anonymous_response where campaign_id=$1",
+            [id],
+          );
+          assert.equal(responses.rows[0].n, 7, "every response was decrypted and stored");
+          const after = await f.operator.query(
+            "select sealed_private_key,state,destruction_evidence from intake.campaign_key where campaign_id=$1",
+            [id],
+          );
+          assert.equal(after.rows[0].sealed_private_key, null, "the live copy is cleared");
+          assert.equal(after.rows[0].state, "DESTROYED");
+          assert.match(after.rows[0].destruction_evidence, /database-sealed custody.*not crypto-erasure/);
+          // A cleared key can never be given a sealed copy again.
+          await assert.rejects(
+            f.operator.query(
+              "update intake.campaign_key set sealed_private_key=$2 where campaign_id=$1",
+              [id, Buffer.alloc(80, 1)],
+            ),
+          );
+        } finally {
+          if (saved === undefined) delete process.env.CAMPAIGN_KEY_CUSTODY_PROVIDER;
+          else process.env.CAMPAIGN_KEY_CUSTODY_PROVIDER = saved;
+        }
+      },
+    );
+
     await t.test("the shuffle is a real permutation over a cryptographic RNG", () => {
       const source = Array.from({ length: 200 }, (_, i) => i);
       const shuffled = shuffle([...source]);

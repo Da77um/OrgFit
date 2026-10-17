@@ -251,9 +251,16 @@ export async function launchCampaign(
   // the private half is written by the custody service and is not returned.
   // If custody fails, this throws and the whole launch transaction rolls back.
   const key = await createCampaignKey();
-  await sql`select core.register_campaign_key(${org}::uuid,${id}::uuid,${key.keyReference},${key.publicKey})`.execute(
-    tx,
-  );
+  // database-sealed custody (D-180) stores the SEALED private key in the same
+  // transaction; this process can write it and never read it back.
+  if (key.sealedPrivateKey)
+    await sql`select core.register_campaign_key(${org}::uuid,${id}::uuid,${key.keyReference},${key.publicKey},${key.sealedPrivateKey})`.execute(
+      tx,
+    );
+  else
+    await sql`select core.register_campaign_key(${org}::uuid,${id}::uuid,${key.keyReference},${key.publicKey})`.execute(
+      tx,
+    );
   return campaignDetail(tx, org, id);
 }
 export async function campaignTransition(

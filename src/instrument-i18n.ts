@@ -35,6 +35,13 @@ const ar = {
     IMPOSSIBLE_CONDITION: "لا يمكن لأي درجة أن تحقق شروط هذه القاعدة معاً؛ راجع المقارنات.",
     UNKNOWN_PLACEHOLDER: "استخدم فقط {score} و{band} و{metric} و{group} في النص.",
     EXCLUSIVITY_PRIORITY: "قاعدتان في مجموعة الاستبعاد نفسها لهما الأولوية نفسها؛ غيّر إحداهما.",
+    // Test scoring (scoreDraft / scoreInstrument) rather than the definition.
+    INPUT_INCOMPLETE: "أكمل إعداد هذا البعد أولاً؛ الدرجة الكلية تحتاج كل أبعادها.",
+    ANSWER_FORMAT: "صيغة الإجابات التجريبية غير صالحة.",
+    ANSWER_RANGE: "إجابة تجريبية خارج ما يسمح به هذا السؤال؛ غيّرها ثم أعد الحساب.",
+    UNKNOWN_ANSWER: "إجابة تجريبية لسؤال لم يعد موجوداً؛ امسح التجربة ثم أعد التعبئة.",
+    DEFINITION_FORMAT: "بعض الحقول غير صالحة؛ تحقق من الأرقام والنصوص.",
+    UNSUPPORTED_VERSION: "إصدار محرك الحساب غير مدعوم لهذه النسخة.",
   },
   otherIssue: "راجع الحقل المشار إليه.",
   // Where it is.
@@ -62,6 +69,16 @@ const ar = {
   instrumentTitle: "عنوان الاستبيان",
   languages: { ar: "العربية", en: "English" },
   goTo: "انتقل إلى الحقل",
+  // The checklist while editing: what is left before publishing, and the
+  // few entries that stop the draft from being saved at all.
+  checklist: "قائمة التحقق",
+  remaining: "تُحفظ المسودة كما هي. هذا ما بقي قبل أن يمكن نشرها.",
+  blockingLead: "لا تُحفظ المسودة حتى تُصلح البنود المعلَّمة «تمنع الحفظ».",
+  blocksSave: "تمنع الحفظ",
+  saveBlocked: "لم تُحفظ المسودة: أصلح البنود المعلَّمة «تمنع الحفظ» في قائمة التحقق.",
+  // PostgreSQL refused a publication the checklist allowed. Nothing changed.
+  databaseRefused:
+    "رفضت قاعدة البيانات نشر هذه النسخة رغم خلوّ قائمة التحقق. لم يُنشر شيء وما زالت المسودة محفوظة كما هي. أعد تحميل الصفحة ثم اضغط «التحقق للنشر»؛ وإن تكرر الرفض فأبلغ فريق التطوير باسم الاستبيان ورقم النسخة.",
 };
 const en: typeof ar = {
   issues: {
@@ -96,6 +113,12 @@ const en: typeof ar = {
     UNKNOWN_PLACEHOLDER: "Use only {score}, {band}, {metric} and {group} in the text.",
     EXCLUSIVITY_PRIORITY:
       "Two rules in the same exclusivity group share a priority; change one of them.",
+    INPUT_INCOMPLETE: "Complete this dimension first; the overall score needs all of its dimensions.",
+    ANSWER_FORMAT: "The test answers are not in a valid format.",
+    ANSWER_RANGE: "A test answer is outside what this question allows; change it and calculate again.",
+    UNKNOWN_ANSWER: "A test answer belongs to a question that no longer exists; clear the preview and fill it again.",
+    DEFINITION_FORMAT: "Some fields are invalid; check numbers and text.",
+    UNSUPPORTED_VERSION: "This version's scoring engine is not supported.",
   },
   otherIssue: "Review the referenced field.",
   section: "Section {n}",
@@ -122,6 +145,13 @@ const en: typeof ar = {
   instrumentTitle: "Questionnaire title",
   languages: { ar: "العربية", en: "English" },
   goTo: "Go to field",
+  checklist: "Validation checklist",
+  remaining: "The draft saves as it is. This is what is left before it can be published.",
+  blockingLead: "The draft is not saved until the items marked “Blocks saving” are fixed.",
+  blocksSave: "Blocks saving",
+  saveBlocked: "The draft was not saved: fix the items marked “Blocks saving” in the checklist.",
+  databaseRefused:
+    "The database refused to publish this version although the checklist is empty. Nothing was published and the draft is still saved as it was. Reload the page, then press “Validate for publication”; if it is refused again, report the questionnaire name and version number to the development team.",
 };
 export const instrumentMessages = (locale: Locale) => (locale === "en" ? en : ar);
 

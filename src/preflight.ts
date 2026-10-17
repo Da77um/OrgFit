@@ -123,8 +123,17 @@ export function checkEnvironment(
     // The rehearsal acknowledgement is ignored here on purpose: no deployment
     // passes preflight with development custody (P-003, SEC-H1).
     const code = refusal(() => custodyProviderName({ ...env, CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY: undefined }));
-    if (code) add("key-custody", "FAIL", `${code}: no managed key custody provider is integrated (P-003); the file-directory stand-in has no crypto-erasure`);
-    else add("key-custody", "WARN", "file-directory stand-in custody: not managed custody, no crypto-erasure (development only)");
+    if (code === "KEY_CUSTODY_RISK_NOT_ACCEPTED")
+      add("key-custody", "FAIL", `${code}: database-sealed custody needs CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK, the owner's acceptance that there is no crypto-erasure (D-180)`);
+    else if (code) add("key-custody", "FAIL", `${code}: no managed key custody provider is integrated (P-003); the file-directory stand-in has no crypto-erasure`);
+    // The owner's accepted choice (D-180) is reported every time, never as PASS.
+    else if (env.CAMPAIGN_KEY_CUSTODY_PROVIDER === "database-sealed")
+      add("key-custody", "WARN", "database-sealed custody, accepted by the owner (D-180): staff cannot read keys back and only the processor can open them, but there is no crypto-erasure; database backups, WAL and replicas keep sealed keys for their retention");
+    else {
+      add("key-custody", "WARN", "file-directory stand-in custody: not managed custody, no crypto-erasure (development only)");
+      if (!present("CAMPAIGN_KEY_CUSTODY_DIRECTORY"))
+        add("custody-directory", "FAIL", "the file-directory stand-in needs CAMPAIGN_KEY_CUSTODY_DIRECTORY");
+    }
     if (options.production && present("CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY"))
       add("key-custody-rehearsal", "FAIL", "CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY is for a local release rehearsal and must never be in a deployment");
   }

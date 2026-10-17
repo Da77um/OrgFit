@@ -1,23 +1,49 @@
 "use client";
-import { useState } from "react";
-import type { Instrument, Question } from "../../../../src/instrument-input";
+import { useEffect, useState } from "react";
+import type {
+  DefinitionIssue,
+  Instrument,
+  Question,
+} from "../../../../src/instrument-input";
 import type { ScorePin } from "../../../../src/scoring";
 import { ScoringSandbox } from "./scoring-sandbox";
 import { syntheticBoundaryAnswers } from "../../../../src/scoring-synthetic";
+import {
+  submitTestAnswers,
+  type TestSubmission,
+} from "../../../../src/test-submission";
+import { IssueReasons } from "./issue-reasons";
+import { TestResult } from "./test-result";
 export function InstrumentPreview({
   document: d,
   pin,
+  onReveal,
 }: {
   document: Instrument;
   pin: ScorePin;
+  onReveal?: (issue: DefinitionIssue) => void;
 }) {
   const [locale, setLocale] = useState<"ar" | "en">("ar"),
     [narrow, setNarrow] = useState(false),
     [answers, setAnswers] = useState<Record<string, string | string[]>>({}),
-    [checked, setChecked] = useState(false);
+    [checked, setChecked] = useState(false),
+    // A test submission lives here, in this component's memory, like the
+    // answers: it is never sent or saved, and unmounting drops it.
+    [submission, setSubmission] = useState<TestSubmission | null>(null);
   const t = (ar: string, en: string) => (locale === "ar" ? ar : en);
-  const set = (id: string, value: string | string[]) =>
+  const set = (id: string, value: string | string[]) => {
     setAnswers((old) => ({ ...old, [id]: value }));
+    setSubmission(null);
+  };
+  const scored = submission?.status === "SCORED" ? submission : null;
+  useEffect(() => {
+    if (scored) document.getElementById("test-result-heading")?.focus();
+  }, [scored]);
+  const submitTest = () => {
+    const outcome = submitTestAnswers(d, answers, pin);
+    setSubmission(outcome);
+    if (outcome.status === "INCOMPLETE") setChecked(true);
+  };
   const fields = d.sections
     .flatMap((s) => s.questions)
     .filter((q) => q.type !== "CONTENT");
@@ -96,6 +122,7 @@ export function InstrumentPreview({
           onClick={() => {
             setAnswers({});
             setChecked(false);
+            setSubmission(null);
           }}
         >
           {t("مسح التجربة", "Clear preview")}
@@ -113,6 +140,7 @@ export function InstrumentPreview({
           onClick={() => {
             setAnswers(syntheticBoundaryAnswers(d, false));
             setChecked(false);
+            setSubmission(null);
           }}
         >
           {t("تعبئة أقل القيم التجريبية", "Fill lowest synthetic inputs")}
@@ -122,6 +150,7 @@ export function InstrumentPreview({
           onClick={() => {
             setAnswers(syntheticBoundaryAnswers(d, true));
             setChecked(false);
+            setSubmission(null);
           }}
         >
           {t("تعبئة أعلى القيم التجريبية", "Fill highest synthetic inputs")}
@@ -135,152 +164,205 @@ export function InstrumentPreview({
           {t("التقدم", "Progress")}: {fields.filter(completed).length} /{" "}
           {fields.length}
         </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setChecked(true);
-          }}
-        >
-          {d.sections.map((s) => (
-            <section key={s.id}>
-              <h3>{s.title[locale]}</h3>
-              <p>{s.content[locale]}</p>
-              {s.questions.map((q) =>
-                q.type === "CONTENT" ? (
-                  <div key={q.id}>
-                    <h4>{q.prompt[locale]}</h4>
-                    <p>{q.help[locale]}</p>
-                  </div>
-                ) : (
-                  <fieldset key={q.id}>
-                    <legend>
-                      {q.prompt[locale] ||
-                        t("سؤال دون نص", "Untitled question")}
-                      {q.required ? " *" : ""}
-                    </legend>
-                    <p className="muted">{q.help[locale]}</p>
-                    {q.type === "MATRIX" ? (
-                      q.rows.map((r) => (
-                        <fieldset key={r.id}>
-                          <legend>{r.label[locale]}</legend>
-                          {choice(q, r.id, q.columns)}
-                        </fieldset>
-                      ))
-                    ) : ["MULTIPLE_CHOICE", "CHECKBOXES", "YES_NO"].includes(
-                        q.type,
-                      ) ? (
-                      choice(q, q.id, q.options, q.type === "CHECKBOXES")
-                    ) : q.type === "DROPDOWN" ? (
-                      <select
-                        aria-label={q.prompt[locale]}
-                        required={q.required}
-                        value={(answers[q.id] as string) ?? ""}
-                        onChange={(e) => set(q.id, e.target.value)}
-                      >
-                        <option value="">{t("اختر", "Choose")}</option>
-                        {q.options.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.label[locale]}
-                          </option>
-                        ))}
-                      </select>
-                    ) : ["RATING_5", "RATING_10"].includes(q.type) ? (
-                      <select
-                        aria-label={q.prompt[locale]}
-                        required={q.required}
-                        value={(answers[q.id] as string) ?? ""}
-                        onChange={(e) => set(q.id, e.target.value)}
-                      >
-                        <option value="">{t("اختر", "Choose")}</option>
-                        {Array.from(
-                          { length: q.type === "RATING_5" ? 5 : 10 },
-                          (_, i) => (
-                            <option key={i} value={String(i + 1)}>
-                              {i + 1}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    ) : q.type === "LONG_TEXT" ? (
-                      <textarea
-                        aria-label={q.prompt[locale]}
-                        required={q.required}
-                        maxLength={q.validation.maxLength ?? 5000}
-                        value={(answers[q.id] as string) ?? ""}
-                        onChange={(e) => set(q.id, e.target.value)}
-                      />
+        {scored ? (
+          <TestResult
+            document={d}
+            result={scored.result}
+            recommendations={scored.recommendations}
+            locale={locale}
+            onBack={() => setSubmission(null)}
+            onReveal={onReveal}
+          />
+        ) : (
+          <>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setChecked(true);
+              }}
+            >
+              {d.sections.map((s) => (
+                <section key={s.id}>
+                  <h3>{s.title[locale]}</h3>
+                  <p>{s.content[locale]}</p>
+                  {s.questions.map((q) =>
+                    q.type === "CONTENT" ? (
+                      <div key={q.id}>
+                        <h4>{q.prompt[locale]}</h4>
+                        <p>{q.help[locale]}</p>
+                      </div>
                     ) : (
-                      <input
-                        aria-label={q.prompt[locale]}
-                        type={
-                          q.type === "NUMBER"
-                            ? "number"
-                            : q.type === "DATE"
-                              ? "date"
-                              : "text"
-                        }
-                        required={q.required}
-                        maxLength={q.validation.maxLength ?? 500}
-                        min={
-                          q.type === "DATE"
-                            ? q.validation.minDate
-                            : q.validation.min
-                        }
-                        max={
-                          q.type === "DATE"
-                            ? q.validation.maxDate
-                            : q.validation.max
-                        }
-                        step={
-                          q.type === "NUMBER"
-                            ? 10 ** -(q.validation.precision ?? 0)
-                            : undefined
-                        }
-                        value={(answers[q.id] as string) ?? ""}
-                        onChange={(e) => set(q.id, e.target.value)}
-                      />
-                    )}
-                    {checked && q.required && !completed(q) && (
-                      <p role="alert">
-                        {t("أكمل هذا السؤال.", "Complete this question.")}
-                      </p>
-                    )}
-                    {checked &&
-                      q.type === "CHECKBOXES" &&
-                      (((answers[q.id] as string[]) ?? []).length <
-                        (q.validation.minSelections ?? 0) ||
-                        ((answers[q.id] as string[]) ?? []).length >
-                          (q.validation.maxSelections ?? q.options.length)) && (
-                        <p role="alert">
-                          {t(
-                            "عدد الخيارات خارج النطاق المحدد.",
-                            "Selection count is outside the configured range.",
+                      <fieldset key={q.id}>
+                        <legend>
+                          {q.prompt[locale] ||
+                            t("سؤال دون نص", "Untitled question")}
+                          {q.required ? " *" : ""}
+                        </legend>
+                        <p className="muted">{q.help[locale]}</p>
+                        {q.type === "MATRIX" ? (
+                          q.rows.map((r) => (
+                            <fieldset key={r.id}>
+                              <legend>{r.label[locale]}</legend>
+                              {choice(q, r.id, q.columns)}
+                            </fieldset>
+                          ))
+                        ) : [
+                            "MULTIPLE_CHOICE",
+                            "CHECKBOXES",
+                            "YES_NO",
+                          ].includes(q.type) ? (
+                          choice(q, q.id, q.options, q.type === "CHECKBOXES")
+                        ) : q.type === "DROPDOWN" ? (
+                          <select
+                            aria-label={q.prompt[locale]}
+                            required={q.required}
+                            value={(answers[q.id] as string) ?? ""}
+                            onChange={(e) => set(q.id, e.target.value)}
+                          >
+                            <option value="">{t("اختر", "Choose")}</option>
+                            {q.options.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.label[locale]}
+                              </option>
+                            ))}
+                          </select>
+                        ) : ["RATING_5", "RATING_10"].includes(q.type) ? (
+                          <select
+                            aria-label={q.prompt[locale]}
+                            required={q.required}
+                            value={(answers[q.id] as string) ?? ""}
+                            onChange={(e) => set(q.id, e.target.value)}
+                          >
+                            <option value="">{t("اختر", "Choose")}</option>
+                            {Array.from(
+                              { length: q.type === "RATING_5" ? 5 : 10 },
+                              (_, i) => (
+                                <option key={i} value={String(i + 1)}>
+                                  {i + 1}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        ) : q.type === "LONG_TEXT" ? (
+                          <textarea
+                            aria-label={q.prompt[locale]}
+                            required={q.required}
+                            maxLength={q.validation.maxLength ?? 5000}
+                            value={(answers[q.id] as string) ?? ""}
+                            onChange={(e) => set(q.id, e.target.value)}
+                          />
+                        ) : (
+                          <input
+                            aria-label={q.prompt[locale]}
+                            type={
+                              q.type === "NUMBER"
+                                ? "number"
+                                : q.type === "DATE"
+                                  ? "date"
+                                  : "text"
+                            }
+                            required={q.required}
+                            maxLength={q.validation.maxLength ?? 500}
+                            min={
+                              q.type === "DATE"
+                                ? q.validation.minDate
+                                : q.validation.min
+                            }
+                            max={
+                              q.type === "DATE"
+                                ? q.validation.maxDate
+                                : q.validation.max
+                            }
+                            step={
+                              q.type === "NUMBER"
+                                ? 10 ** -(q.validation.precision ?? 0)
+                                : undefined
+                            }
+                            value={(answers[q.id] as string) ?? ""}
+                            onChange={(e) => set(q.id, e.target.value)}
+                          />
+                        )}
+                        {checked && q.required && !completed(q) && (
+                          <p role="alert">
+                            {t("أكمل هذا السؤال.", "Complete this question.")}
+                          </p>
+                        )}
+                        {checked &&
+                          q.type === "CHECKBOXES" &&
+                          (((answers[q.id] as string[]) ?? []).length <
+                            (q.validation.minSelections ?? 0) ||
+                            ((answers[q.id] as string[]) ?? []).length >
+                              (q.validation.maxSelections ??
+                                q.options.length)) && (
+                            <p role="alert">
+                              {t(
+                                "عدد الخيارات خارج النطاق المحدد.",
+                                "Selection count is outside the configured range.",
+                              )}
+                            </p>
                           )}
-                        </p>
-                      )}
-                  </fieldset>
-                ),
+                      </fieldset>
+                    ),
+                  )}
+                </section>
+              ))}
+              <div className="row">
+                <button type="submit">
+                  {t("التحقق من التجربة", "Check preview")}
+                </button>
+                <button type="button" onClick={submitTest}>
+                  {t("إرسال الإجابات التجريبية", "Submit test answers")}
+                </button>
+              </div>
+              <p className="muted">
+                {t(
+                  "الإرسال التجريبي يفحص الإجابات الإلزامية كما تُفحص إجابة المشارك، ثم يعرض الدرجات في هذه الصفحة فقط. لا يُرسل شيء ولا يُحفظ.",
+                  "Submitting test answers checks required answers as a respondent's are checked, then shows the scores on this page only. Nothing is sent or saved.",
+                )}
+              </p>
+              {submission?.status === "INCOMPLETE" && (
+                <p role="alert" data-testid="test-incomplete">
+                  {t(
+                    "أكمل الأسئلة الإلزامية قبل إرسال الإجابات التجريبية. عدد غير المكتمل:",
+                    "Complete the required questions before submitting test answers. Not yet answered:",
+                  )}{" "}
+                  <bdi>{submission.missingRequired.length}</bdi>
+                </p>
               )}
-            </section>
-          ))}
-          <button type="submit">
-            {t("التحقق من التجربة", "Check preview")}
-          </button>
-          {checked && (
-            <p role="status">
-              {t(
-                "تم فحص التجربة محلياً. لم تُرسل إجابات.",
-                "Preview checked locally. No answers were submitted.",
+              {submission?.status === "REFUSED" && (
+                <div role="alert" data-testid="test-refused">
+                  <p>
+                    {t(
+                      "لم تُقبل الإجابات التجريبية:",
+                      "The test answers were not accepted:",
+                    )}
+                  </p>
+                  <IssueReasons
+                    document={d}
+                    issues={submission.issues}
+                    locale={locale}
+                    onReveal={onReveal}
+                  />
+                </div>
               )}
-            </p>
-          )}
-        </form>
-        <ScoringSandbox
-          document={d}
-          answers={answers}
-          pin={pin}
-          locale={locale}
-        />
+              {checked && (
+                <p role="status">
+                  {t(
+                    "تم فحص التجربة محلياً. لم تُرسل إجابات.",
+                    "Preview checked locally. No answers were submitted.",
+                  )}
+                </p>
+              )}
+            </form>
+            <ScoringSandbox
+              document={d}
+              answers={answers}
+              pin={pin}
+              locale={locale}
+              onReveal={onReveal}
+            />
+          </>
+        )}
       </div>
     </section>
   );

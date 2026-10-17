@@ -15,7 +15,7 @@ import {
   type Recovered,
 } from "./conflict";
 /* Full navigation deliberately clears organization context and draft state. */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Profile } from "../../../../src/db";
 import type { Version } from "../../../../src/instruments";
 import {
@@ -24,6 +24,7 @@ import {
   type QuestionType,
   instrumentSchema,
   definitionIssues,
+  saveIssues,
   locateIssue,
   type DefinitionIssue,
   type IssueLocation,
@@ -117,8 +118,13 @@ export function InstrumentWorkspace({
     [creating, setCreating] = useState(false),
     [cloneTarget, setCloneTarget] = useState(org ?? ""),
     [issues, setIssues] = useState<DefinitionIssue[]>([]),
-    // A checklist entry the reader chose to go to, focused once its tab shows.
-    [revealing, setRevealing] = useState<string | null>(null),
+    // The checklist or sandbox entry the reader chose to go to, focused once
+    // its tab shows. The entry itself is kept: a sandbox reason (an overall
+    // input not ready) is not necessarily a checklist entry.
+    [revealing, setRevealing] = useState<DefinitionIssue | null>(null),
+    // Validate or publish was pressed and the checklist answers it: announce
+    // it once. While typing, the live checklist updates quietly.
+    [announce, setAnnounce] = useState(false),
     // The questionnaire whose archive confirmation is open, if any.
     [archiving, setArchiving] = useState<string | null>(null),
     [newTypes, setNewTypes] = useState<Record<string, QuestionType>>({}),
@@ -283,15 +289,10 @@ export function InstrumentWorkspace({
       );
       return { ok: false };
     }
-    const problems = definitionIssues(parsed.data);
-    if (problems.length) {
-      setIssues(problems);
-      setError(
-        t(
-          "أصلح بنية الإعدادات قبل الحفظ.",
-          "Fix configuration structure before saving.",
-        ),
-      );
+    // Only what the server would refuse for a draft stops the save; the rest
+    // of the publication checklist stays on screen as work still to do.
+    if (saveIssues(parsed.data).length) {
+      setError(instrumentMessages(locale).saveBlocked);
       return { ok: false };
     }
     const url = `${base}/${version.questionnaire_id}/versions/${version.id}`;
@@ -332,7 +333,7 @@ export function InstrumentWorkspace({
     } finally {
       setBusy(false);
     }
-  }, [dirty, doc, version, busy, editable, conflict, api, base, t, client, fail]);
+  }, [dirty, doc, version, busy, editable, conflict, api, base, t, client, fail, locale]);
   // Autosave pauses while a save is unconfirmed or its revision is stale: the
   // reader chooses the way on, and the edits stay protected by the leave guard
   // meanwhile.
@@ -345,6 +346,7 @@ export function InstrumentWorkspace({
   const change = (d: Instrument) => {
     setDoc(d);
     setDirty(true);
+    setAnnounce(false);
     setError("");
     setMessage(t("تعديلات غير محفوظة…", "Unsaved changes…"));
   };
@@ -358,6 +360,7 @@ export function InstrumentWorkspace({
       const result = await api(url, "POST", {}, version.revision, `POST ${url}`, again);
       if (name === "validate") {
         setIssues(result.issues);
+        setAnnounce(true);
         setMessage(
           result.issues.length
             ? t("راجع قائمة التحقق.", "Review the checklist.")
@@ -376,7 +379,19 @@ export function InstrumentWorkspace({
         setMessage(t("تم تحديث حالة النسخة.", "Version status updated."));
       }
     } catch (e) {
-      if (isConflict(e)) setConflict(conflictOf(e));
+      if (name === "publish") setAnnounce(true);
+      // Refused by PostgreSQL's own publication checks after the checklist
+      // passed: there is no issue list to show, so say what happened and
+      // what to do rather than a bare "invalid".
+      if (
+        name === "publish" &&
+        e instanceof RequestFailure &&
+        e.kind === "REJECTED" &&
+        e.status === 422 &&
+        !Array.isArray(e.body?.issues)
+      )
+        setError(instrumentMessages(locale).databaseRefused);
+      else if (isConflict(e)) setConflict(conflictOf(e));
       else fail(e, `POST ${base}/${version.questionnaire_id}/versions/${version.id}/${name}`, () => void action(name, true));
     } finally {
       setBusy(false);
@@ -538,6 +553,25 @@ export function InstrumentWorkspace({
     "تحتفظ الأرشفة بالاستبيان وكل نسخه كما هي، ولا يمكن تعديله بعدها. لا يُحذف شيء.",
     "Archiving keeps the questionnaire and all its versions as they are; it can no longer be edited. Nothing is deleted.",
   );
+  // While a draft is edited, the whole publication checklist is worked out
+  // from the page's copy as it changes, so a builder sees what is left without
+  // being stopped from saving. The few entries that do stop a save are marked.
+  // A document that does not yet parse (a half-typed number) keeps the last
+  // checklist; the save names the field instead.
+  const lastLive = useRef<{ issues: DefinitionIssue[]; blocking: Set<string> } | null>(null);
+  const live = useMemo(() => {
+    if (!editable || !doc) return null;
+    const parsed = instrumentSchema.safeParse(doc);
+    if (parsed.success)
+      lastLive.current = {
+        issues: definitionIssues(parsed.data, true),
+        blocking: new Set(saveIssues(parsed.data).map((x) => `${x.code}@${x.path}`)),
+      };
+    return lastLive.current;
+  }, [editable, doc]);
+  const shown = live ? live.issues : issues,
+    blocks = (x: DefinitionIssue) => !!live?.blocking.has(`${x.code}@${x.path}`),
+    blocking = shown.some(blocks);
   // A checklist entry names its place from the definition that was checked;
   // an older answer without a location is placed against the page's copy.
   const where = (x: DefinitionIssue) =>
@@ -552,25 +586,25 @@ export function InstrumentWorkspace({
     const loc = where(x);
     if (!loc) return;
     setTab(tabOf(loc));
-    setRevealing(x.path);
+    setRevealing(x);
   };
   // After the tab renders: open the enclosing question, bring the field into
   // view and focus it, or the first control of its section, question or item.
   useEffect(() => {
     if (!revealing) return;
-    const x = issues.find((i) => i.path === revealing);
-    const loc = x && where(x);
+    const path = revealing.path,
+      loc = where(revealing);
     setRevealing(null);
     if (!loc) return;
     const el =
-      document.getElementById(`field-${revealing}`) ??
+      document.getElementById(`field-${path}`) ??
       // A field named without a language (a placeholder in a rule's text):
       // its text in the reader's language.
-      (loc.field ? document.getElementById(`field-${revealing}.${locale}`) : null) ??
+      (loc.field ? document.getElementById(`field-${path}.${locale}`) : null) ??
       (loc.kind === "sections"
         ? document.querySelector<HTMLElement>("[data-add-question]")
         : null) ??
-      document.getElementById(anchorOf(revealing, loc));
+      document.getElementById(anchorOf(path, loc));
     if (!el) return;
     for (let p = el.parentElement; p; p = p.parentElement)
       if (p instanceof HTMLDetailsElement) p.open = true;
@@ -580,7 +614,7 @@ export function InstrumentWorkspace({
       : el.querySelector<HTMLElement>("textarea, input, select, button");
     el.scrollIntoView({ block: "center" });
     (target ?? el).focus({ preventScroll: true });
-  }, [revealing, tab, issues]);
+  }, [revealing, tab]);
   const labels = [
     t("نص قصير", "Short text"),
     t("نص طويل", "Long text"),
@@ -698,18 +732,33 @@ export function InstrumentWorkspace({
             <p role="status" aria-live="polite">
               {busy ? t("جارٍ الحفظ…", "Saving…") : message}
             </p>
-            {/* The checklist is the one place a builder is interrupted:
-                a publish is refused until it is empty, so it is an assertive
-                alert rather than a polite one. */}
-            {!!issues.length && (
-              <Alert tone="danger" role="alert">
-                <div className="stack">
-                  <h2>{t("قائمة التحقق", "Validation checklist")}</h2>
+            {/* While editing, the checklist is what is left before publishing
+                and updates quietly. It is announced when it answers Validate
+                or Publish, and when something in it stops the draft saving. */}
+            {!!shown.length && (
+              <Alert
+                tone={blocking || !live ? "danger" : "warning"}
+                role={blocking || announce || !live ? "alert" : "note"}
+              >
+                <div className="stack" data-testid="questionnaire-checklist">
+                  <h2>{instrumentMessages(locale).checklist}</h2>
+                  {live && (
+                    <p>
+                      {blocking
+                        ? instrumentMessages(locale).blockingLead
+                        : instrumentMessages(locale).remaining}
+                    </p>
+                  )}
                   <ul>
-                    {issues.map((x, i) => {
+                    {shown.map((x, i) => {
                       const loc = where(x);
                       return (
-                        <li key={i}>
+                        <li key={i} data-blocks-save={blocks(x) || undefined}>
+                          {blocks(x) && (
+                            <>
+                              <Badge tone="danger">{instrumentMessages(locale).blocksSave}</Badge>{" "}
+                            </>
+                          )}
                           {loc && (
                             <>
                               <strong>
@@ -1179,6 +1228,7 @@ export function InstrumentWorkspace({
                 {tab === "preview" ? (
                   <InstrumentPreview
                     document={doc}
+                    onReveal={reveal}
                     pin={{
                       engineVersion: version.engine_version,
                       configVersion:

@@ -21,8 +21,16 @@ import {
   moveItem,
   type Instrument,
   canonicalJson,
+  blankInstrument,
+  saveIssues,
+  newRule,
 } from "../src/instrument-input";
 import { illustrativeTemplates } from "../src/instrument-templates";
+import { scoringFixture } from "./scoring-fixtures";
+import {
+  scoredAuthoringSteps,
+  scoringIncompleteVariants,
+} from "./instrument-steps";
 import {
   flattenInstrument,
   inflateInstrument,
@@ -163,6 +171,100 @@ test("publication rejects missing languages, unsafe markup, conditional config a
   dim.bands[0].lower = "1";
   assert(definitionIssues(scored, true).some((i) => i.code === "BANDS"));
 });
+test("drafts save while incomplete; only unsafe or unrepresentable documents are refused before publication", () => {
+  const steps = scoredAuthoringSteps();
+  for (const [i, { step, doc }] of steps.entries()) {
+    assert.deepEqual(saveIssues(doc), [], `saves: ${step}`);
+    assert.equal(
+      definitionIssues(doc, true).length === 0,
+      i === steps.length - 1,
+      `publishable only when complete: ${step}`,
+    );
+  }
+  for (const { variant, doc } of scoringIncompleteVariants()) {
+    assert.deepEqual(saveIssues(doc), [], variant);
+    assert.ok(definitionIssues(doc, true).length, variant);
+  }
+  // The save tier: each of these is refused on save, and is always also a
+  // publication issue at the same place.
+  const refused = (name: string, code: string, fn: (d: Instrument) => void) => {
+    const d = allTypes();
+    fn(d);
+    const blocking = saveIssues(d);
+    assert.ok(
+      blocking.some((x) => x.code === code),
+      `${name} blocks saving`,
+    );
+    for (const x of blocking)
+      assert.ok(
+        definitionIssues(d, true).some(
+          (p) => p.code === x.code && p.path === x.path,
+        ),
+        `${name}: ${x.code} is also a publication issue`,
+      );
+    assert.ok(
+      blocking.every((x) => x.location),
+      `${name} is located`,
+    );
+  };
+  refused("a duplicated question", "DUPLICATE_KEY", (d) => {
+    d.sections[0].questions.push(structuredClone(d.sections[0].questions[0]));
+  });
+  refused("options on a text question", "TYPE_CONFIG", (d) => {
+    d.sections[0].questions[0].options = structuredClone(
+      d.sections[0].questions[2].options,
+    );
+  });
+  refused("required content", "CONTENT_UNSCORED", (d) => {
+    d.sections[0].questions[11].required = true;
+  });
+  refused("a question pointing at a missing dimension", "REFERENCE", (d) => {
+    d.sections[0].questions[6].dimensionId = randomUUID();
+  });
+  refused("a rule targeting a missing dimension", "REFERENCE", (d) => {
+    d.recommendations = [
+      newRule({ kind: "DIMENSION", dimensionId: randomUUID() }),
+    ];
+  });
+  refused("more than 200 answer items", "QUESTION_COUNT", (d) => {
+    d.sections[0].questions.push(
+      ...Array.from({ length: 200 }, () => newQuestion("RATING_5")),
+    );
+  });
+  // Work in progress is not refused on save.
+  const wip = allTypes();
+  wip.recommendations = [newRule({ kind: "OVERALL" })];
+  wip.sections[0].questions[3].validation.minSelections = 5;
+  wip.sections[0].questions[9].validation.max = "-6";
+  assert.deepEqual(saveIssues(wip), []);
+  assert.deepEqual(
+    [...new Set(definitionIssues(wip, true).map((x) => x.code))].sort(),
+    ["RANGE", "REFERENCE", "SELECTION_RANGE", "TRANSLATION_REQUIRED"],
+  );
+  // Text that PostgreSQL counts as written (its trim() removes spaces only)
+  // must be complete in every language, here as there.
+  for (const [value, other] of [
+    ["\n", "ar"],
+    ["\t", "ar"],
+    [" ", "ar"],
+  ] as const) {
+    const d = allTypes();
+    d.introduction = tr("", value);
+    const issue = definitionIssues(d, true).find(
+      (x) => x.path === `introduction.${other}`,
+    );
+    assert.equal(issue?.code, "TRANSLATION_REQUIRED", JSON.stringify(value));
+    assert.deepEqual(issue?.location, {
+      kind: "instrument",
+      field: "introduction",
+      locale: "ar",
+    });
+    assert.deepEqual(saveIssues(d), []);
+  }
+  const spaces = allTypes();
+  spaces.introduction = tr("   ", "");
+  assert.deepEqual(definitionIssues(spaces, true), []);
+});
 test("PostgreSQL instrument scope, immutability, publication, lifecycle and concurrency", async (t) => {
   const fixture = await setupDatabase(
     undefined,
@@ -232,6 +334,14 @@ test("PostgreSQL instrument scope, immutability, publication, lifecycle and conc
     withStaff(token, (tx) =>
       saveInstrument(tx, { ...args, idem }),
     ) as Promise<Version>;
+  // PostgreSQL's publication triggers alone, without the TypeScript checks in
+  // front of them: the writer's PUBLISH step on the stored draft.
+  const directPublish = (token: string, v: Version) =>
+    withStaff(token, (tx) =>
+      sql`select instrument.write_version(${v.organization_id}::uuid,${v.questionnaire_id}::uuid,${v.id}::uuid,${v.revision}::bigint,'PUBLISH','{}'::jsonb,'[]'::jsonb,${digest(randomUUID())},${randomUUID()}::uuid,${digest(randomUUID())},null)`.execute(
+        tx,
+      ),
+    );
   let a: Version, b: Version;
   try {
     await t.test(
@@ -571,6 +681,106 @@ test("PostgreSQL instrument scope, immutability, publication, lifecycle and conc
       },
     );
     await t.test(
+      "a scored draft saves after every authoring step; publication refuses until it is complete",
+      async () => {
+        const steps = scoredAuthoringSteps();
+        let v = await save(admin, {
+          org: ids.orgA,
+          action: "CREATE",
+          document: {
+            ...blankInstrument(),
+            title: tr("خطوة بخطوة", "Step by step"),
+          },
+        });
+        const at = (doc: Instrument, action: string) => ({
+          org: ids.orgA,
+          qid: v.questionnaire_id,
+          vid: v.id,
+          revision: v.revision,
+          action,
+          document: doc,
+        });
+        for (const [i, { step, doc }] of steps.entries()) {
+          v = await save(admin, at(doc, "SAVE"));
+          assert.deepEqual(v.document, doc, `saved unchanged: ${step}`);
+          if (i === steps.length - 1) break;
+          assert.ok(definitionIssues(doc, true).length, `incomplete: ${step}`);
+          await assert.rejects(
+            save(admin, at(v.document, "PUBLISH")),
+            /VALIDATION_FAILED/,
+            step,
+          );
+          // PostgreSQL's own publication checks refuse it as well.
+          await assert.rejects(
+            directPublish(admin, v),
+            /VALIDATION_FAILED/,
+            `SQL: ${step}`,
+          );
+        }
+        assert.deepEqual(definitionIssues(v.document, true), []);
+        v = await save(admin, at(v.document, "PUBLISH"));
+        assert.equal(v.state, "PUBLISHED");
+        assert.equal(
+          v.schema_hash,
+          digest(canonicalJson(v.document)).toString("hex"),
+        );
+        // One scoring defect at a time, all text complete: saved as a draft,
+        // refused for publication by TypeScript and by PostgreSQL alone.
+        let w = await save(admin, {
+          org: ids.orgA,
+          action: "CREATE",
+          document: copyInstrument(v.document),
+        });
+        for (const { variant, doc } of scoringIncompleteVariants()) {
+          const copy = copyInstrument(doc);
+          w = await save(admin, {
+            org: ids.orgA,
+            qid: w.questionnaire_id,
+            vid: w.id,
+            revision: w.revision,
+            action: "SAVE",
+            document: copy,
+          });
+          assert.equal(w.state, "DRAFT", variant);
+          assert.ok(definitionIssues(copy, true).length, variant);
+          await assert.rejects(
+            directPublish(admin, w),
+            /VALIDATION_FAILED/,
+            `SQL: ${variant}`,
+          );
+        }
+      },
+    );
+    await t.test(
+      "every document TypeScript would publish is accepted by the PostgreSQL publication checks",
+      async () => {
+        let accepted = 0;
+        for (const { name, doc } of publishFixtures()) {
+          if (definitionIssues(doc, true).length) continue;
+          const created = await save(admin, {
+            org: ids.orgA,
+            action: "CREATE",
+            document: copyInstrument(doc),
+          });
+          const published = await save(admin, {
+            org: ids.orgA,
+            qid: created.questionnaire_id,
+            vid: created.id,
+            revision: created.revision,
+            action: "PUBLISH",
+            document: created.document,
+          }).catch((e: Error) => {
+            throw new Error(
+              `${name}: TypeScript would publish it, PostgreSQL refused (${e.message})`,
+            );
+          });
+          assert.equal(published.state, "PUBLISHED", name);
+          accepted++;
+        }
+        assert.ok(accepted >= 12, `only ${accepted} publish-valid fixtures`);
+      },
+    );
+    await t.test(
       "capability revocation and runtime RLS remain authoritative",
       async () => {
         await operator.query(
@@ -624,4 +834,86 @@ test("PostgreSQL instrument scope, immutability, publication, lifecycle and conc
 });
 function allTypesShape(d: Instrument) {
   return instrumentSchema.parse(d);
+}
+// The realistic documents the suites already publish, scored and unscored,
+// plus variants a builder produces by typing only whitespace into an optional
+// text field. Each one TypeScript would publish must also pass PostgreSQL.
+function publishFixtures(): { name: string; doc: Instrument }[] {
+  const scoredAllTypes = allTypes();
+  const dim = {
+    ...newIdentity(),
+    name: tr("دعم", "Support"),
+    description: tr(),
+    mode: "WEIGHTED_AVERAGE" as const,
+    coverage: "0.8",
+    direction: "HIGH_GOOD" as const,
+    denominator: null,
+    bands: [
+      {
+        ...newIdentity(),
+        lower: "0",
+        upper: "100",
+        label: tr("مثال", "Example"),
+        severity: "NONE" as const,
+        semantic: "HEALTH" as const,
+      },
+    ],
+  };
+  scoredAllTypes.dimensions = [dim];
+  scoredAllTypes.sections[0].questions[8].dimensionId = dim.id;
+  scoredAllTypes.sections[0].questions[8].scoring.enabled = true;
+  scoredAllTypes.sections[0].questions[8].rows[0].weight = "2";
+  scoredAllTypes.overall = {
+    enabled: true,
+    direction: "HIGH_GOOD",
+    inputs: [{ dimensionId: dim.id, weight: "1", invert: false }],
+    bands: [],
+  };
+  const checkboxes = scoringFixture(3, "CHECKBOXES", "AVERAGE");
+  for (const q of checkboxes.sections[0].questions)
+    q.scoring.mode = "OPTION_SUM";
+  const whitespace = (name: string, fn: (d: Instrument) => void) => {
+    const d = allTypes();
+    fn(d);
+    return { name, doc: d };
+  };
+  return [
+    { name: "all question types", doc: allTypes() },
+    {
+      name: "all question types, scored matrix and overall",
+      doc: scoredAllTypes,
+    },
+    ...illustrativeTemplates().map((doc, i) => ({
+      name: `illustrative template ${i + 1}`,
+      doc,
+    })),
+    { name: "rating 5 average", doc: scoringFixture(3, "RATING_5", "AVERAGE") },
+    {
+      name: "rating 10 weighted average",
+      doc: scoringFixture(3, "RATING_10", "WEIGHTED_AVERAGE"),
+    },
+    {
+      name: "yes/no percentage",
+      doc: scoringFixture(4, "YES_NO", "PERCENTAGE"),
+    },
+    { name: "number sum", doc: scoringFixture(3, "NUMBER", "SUM") },
+    { name: "matrix average", doc: scoringFixture(2, "MATRIX", "AVERAGE") },
+    { name: "checkboxes option sum", doc: checkboxes },
+    {
+      name: "scored, built step by step",
+      doc: scoredAuthoringSteps().at(-1)!.doc,
+    },
+    whitespace("introduction: English is only a line break", (d) => {
+      d.introduction = tr("", "\n");
+    }),
+    whitespace("question help: English is only a tab", (d) => {
+      d.sections[0].questions[0].help = tr("", "\t");
+    }),
+    whitespace("section content: English is only a no-break space", (d) => {
+      d.sections[0].content = tr("", " ");
+    }),
+    whitespace("introduction: Arabic is only spaces", (d) => {
+      d.introduction = tr("   ", "");
+    }),
+  ];
 }

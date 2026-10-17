@@ -2,6 +2,9 @@ import { z } from "zod";
 import {
   instrumentSchema,
   definitionIssues,
+  saveIssues,
+  locateIssue,
+  type DefinitionIssue,
   type Instrument,
   type Dimension,
   type Question,
@@ -139,13 +142,7 @@ function metric(
   };
 }
 
-// This function has no storage, staff identity, network, clock, randomness or
-// publication side effects. Later processing must supply its immutable pin.
-export function scoreInstrument(
-  input: unknown,
-  answerInput: unknown,
-  pin: ScorePin,
-): ScoringResult {
+const pinned = (pin: ScorePin) => {
   if (
     !z
       .object({
@@ -156,15 +153,117 @@ export function scoreInstrument(
       .safeParse(pin).success
   )
     fail("version", "UNSUPPORTED_VERSION");
+};
+const definition = (input: unknown): Instrument => {
   const parsed = instrumentSchema.safeParse(input);
-  if (!parsed.success) return fail("definition", "DEFINITION_FORMAT");
-  const d = parsed.data,
+  return parsed.success ? parsed.data : fail("definition", "DEFINITION_FORMAT");
+};
+
+// This function has no storage, staff identity, network, clock, randomness or
+// publication side effects. Later processing must supply its immutable pin.
+// It is the engine the privacy processor runs on real answers: the whole
+// definition must be publishable, or nothing is scored.
+export function scoreInstrument(
+  input: unknown,
+  answerInput: unknown,
+  pin: ScorePin,
+): ScoringResult {
+  pinned(pin);
+  const d = definition(input),
     issues = definitionIssues(d, true);
   if (issues.length) throw new ScoringError(issues);
   const { answers, missingRequired } = validateAnswers(d, answerInput);
+  return scoreCore(d, answers, missingRequired, pin, () => true, true);
+}
+
+export type DraftBlocks = {
+  /** Per dimension id, what stops that dimension from being scored. */
+  dimensions: Record<string, DefinitionIssue[]>;
+  /** What stops the overall score; an input not ready is INPUT_INCOMPLETE. */
+  overall: DefinitionIssue[];
+  /** Scored questions that no dimension counts yet. */
+  unassigned: DefinitionIssue[];
+};
+export type DraftScoring = { scores: ScoringResult; blocked: DraftBlocks };
+// Publication requires these, a score does not.
+const notForScoring = new Set(["TRANSLATION_REQUIRED", "NO_QUESTIONS"]);
+
+// Staff-only test scoring of a draft, never run on real answers. It checks
+// only what a score depends on: no translation, introduction, privacy text or
+// recommendation rule is needed. Each dimension is scored on its own when its
+// own configuration is complete; otherwise it is left out and its reasons are
+// returned, located as the publication checklist locates them. The overall
+// score needs every input dimension, as in the strict engine. The arithmetic
+// is the strict engine's own (scoreCore), so on a publishable definition the
+// result is identical to scoreInstrument's.
+export function scoreDraft(
+  input: unknown,
+  answerInput: unknown,
+  pin: ScorePin,
+): DraftScoring {
+  pinned(pin);
+  const d = definition(input);
+  // An unsafe or unrepresentable document is not scored at all.
+  const unsafe = saveIssues(d);
+  if (unsafe.length) throw new ScoringError(unsafe);
+  const blocked: DraftBlocks = { dimensions: {}, overall: [], unassigned: [] },
+    against = (id: string, issue: DefinitionIssue) =>
+      (blocked.dimensions[id] ??= []).push(issue);
+  for (const issue of definitionIssues(d, true)) {
+    const at = issue.location;
+    if (notForScoring.has(issue.code) || !at || at.kind === "rule") continue;
+    if (at.kind === "overall" || (at.kind === "band" && !at.dimension))
+      blocked.overall.push(issue);
+    else if (at.kind === "dimension" || at.kind === "band")
+      against(d.dimensions[at.dimension!.n - 1].id, issue);
+    else if (at.section && at.question) {
+      const q = d.sections[at.section.n - 1].questions[at.question.n - 1];
+      // An unscored question's configuration does not touch any score.
+      if (!q.scoring.enabled) continue;
+      if (q.dimensionId) against(q.dimensionId, issue);
+      else blocked.unassigned.push(issue);
+    }
+  }
+  const ready = (id: string) => !blocked.dimensions[id];
+  if (d.overall.enabled)
+    for (const input of d.overall.inputs)
+      if (
+        d.dimensions.some((x) => x.id === input.dimensionId) &&
+        !ready(input.dimensionId)
+      )
+        blocked.overall.push({
+          path: input.dimensionId,
+          code: "INPUT_INCOMPLETE",
+          location: locateIssue(d, input.dimensionId),
+        });
+  const { answers, missingRequired } = validateAnswers(d, answerInput);
+  return {
+    scores: scoreCore(
+      d,
+      answers,
+      missingRequired,
+      pin,
+      ready,
+      !blocked.overall.length,
+    ),
+    blocked,
+  };
+}
+
+// The arithmetic both entry points share. `scorable` and `overallReady` are
+// always true for the strict engine; a draft passes only the dimensions whose
+// configuration is complete.
+function scoreCore(
+  d: Instrument,
+  answers: Answers,
+  missingRequired: string[],
+  pin: ScorePin,
+  scorable: (dimensionId: string) => boolean,
+  overallReady: boolean,
+): ScoringResult {
   const dimensions: Record<string, Metric> = {},
     exact = new Map<string, ScoreNumber>();
-  for (const dim of d.dimensions) {
+  for (const dim of d.dimensions.filter((x) => scorable(x.id))) {
     const items = d.sections
       .flatMap((s) => s.questions)
       .filter((q) => q.scoring.enabled && q.dimensionId === dim.id)
@@ -238,7 +337,7 @@ export function scoreInstrument(
     );
   }
   let overall: Metric | null = null;
-  if (d.overall.enabled) {
+  if (d.overall.enabled && overallReady) {
     const available = d.overall.inputs.filter((i) => exact.has(i.dimensionId));
     const value =
       available.length === d.overall.inputs.length

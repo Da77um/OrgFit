@@ -66,6 +66,8 @@ database, clock, randomness, network or authorization. Its input is the approved
 release plan — the cells the disclosure engine decided to publish — and never a
 response, a per-person score or a withheld cell.
 
+Since D-179 the evaluator lives in [`src/recommendation-select.ts`](../../src/recommendation-select.ts) (`selectRecommendations`, no Node-only import), and `recommendation-engine.ts` adds each rule's content hash (`ruleHash`, `node:crypto`) and keeps the same exports. The release job's output is unchanged. The staff preview runs `selectRecommendations` on test scores in the browser, as a one-group company plan, and labels the result as a test.
+
 Only an `AVAILABLE` cell carrying a numeric value is an input. `SUPPRESSED`,
 `INSUFFICIENT`, `UNSCORED`, `NOT_COMPARABLE` and absent are one thing: UNKNOWN.
 

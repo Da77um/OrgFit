@@ -1,36 +1,60 @@
 "use client";
 import { useState } from "react";
-import type { Instrument } from "../../../../src/instrument-input";
+import type {
+  DefinitionIssue,
+  Instrument,
+} from "../../../../src/instrument-input";
 import {
-  scoreInstrument,
+  scoreDraft,
   ScoringError,
   type Answers,
+  type DraftScoring,
   type Metric,
   type ScorePin,
 } from "../../../../src/scoring";
+import { IssueReasons } from "./issue-reasons";
 
+// Test scoring of the page's copy of the draft. Each dimension whose own
+// configuration is complete is scored; any other says exactly why not, with
+// the checklist's location and a way to the field. Nothing leaves the page.
 export function ScoringSandbox({
   document: d,
   answers,
   pin,
   locale,
+  onReveal,
 }: {
   document: Instrument;
   answers: Answers;
   pin: ScorePin;
   locale: "ar" | "en";
+  /** Go to the field an issue names (the workspace's checklist link). */
+  onReveal?: (issue: DefinitionIssue) => void;
 }) {
   const [show, setShow] = useState(false);
   const t = (ar: string, en: string) => (locale === "ar" ? ar : en);
-  let result: ReturnType<typeof scoreInstrument> | null = null;
-  let invalid = false;
+  let outcome: DraftScoring | null = null;
+  let refused: DefinitionIssue[] = [];
   if (show)
     try {
-      result = scoreInstrument(d, answers, pin);
+      outcome = scoreDraft(d, answers, pin);
     } catch (e) {
       if (!(e instanceof ScoringError)) throw e;
-      invalid = true;
+      refused = e.issues;
     }
+  const result = outcome?.scores ?? null;
+  const reasons = (issues: DefinitionIssue[]) => (
+    <IssueReasons
+      document={d}
+      issues={issues}
+      locale={locale}
+      onReveal={onReveal}
+    />
+  );
+  const dimensionName = (i: number) =>
+    d.dimensions[i].name[locale] ||
+    d.dimensions[i].name[locale === "ar" ? "en" : "ar"] ||
+    `${t("البعد", "Dimension")} ${i + 1}`;
   const label = (id: string) => {
     for (const q of d.sections.flatMap((s) => s.questions)) {
       if (q.id === id) return q.prompt[locale];
@@ -112,25 +136,62 @@ export function ScoringSandbox({
       <button type="button" onClick={() => setShow(true)}>
         {t("حساب الدرجات التجريبية", "Calculate synthetic scores")}
       </button>
-      {invalid && (
-        <p role="alert">
-          {t(
-            "تعذر الحساب. راجع تحقق النشر ونطاقات الإجابات، ثم أعد المحاولة.",
-            "Cannot calculate. Check publication validation and answer ranges, then try again.",
-          )}
-        </p>
+      {!!refused.length && (
+        <div role="alert" className="stack" data-testid="sandbox-refused">
+          <h4>{t("تعذر الحساب", "Cannot calculate")}</h4>
+          {reasons(refused)}
+        </div>
       )}
-      {result && (
+      {outcome && result && (
         <div role="status" className="stack">
-          {d.dimensions.map((dim) =>
-            render(dim.name[locale], result!.dimensions[dim.id]),
+          {d.dimensions.map((dim, i) =>
+            result.dimensions[dim.id] ? (
+              render(dimensionName(i), result.dimensions[dim.id])
+            ) : (
+              <div
+                key={dim.id}
+                className="stack"
+                data-testid="sandbox-unscored"
+              >
+                <h4>{dimensionName(i)}</h4>
+                <p>
+                  {t(
+                    "لم يُحسب هذا البعد بعد. ما ينقصه:",
+                    "This dimension is not scored yet. What it still needs:",
+                  )}
+                </p>
+                {reasons(outcome!.blocked.dimensions[dim.id] ?? [])}
+              </div>
+            ),
           )}
           {result.overall ? (
             render(t("الدرجة الكلية", "Overall"), result.overall)
+          ) : d.overall.enabled ? (
+            <div className="stack" data-testid="sandbox-overall-unscored">
+              <h4>{t("الدرجة الكلية", "Overall")}</h4>
+              <p>
+                {t(
+                  "لم تُحسب الدرجة الكلية بعد. ما ينقصها:",
+                  "The overall score is not calculated yet. What it still needs:",
+                )}
+              </p>
+              {reasons(outcome.blocked.overall)}
+            </div>
           ) : (
             <p>
               {t("لا توجد درجة كلية مهيأة.", "No overall score is configured.")}
             </p>
+          )}
+          {!!outcome.blocked.unassigned.length && (
+            <div className="stack">
+              <p>
+                {t(
+                  "أسئلة مقاسة لا يحسبها أي بعد بعد:",
+                  "Scored questions that no dimension counts yet:",
+                )}
+              </p>
+              {reasons(outcome.blocked.unassigned)}
+            </div>
           )}
           {!!result.missingRequired.length && (
             <p>

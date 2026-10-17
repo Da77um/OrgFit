@@ -40,7 +40,7 @@ Every app runs from its own folder, and `outputFileTracingIncludes` in each `nex
 - `DATABASE_URL` (orgfit_staff), `AUTH_DATABASE_URL` (orgfit_auth).
 - `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_MFA_ACR`: step 4, not chosen yet (P-005).
 - `IMPORT_ENCRYPTION_KEY`, `LINK_EXPORT_ENCRYPTION_KEY`, `REPORT_ENCRYPTION_KEY`, `PARTICIPATION_EXPORT_ENCRYPTION_KEY`, `ATTACHMENT_ENCRYPTION_KEY`, `INVITATION_DIGEST_KEY`, `INVITATION_DIGEST_KEY_VERSION`.
-- `CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY`, and managed custody: step 5 (P-003).
+- `CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY`, `CAMPAIGN_KEY_CUSTODY_PROVIDER=database-sealed` and `CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK=database-sealed-no-crypto-erasure` (D-180: the sealed campaign key is kept in the core database; no custody directory).
 - `IMPORT_S3_BUCKET`, `LINK_EXPORT_S3_BUCKET`, `REPORT_S3_BUCKET`, `PARTICIPATION_EXPORT_S3_BUCKET`, `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, and the `-staff` IAM user's `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: step 3, `docs/orgfit/aws-storage-setup.md`.
 - `RATE_LIMIT_CLIENT_IP_HEADER=x-real-ip` and `RATE_LIMIT_TRUSTED_PROXY_HOPS=0`. Vercel sets this header itself.
 - `NEXT_TELEMETRY_DISABLED=1`.
@@ -52,13 +52,13 @@ Every app runs from its own folder, and `outputFileTracingIncludes` in each `nex
 - `RATE_LIMIT_CLIENT_IP_HEADER=x-real-ip`, `RATE_LIMIT_TRUSTED_PROXY_HOPS=0`, `NEXT_TELEMETRY_DISABLED=1`.
 
 **All four job projects:** `ORGFIT_JOB_PROCESS` (`processor`, `report`, `scanner` or `operator`) and `CRON_SECRET` (at least 32 characters, different per project). Vercel sends the secret with every cron call, and the route refuses anything else with 401. Then each project adds its own variables:
-- **processor:** `PROCESSOR_DATABASE_URL`, `ANONYMOUS_DATABASE_URL`, and managed custody (step 5).
+- **processor:** `PROCESSOR_DATABASE_URL`, `ANONYMOUS_DATABASE_URL`, `CAMPAIGN_KEY_CUSTODY_SECRET_KEY` and `CAMPAIGN_KEY_CUSTODY_PUBLIC_KEY` (the same custodian pair as staff's public key), `CAMPAIGN_KEY_CUSTODY_PROVIDER=database-sealed`, `CAMPAIGN_KEY_CUSTODY_ACCEPTED_RISK=database-sealed-no-crypto-erasure` (D-180).
 - **report:** `REPORT_DATABASE_URL`, `REPORT_ENCRYPTION_KEY`, `REPORT_S3_BUCKET`, `AWS_REGION`, and the `-report` user's key pair.
 - **scanner:** `SCANNER_DATABASE_URL`, `ATTACHMENT_ENCRYPTION_KEY`, `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, `ATTACHMENT_SCAN_ENGINE=clamd`, `ATTACHMENT_SCAN_CLAMD_ADDRESS` (step 6), and the `-scanner` user's key pair.
 - **operator:** `MIGRATION_DATABASE_URL`, `ANONYMOUS_MIGRATION_DATABASE_URL`, `TOMBSTONE_LEDGER_S3_BUCKET`, `TOMBSTONE_LEDGER_OBJECT_LOCK_DAYS` (≥ 36), `ATTACHMENT_S3_BUCKET`, `AWS_REGION`, and the `-operator` user's key pair.
 
 **Never in any Vercel project:**
-- `CAMPAIGN_KEY_CUSTODY_SECRET_KEY` (development stand-in).
+- `CAMPAIGN_KEY_CUSTODY_SECRET_KEY` anywhere except the **processor** job project. It is what opens every campaign's sealed key; staff refuses to start with it (D-180).
 - `CAMPAIGN_KEY_CUSTODY_REHEARSAL_ONLY`.
 - `BOOTSTRAP_ADMIN_PASSWORD`.
 - Any `*_LOCAL_DIRECTORY` or `TOMBSTONE_LEDGER_DIRECTORY`: Vercel's disk does not persist.
@@ -91,7 +91,7 @@ The built jobs app was run with `next start` (`NODE_ENV=production`, as on Verce
 - **Cron protection:** no secret or a wrong secret → 401, unknown tick → 404.
 - **Jobs that ran:** `campaigns:normalize`, `drafts:expire`, `publication:release`, `reports:generate`.
 - **Correct production refusals:**
-  - `privacy:process` → `KEY_CUSTODY_PROVIDER_REQUIRED` (P-003).
+  - `privacy:process` → `KEY_CUSTODY_PROVIDER_REQUIRED` (P-003). Since D-180 (2026-10-17) the owner chose database-sealed custody; with the variables above it runs (not yet verified on Vercel).
   - `attachments:scan` → `SCAN_ENGINE_REQUIRED` (P-010).
   - `tombstones:ship` → `TOMBSTONE_LEDGER_LOCAL_IN_PRODUCTION`.
   - `reports:expire` and `attachments:expire` → local storage (step 3).

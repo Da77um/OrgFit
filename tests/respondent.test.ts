@@ -175,12 +175,23 @@ test("PostgreSQL respondent flow: sessions, encrypted drafts and atomic acceptan
         assert.equal(rows.length, 1);
         assert.equal(rows[0].len, 32);
         assert.equal(rows[0].state, "ACTIVE");
-        // No column anywhere in the core database holds a private key.
+        // No column in the core database holds an OPEN private key. Since
+        // D-180 exactly one column may hold a SEALED one (database-sealed
+        // custody, the owner's accepted choice): it is 80 bytes or nothing,
+        // and it stays empty under the file provider this campaign uses.
         const secrets = await f.operator.query(
-          `select count(*)::int n from information_schema.columns
+          `select table_name||'.'||column_name c from information_schema.columns
             where table_schema='intake' and column_name ~* 'private|secret'`,
         );
-        assert.equal(secrets.rows[0].n, 0);
+        assert.deepEqual(
+          secrets.rows.map((r) => r.c),
+          ["campaign_key.sealed_private_key"],
+        );
+        const sealed = await f.operator.query(
+          "select count(*)::int n from intake.campaign_key where campaign_id=$1 and sealed_private_key is not null",
+          [campaignId],
+        );
+        assert.equal(sealed.rows[0].n, 0);
         const files = await readdir(f.custodyDirectory);
         assert.equal(files.length, 1, "one sealed private key exists in custody");
       },

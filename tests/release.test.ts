@@ -114,7 +114,9 @@ test("R-1 the process manifest describes a complete, separated deployment and pr
   // …and, since Pass 4, refused in production: the operator must name the header or say `none`.
   assert.ok(warned.some((f) => f.check === "trusted-proxy" && f.outcome === "FAIL"));
   // Development mode accepts local storage and http loopback origins.
-  const dev = { ...staff, NODE_ENV: "development", STAFF_ORIGIN: "http://127.0.0.1:3000", RESPONDENT_ORIGIN: "http://localhost:3001", REPORT_S3_BUCKET: "", REPORT_LOCAL_DIRECTORY: "/tmp/r" };
+  // The file-directory custody stand-in names its directory (optional since
+  // D-180, because database-sealed custody needs none).
+  const dev = { ...staff, NODE_ENV: "development", STAFF_ORIGIN: "http://127.0.0.1:3000", RESPONDENT_ORIGIN: "http://localhost:3001", REPORT_S3_BUCKET: "", REPORT_LOCAL_DIRECTORY: "/tmp/r", CAMPAIGN_KEY_CUSTODY_DIRECTORY: "/tmp/custody" };
   assert.deepEqual(failures(checkEnvironment("staff", dev, { production: false, manifest })), []);
 
   // The migration ledger comparison refuses a pending, an altered and — for a
