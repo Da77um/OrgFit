@@ -258,6 +258,55 @@ test("readiness failures are logged as fixed codes, never as driver messages (D-
   assert.equal(readinessCode("text"), "UNKNOWN");
 });
 
+test("a refused gateway configuration logs which check refused, never the value (D-184)", async () => {
+  const { readinessCode } = await import("../src/readiness-log");
+  const { gatewayUrl, assertNoForeignCredentials } = await import("../src/gateway-db");
+  const saved = { url: process.env.GATEWAY_DATABASE_URL, env: process.env.NODE_ENV };
+  const reason = (fn: () => unknown) => {
+    try {
+      fn();
+      return "NO_ERROR";
+    } catch (e) {
+      assert.equal((e as { code?: string }).code, "TEMPORARILY_UNAVAILABLE");
+      return readinessCode(e);
+    }
+  };
+  const withUrl = (value: string | undefined) => () => {
+    if (value === undefined) delete process.env.GATEWAY_DATABASE_URL;
+    else process.env.GATEWAY_DATABASE_URL = value;
+    return gatewayUrl();
+  };
+  try {
+    (process.env as Record<string, string>).NODE_ENV = "production";
+    const good = "postgres://orgfit_gateway:hunter2@db.example/orgfit?sslmode=verify-full";
+    const cases: [string | undefined, string][] = [
+      [undefined, "TEMPORARILY_UNAVAILABLE:GATEWAY_URL_MISSING"],
+      ['"' + good + '"', "TEMPORARILY_UNAVAILABLE:GATEWAY_URL_UNPARSEABLE"],
+      [good.replace("postgres:", "mysql:"), "TEMPORARILY_UNAVAILABLE:GATEWAY_URL_PROTOCOL"],
+      [good.replace("orgfit_gateway", "orgfit_staff"), "TEMPORARILY_UNAVAILABLE:GATEWAY_URL_ROLE"],
+      [good.replace("hunter2", "CHANGE_ME"), "TEMPORARILY_UNAVAILABLE:GATEWAY_URL_PASSWORD"],
+      [good.replace("verify-full", "require"), "TEMPORARILY_UNAVAILABLE:GATEWAY_URL_SSLMODE"],
+      [good, "NO_ERROR"],
+    ];
+    for (const [value, expected] of cases) {
+      const logged = reason(withUrl(value));
+      assert.equal(logged, expected, String(value));
+      assert.doesNotMatch(logged, /hunter2|example|orgfit_staff/);
+    }
+    assert.equal(
+      reason(() => assertNoForeignCredentials({ PROCESSOR_DATABASE_URL: "postgres://p:hunter2@h/db" })),
+      "TEMPORARILY_UNAVAILABLE:FOREIGN_CREDENTIAL_PROCESSOR_DATABASE_URL",
+    );
+    // A reason that is not a plain token never reaches the log.
+    assert.equal(readinessCode(Object.assign(new Error("x"), { code: "X", reason: "postgres://u:s@h" })), "X");
+  } finally {
+    if (saved.url === undefined) delete process.env.GATEWAY_DATABASE_URL;
+    else process.env.GATEWAY_DATABASE_URL = saved.url;
+    if (saved.env === undefined) delete (process.env as Record<string, string | undefined>).NODE_ENV;
+    else (process.env as Record<string, string>).NODE_ENV = saved.env;
+  }
+});
+
 test("a refused staff sign-in answers SESSION_REQUIRED and carries only a fixed stage for the log (D-169)", async () => {
   const { SignInRefused, finishLogin } = await import("../src/auth");
   const e = new SignInRefused("MFA_NOT_PROVEN");

@@ -10,31 +10,37 @@ import { AppError } from "./security";
 // asserts that at runtime rather than trusting the deployment.
 let pool: pg.Pool | undefined;
 
+// Every refusal answers the same TEMPORARILY_UNAVAILABLE. The readiness log
+// also names which check refused (D-184), as a fixed reason: on Vercel the
+// variable cannot be read back, and "unavailable" alone could not tell a
+// missing variable from a wrong role or a missing sslmode. No part of the value
+// is ever logged.
+const unavailable = (reason: string) =>
+  Object.assign(new AppError("TEMPORARILY_UNAVAILABLE", 503), { reason });
 export function gatewayUrl() {
   const value = process.env.GATEWAY_DATABASE_URL;
-  if (!value) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+  if (!value) throw unavailable("GATEWAY_URL_MISSING");
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+    throw unavailable("GATEWAY_URL_UNPARSEABLE");
   }
-  if (
-    !["postgres:", "postgresql:"].includes(url.protocol) ||
-    url.username !== "orgfit_gateway" ||
-    !url.password ||
-    url.password === "CHANGE_ME"
-  )
-    throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+  if (!["postgres:", "postgresql:"].includes(url.protocol))
+    throw unavailable("GATEWAY_URL_PROTOCOL");
+  if (url.username !== "orgfit_gateway") throw unavailable("GATEWAY_URL_ROLE");
+  if (!url.password || url.password === "CHANGE_ME")
+    throw unavailable("GATEWAY_URL_PASSWORD");
   if (
     process.env.NODE_ENV === "production" &&
     url.searchParams.get("sslmode") !== "verify-full"
   )
-    throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+    throw unavailable("GATEWAY_URL_SSLMODE");
   return value;
 }
 // A gateway process holding a processor, migrator or staff credential would
-// silently collapse the trust boundary, so it refuses to start with one.
+// silently collapse the trust boundary, so it refuses to start with one. The
+// variable's name, never its value, is the logged reason.
 export function assertNoForeignCredentials(
   env: Record<string, string | undefined> = process.env,
 ) {
@@ -47,7 +53,7 @@ export function assertNoForeignCredentials(
     "ANONYMOUS_MIGRATION_DATABASE_URL",
     "CAMPAIGN_KEY_CUSTODY_SECRET_KEY",
   ])
-    if (env[key]) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+    if (env[key]) throw unavailable(`FOREIGN_CREDENTIAL_${key}`);
 }
 let configured: string | undefined;
 // Explicit configuration for the integration test harness, which necessarily

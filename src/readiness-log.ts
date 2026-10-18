@@ -12,8 +12,12 @@ const TIMEOUTS = new Set(["timeout expired", "Connection terminated due to conne
 export function readinessCode(error: unknown): string {
   if (typeof error === "object" && error !== null) {
     const code = (error as { code?: unknown }).code;
-    // SQLSTATE (28P01), Node errno (ENOENT, ECONNREFUSED) or an OrgFit code.
-    if (typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code)) return code;
+    // SQLSTATE (28P01), Node errno (ENOENT, ECONNREFUSED) or an OrgFit code,
+    // with the check that refused when the error names one (D-184).
+    if (typeof code === "string" && /^[A-Z0-9_]{1,40}$/.test(code)) {
+      const reason = (error as { reason?: unknown }).reason;
+      return typeof reason === "string" && /^[A-Z0-9_]{1,60}$/.test(reason) ? `${code}:${reason}` : code;
+    }
     const message = (error as { message?: unknown }).message;
     if (typeof message === "string" && TIMEOUTS.has(message)) return "CONNECT_TIMEOUT";
     if (message === "Unready") return "UNREADY";
