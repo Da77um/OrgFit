@@ -1,7 +1,7 @@
 import { sql } from "kysely";
 import { z } from "zod";
 import { type Tx, requireAccess, type Profile } from "./db";
-import { AppError, digest, jsonInput, uuid } from "./security";
+import { AppError, digest, jsonInput, requestRevision, uuid } from "./security";
 import { response } from "./http";
 import { schemas, archiveInput, type DirectoryKind } from "./directory-input";
 export type DirectoryRecord = {
@@ -18,9 +18,7 @@ export type DirectoryRecord = {
 };
 export function preconditions(req: Request, update: boolean) {
   const idem = uuid.safeParse(req.headers.get("idempotency-key"));
-  const revision = req.headers
-    .get("if-match")
-    ?.match(/^"([1-9][0-9]{0,14})"$/)?.[1];
+  const revision = requestRevision(req);
   if (!idem.success || (update && !revision))
     throw new AppError("PRECONDITION_REQUIRED", 400);
   return { idem: idem.data, revision: revision ?? null };

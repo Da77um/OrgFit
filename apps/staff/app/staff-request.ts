@@ -340,7 +340,10 @@ export async function sendAttempt<T>(
       headers: {
         ...options.headers,
         "Idempotency-Key": attempt.key,
-        ...(attempt.revision !== undefined ? { "If-Match": `"${attempt.revision}"` } : {}),
+        // OrgFit's own header, never If-Match: Vercel's edge evaluated
+        // If-Match against the response and replaced committed changes with
+        // its own 412 (D-183).
+        ...(attempt.revision !== undefined ? { "X-OrgFit-Revision": `"${attempt.revision}"` } : {}),
       },
     });
     ledger.settle(attempt.scope);

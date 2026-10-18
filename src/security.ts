@@ -13,6 +13,18 @@ export const capabilities = [
 ] as const;
 export type Capability = (typeof capabilities)[number];
 export const uuid = z.uuid();
+
+// The revision a change was made against, quoted ("4"). OrgFit's own header
+// first: on Vercel the standard If-Match header was evaluated at the edge
+// against the response, so a change that had been committed came back as
+// Vercel's 412 PRECONDITION_FAILED (D-183). If-Match is still read, for API
+// callers and tests that send it. Exactly one quoted positive integer.
+export const REVISION_HEADER = "X-OrgFit-Revision";
+export function requestRevision(req: Request, digits = 15): string | undefined {
+  const pattern = new RegExp(`^"([1-9][0-9]{0,${digits - 1}})"$`);
+  const value = req.headers.get(REVISION_HEADER) ?? req.headers.get("if-match");
+  return value?.match(pattern)?.[1];
+}
 export const accessInput = z
   .object({
     role: z.enum(["SUPER_ADMIN", "STAFF"]),

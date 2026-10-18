@@ -18,6 +18,7 @@ import {
   digest,
   invitationInput,
   jsonInput,
+  requestRevision,
   secret,
   uuid,
 } from "./security";
@@ -125,7 +126,7 @@ function idempotencyKey(req: Request) {
 }
 
 function ifMatch(req: Request) {
-  const revision = req.headers.get("if-match")?.match(/^"([1-9][0-9]*)"$/)?.[1];
+  const revision = requestRevision(req, 19);
   if (!revision) throw new AppError("PRECONDITION_REQUIRED", 400);
   return revision;
 }

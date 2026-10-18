@@ -9,6 +9,7 @@ import {
   staffRequest,
 } from "../apps/staff/app/staff-request";
 import { ar, en } from "../src/i18n";
+import { preconditions } from "../src/directory";
 
 // Post-Audit Repair Pass 2: the staff request core against a REAL HTTP server
 // on loopback — real delays, a body that stalls after its headers, a change
@@ -197,6 +198,43 @@ test("SR-5 a revision-checked change may replace an unconfirmed one; a create ma
   } finally {
     await server.close();
   }
+});
+
+// D-183: on Vercel, a request carrying the standard If-Match header reached
+// the function, was saved, and then had its answer replaced at the edge by
+// Vercel's own 412 PRECONDITION_FAILED (If-Match evaluated against the
+// response). The editor then saw a failed save that had succeeded, retried
+// with the old revision and got a 409. The revision now travels in OrgFit's
+// own header, which no intermediary interprets.
+test("SR-5b the revision precondition travels in X-OrgFit-Revision, never in If-Match", async () => {
+  const seen: Record<string, string | undefined>[] = [];
+  const server = await serve((req, res) => {
+    seen.push({ revision: req.headers["x-orgfit-revision"] as string | undefined, ifMatch: req.headers["if-match"] as string | undefined });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ data: {} }));
+  });
+  try {
+    const ledger = new AttemptLedger();
+    await sendAttempt("en", ledger, ledger.prepare("en", "edit", { url: server.url("/v/1"), method: "PATCH", body: { a: 1 }, revision: 7 }));
+    await sendAttempt("en", ledger, ledger.prepare("en", "create", { url: server.url("/v"), method: "POST", body: { a: 1 } }));
+    assert.deepEqual(seen, [
+      { revision: '"7"', ifMatch: undefined },
+      { revision: undefined, ifMatch: undefined },
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("SR-5c the server reads the revision from X-OrgFit-Revision, and still from If-Match", () => {
+  const request = (headers: Record<string, string>) =>
+    new Request("http://x/", { headers: { "Idempotency-Key": "8c1f3c7e-1d2a-4b5c-9d6e-7f8091a2b3c4", ...headers } });
+  assert.equal(preconditions(request({ "X-OrgFit-Revision": '"4"' }), true).revision, "4");
+  assert.equal(preconditions(request({ "If-Match": '"4"' }), true).revision, "4");
+  // OrgFit's own header wins when both are present.
+  assert.equal(preconditions(request({ "X-OrgFit-Revision": '"5"', "If-Match": '"4"' }), true).revision, "5");
+  for (const bad of ["4", '"0"', '"abc"', '"4", "5"'])
+    assert.throws(() => preconditions(request({ "X-OrgFit-Revision": bad }), true), /PRECONDITION_REQUIRED/, bad);
 });
 
 test("SR-6 an ended session, a refusal, a 5xx and an unreadable 2xx are told apart", async () => {
