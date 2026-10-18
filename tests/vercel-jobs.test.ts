@@ -109,6 +109,38 @@ test("only the four job processes are accepted as ORGFIT_JOB_PROCESS", () => {
   for (const p of ["staff", "respondent", "", undefined, "Processor"]) assert.equal(isJobProcess(p), false);
 });
 
+// A job that fails before it can record anything (no database connection)
+// left only "…failed" in the Vercel log, which cannot tell a missing
+// certificate from a refused password. The line now ends with the fixed code
+// the readiness checks already use (D-168, D-182); a driver message, which
+// can quote a value, is still never printed.
+test("a failed job names a fixed, value-free cause and never the driver's message", async () => {
+  const run = (thrown: unknown) =>
+    executeJob(
+      { name: "privacy:process", unavailable: "Privacy processing failed.", work: async () => { throw thrown; } },
+      { processes: manifest.processes },
+    );
+  const saved = { ...process.env };
+  for (const k of Object.keys(process.env)) if (/DATABASE_URL$|_SECRET|_KEY$/.test(k)) delete process.env[k];
+  try {
+    const cases: [unknown, string][] = [
+      [Object.assign(new Error("ENOENT: no such file, open 'C:/Users/x/ca.crt'"), { code: "ENOENT" }), "ENOENT"],
+      [Object.assign(new Error('password authentication failed for user "orgfit_processor"'), { code: "28P01" }), "28P01"],
+      [new Error("timeout expired"), "CONNECT_TIMEOUT"],
+      [new Error("postgres://orgfit_processor:hunter2@host/db is unreachable"), "UNKNOWN"],
+      [Object.assign(new Error("x"), { code: "not a code; DROP" }), "UNKNOWN"],
+    ];
+    for (const [thrown, code] of cases) {
+      const result = await run(thrown);
+      assert.equal(result.exitCode, 1);
+      assert.deepEqual(result.errors, [`Privacy processing failed. [${code}]`]);
+      assert.doesNotMatch(result.errors.join(" "), /hunter2|orgfit_processor|ca\.crt|DROP/);
+    }
+  } finally {
+    process.env = saved;
+  }
+});
+
 test("executeJob refuses a foreign credential before any work and leaves the process exit status alone", async () => {
   let ran = false;
   const before = process.exitCode;

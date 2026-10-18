@@ -1,5 +1,6 @@
 import pg from "pg";
 import { RuntimeGuardError, assertProcessEnvironment, databaseUrl, guardMessage } from "./runtime-guard";
+import { readinessCode } from "./readiness-log";
 
 // ---------------------------------------------------------------------------
 // One job run, recorded by the job itself (Post-Audit Repair Pass 3).
@@ -105,7 +106,16 @@ export async function executeJob(
     const recorded =
       !(e instanceof RuntimeGuardError) &&
       (await recordJobRun(job, started, { outcome: "FAILURE", failureCode: "UNAVAILABLE" }));
-    return { job, exitCode: 1, recorded, errors: [guardMessage(e) ?? unavailable] };
+    // The safe message plus one fixed code (D-182, as readiness does since
+    // D-168): a SQLSTATE, a Node errno, an OrgFit code, CONNECT_TIMEOUT or
+    // UNKNOWN. A failure before anything could be recorded, such as a missing
+    // certificate or a refused login, was otherwise indistinguishable.
+    return {
+      job,
+      exitCode: 1,
+      recorded,
+      errors: [guardMessage(e) ?? `${unavailable} [${readinessCode(e)}]`],
+    };
   }
   const exitCode = result.exitCode ? result.exitCode : result.outcome === "FAILURE" ? 1 : 0;
   const recorded = await recordJobRun(job, started, result);
