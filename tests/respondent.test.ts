@@ -1130,3 +1130,25 @@ test("PostgreSQL respondent flow: sessions, encrypted drafts and atomic acceptan
     await f.close();
   }
 });
+
+test("D-185: an encrypted draft carries a ranking's order exactly, and the review reads it back in order", async () => {
+  const draftFormat = await import("../src/draft-format");
+  const { checkAnswer } = await import("../src/answer-rules");
+  const { newIdentity, newQuestion, tr } = await import("../src/instrument-input");
+  const q = newQuestion("RANKING");
+  q.options = ["أ", "ب", "ج", "د"].map((ar) => ({ ...newIdentity(), label: tr(ar, ar), score: null }));
+  const order = [q.options[2].id, q.options[0].id, q.options[3].id, q.options[1].id];
+  const key = await draftFormat.importDraftKey(draftFormat.newDraftKeyBytes()),
+    handle = draftFormat.newHandle(),
+    versionId = randomUUID();
+  const sealed = await draftFormat.encryptDraft(key, handle, 3, {
+    schemaVersion: 1,
+    versionId,
+    answers: { [q.id]: order },
+    locale: "ar",
+  });
+  const opened = await draftFormat.decryptDraft(key, handle, versionId, 3, sealed.nonce, sealed.ciphertext);
+  // Same ids, same order: nothing sorts, dedupes or truncates a list.
+  assert.deepEqual(opened.answers[q.id], order);
+  assert.deepEqual(checkAnswer(q, opened.answers[q.id]), { ok: true, value: order });
+});

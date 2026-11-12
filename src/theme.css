@@ -1922,6 +1922,60 @@ nav a {
   overflow-wrap: anywhere;
 }
 
+/* Ranking (D-185): a numbered list, each item with move up / move down
+   buttons at full touch size. Logical properties only, so RTL mirrors. */
+.ranking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.ranking-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--control-height);
+  border: var(--hairline) solid var(--border);
+  background: var(--surface);
+  padding-inline: var(--space-1);
+}
+.ranking-position {
+  flex: 0 0 auto;
+  min-inline-size: 2ch;
+  text-align: center;
+  font-weight: 700;
+}
+.ranking-label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.ranking-moves {
+  display: flex;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+.ranking-move {
+  min-inline-size: var(--control-height);
+  min-block-size: var(--control-height);
+  padding-inline: 0;
+}
+.ranking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}
+.ranking-state {
+  flex: 1 1 auto;
+  color: var(--text-muted);
+}
+.ranking-state[data-ranked="true"] {
+  color: var(--text);
+}
+
 /* Rating scales. On a phone a ten-point scale must not become ten stacked
    rows: the options become a wrapping band of equal, full-height targets with
    the numeral as the visible label and the anchor words above the band. */

@@ -14,6 +14,9 @@ export const questionTypes = [
   "NUMBER",
   "DATE",
   "CONTENT",
+  // The respondent puts every option in order of preference. Unscored: the
+  // engine is pinned at 1.0.0 and has no ranking arithmetic (D-185).
+  "RANKING",
 ] as const;
 export type QuestionType = (typeof questionTypes)[number];
 const text = z
@@ -259,7 +262,10 @@ export function newQuestion(type: QuestionType): Question {
             type === "YES_NO" ? (n ? tr("نعم", "Yes") : tr("لا", "No")) : tr(),
           score: String(n),
         }))
-      : [],
+      : type === "RANKING"
+        ? // A ranking option carries no score: ranking is unscored.
+          [0, 1].map(() => ({ ...newIdentity(), label: tr(), score: null }))
+        : [],
     rows:
       type === "MATRIX" ? [{ ...newIdentity(), label: tr(), weight: "1" }] : [],
     columns:
@@ -518,6 +524,7 @@ function structureIssues(d: Instrument, publish: boolean): Tiered[] {
           "CHECKBOXES",
           "DROPDOWN",
           "YES_NO",
+          "RANKING",
         ].includes(q.type),
         matrix = q.type === "MATRIX",
         v = q.validation;
@@ -545,6 +552,9 @@ function structureIssues(d: Instrument, publish: boolean): Tiered[] {
           (matrix && (!q.rows.length || q.columns.length < 2)))
       )
         add(q.id, "OPTIONS_REQUIRED");
+      // A ranking option never carries a score; PostgreSQL refuses one too.
+      if (q.type === "RANKING" && q.options.some((o) => o.score !== null))
+        block(q.id, "TYPE_CONFIG");
       for (const item of [...q.options, ...q.rows, ...q.columns]) {
         unique(item, item.id);
         translated(item.label, item.id);
@@ -585,7 +595,9 @@ function structureIssues(d: Instrument, publish: boolean): Tiered[] {
         add(q.id, "UNSCORED");
       if (q.scoring.enabled) {
         if (
-          ["CONTENT", "SHORT_TEXT", "LONG_TEXT", "DATE"].includes(q.type) ||
+          ["CONTENT", "SHORT_TEXT", "LONG_TEXT", "DATE", "RANKING"].includes(
+            q.type,
+          ) ||
           !q.dimensionId
         )
           add(q.id, "SCORING_ELIGIBILITY");

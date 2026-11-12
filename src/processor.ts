@@ -104,10 +104,15 @@ function stableKeys(document: Instrument) {
   }
   return map;
 }
-function typedValue(question: Question, value: string | string[]) {
+// Exported for its unit test only (D-185); nothing else imports it.
+export function typedValue(question: Question, value: string | string[]) {
   switch (question.type) {
     case "CHECKBOXES":
       return { type: "OPTION_SET", optionIds: value as string[] };
+    case "RANKING":
+      // The full order, first = most preferred. anonymous_answer.typed_value
+      // is free jsonb (object, <= 64 KiB), so no anonymous migration is needed.
+      return { type: "RANKING", optionIds: value as string[] };
     case "MULTIPLE_CHOICE":
     case "DROPDOWN":
     case "YES_NO":

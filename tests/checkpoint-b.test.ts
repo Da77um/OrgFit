@@ -43,7 +43,8 @@ function allTypesScored() {
       o.label = tr("تسمية", "Label");
     if (type === "NUMBER")
       q.validation = { min: "0", max: "100", precision: 2 };
-    if (!["SHORT_TEXT", "LONG_TEXT", "DATE", "CONTENT"].includes(type)) {
+    // RANKING is unscored like text and dates (D-185).
+    if (!["SHORT_TEXT", "LONG_TEXT", "DATE", "CONTENT", "RANKING"].includes(type)) {
       q.scoring.enabled = true;
       q.dimensionId = dim.id;
     }
@@ -235,7 +236,7 @@ test("Checkpoint B independent SQL arithmetic and persisted all-type scoring", a
       },
     );
     await t.test(
-      "all 12 types persist, validate, score, retain lineage and protect every published node",
+      "all 13 types persist, validate, score, retain lineage and protect every published node",
       async () => {
         const d = allTypesScored();
         assert.deepEqual(definitionIssues(instrumentSchema.parse(d), true), []);
@@ -266,7 +267,8 @@ test("Checkpoint B independent SQL arithmetic and persisted all-type scoring", a
           const result = scoreInstrument(loaded.document, a, p);
           assert.equal(result.overall?.normalized, high ? 100 : 0);
           assert.equal(result.missingRequired.length, 0);
-          assert.equal(result.unscored.length, 3);
+          // SHORT_TEXT, LONG_TEXT, DATE and RANKING (D-185); CONTENT is never an answer.
+          assert.equal(result.unscored.length, 4);
           assert.deepEqual(scoreInstrument(loaded.document, a, p), result);
           assert.equal(JSON.stringify({ d: loaded.document, a }), before);
         }

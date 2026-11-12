@@ -2,6 +2,9 @@ import type { Question, Instrument, DefinitionIssue } from "./instrument-input";
 import { N, total, type ScoreNumber } from "./score-number";
 
 export function itemBounds(q: Question): [ScoreNumber, ScoreNumber] {
+  // Ranking is unscored (D-185): it has no bounds, and SCORING_ELIGIBILITY
+  // already keeps it out of every dimension.
+  if (q.type === "RANKING") throw new Error("UNSCORED_TYPE");
   if (q.type === "RATING_5") return [N(1), N(5)];
   if (q.type === "RATING_10") return [N(1), N(10)];
   if (q.type === "NUMBER") {

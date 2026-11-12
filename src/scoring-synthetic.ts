@@ -35,6 +35,13 @@ export function syntheticBoundaryAnswers(
         "0";
       continue;
     }
+    if (q.type === "RANKING") {
+      // Unscored, so either order is a boundary; a full permutation is the
+      // only valid answer: the option order, reversed for the high fill.
+      const order = q.options.map((o) => o.id);
+      answers[q.id] = high ? order.reverse() : order;
+      continue;
+    }
     const opts = [...(q.type === "MATRIX" ? q.columns : q.options)].sort(
       (a, b) => N(a.score ?? "0").compare(N(b.score ?? "0")) * (high ? -1 : 1),
     );

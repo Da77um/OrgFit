@@ -14,6 +14,7 @@ import {
 } from "../../../../src/test-submission";
 import { IssueReasons } from "./issue-reasons";
 import { TestResult } from "./test-result";
+import { RankingControl } from "../../../../src/ranking-control";
 export function InstrumentPreview({
   document: d,
   pin,
@@ -212,6 +213,48 @@ export function InstrumentPreview({
                             "YES_NO",
                           ].includes(q.type) ? (
                           choice(q, q.id, q.options, q.type === "CHECKBOXES")
+                        ) : q.type === "RANKING" ? (
+                          <RankingControl
+                            id={q.id}
+                            options={q.options.map((o) => ({
+                              id: o.id,
+                              label:
+                                o.label[locale] ||
+                                t("خيار دون نص", "Untitled option"),
+                            }))}
+                            value={answers[q.id]}
+                            onChange={(order) => set(q.id, order)}
+                            text={{
+                              moveUp: (item) =>
+                                t(`نقل «${item}» لأعلى`, `Move “${item}” up`),
+                              moveDown: (item) =>
+                                t(`نقل «${item}» لأسفل`, `Move “${item}” down`),
+                              position: (n, total) =>
+                                t(
+                                  `المرتبة ${n} من ${total}:`,
+                                  `Position ${n} of ${total}:`,
+                                ),
+                              moved: (item, n, total) =>
+                                t(
+                                  `«${item}» الآن في المرتبة ${n} من ${total}.`,
+                                  `“${item}” is now at position ${n} of ${total}.`,
+                                ),
+                              keep: t("اعتماد هذا الترتيب", "Keep this order"),
+                              clear: t("مسح الترتيب", "Clear ranking"),
+                              unranked: t(
+                                "لم تُرتَّب بعد. حرّك العناصر أو اعتمد الترتيب الظاهر.",
+                                "Not ranked yet. Move items, or keep the order shown.",
+                              ),
+                              ranked: t(
+                                "تم الترتيب. الأول هو الأكثر تفضيلًا.",
+                                "Ranked. The first is the most preferred.",
+                              ),
+                              keyboard: t(
+                                "رتّب كل الخيارات من الأكثر تفضيلًا إلى الأقل باستخدام زرّي الأعلى والأسفل، أو بمفتاحي الأسهم على الزر.",
+                                "Put every option in order, most preferred first, with the up and down buttons or the arrow keys on a button.",
+                              ),
+                            }}
+                          />
                         ) : q.type === "DROPDOWN" ? (
                           <select
                             aria-label={q.prompt[locale]}

@@ -135,7 +135,7 @@ export function QuestionEditor({
                 }
               />
             </label>
-          ) : q.type !== "YES_NO" ? (
+          ) : q.type !== "YES_NO" && q.type !== "RANKING" ? (
             <label>
               {t(
                 "قيمة الخيار للقياس (فارغ لغير المقاس)",
@@ -312,7 +312,7 @@ export function QuestionEditor({
           ))}
         </div>
       )}
-      {["MULTIPLE_CHOICE", "CHECKBOXES", "DROPDOWN", "YES_NO"].includes(
+      {["MULTIPLE_CHOICE", "CHECKBOXES", "DROPDOWN", "YES_NO", "RANKING"].includes(
         q.type,
       ) && list("options")}
       {q.type === "MATRIX" && (
@@ -321,7 +321,10 @@ export function QuestionEditor({
           {list("columns")}
         </>
       )}
-      {!["CONTENT", "SHORT_TEXT", "LONG_TEXT", "DATE"].includes(q.type) && (
+      {/* Ranking is unscored (D-185): labels only, no score, no toggle. */}
+      {!["CONTENT", "SHORT_TEXT", "LONG_TEXT", "DATE", "RANKING"].includes(
+        q.type,
+      ) && (
         <fieldset>
           <legend>
             {t("إعداد القياس التصريحي", "Declarative scoring configuration")}

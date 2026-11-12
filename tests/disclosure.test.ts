@@ -381,3 +381,93 @@ test("ranking uses released cells only and orients by direction", () => {
   );
   assert.deepEqual(rankDimensions(hidden), { strengths: [], weaknesses: [] });
 });
+
+test("D-185: a ranking releases the share who ranked each option first, under the same suppression rules", () => {
+  const RANK_KEY = "00000000-0000-4000-8000-000000000051";
+  const RANK = `question:${RANK_KEY}`;
+  const opts = [
+    "00000000-0000-4000-8000-000000000052",
+    "00000000-0000-4000-8000-000000000054",
+    "00000000-0000-4000-8000-000000000056",
+  ];
+  const withRanking = (responses: ReturnType<typeof respondent>[]) => {
+    const input = releaseInput(responses);
+    input.instrument.sections[0].questions.push({
+      id: "00000000-0000-4000-8000-000000000050",
+      key: RANK_KEY,
+      type: "RANKING",
+      prompt: { ar: "رتّب", en: "Rank" },
+      help: { ar: "", en: "" },
+      required: true,
+      dimensionId: null,
+      validation: {},
+      scoring: { enabled: false, reverse: false, weight: "1", mode: "VALUE" },
+      options: opts.map((id, i) => ({
+        id,
+        key: `00000000-0000-4000-8000-00000000006${i}`,
+        label: { ar: `خيار ${i + 1}`, en: `Option ${i + 1}` },
+        score: null,
+      })),
+      rows: [],
+      columns: [],
+    });
+    return input;
+  };
+  const rank = (...order: number[]) => ({
+    [RANK_KEY]: { type: "RANKING" as const, optionIds: order.map((i) => opts[i]) },
+  });
+  // Six put option 1 first, six put option 2 first; option 3 is never first
+  // but always somewhere in every full ranking. Only first choices count.
+  const responses = [
+    ...Array.from({ length: 6 }, (_, i) => respondent(DEPT_A, String(50 + i), rank(0, 2, 1))),
+    ...Array.from({ length: 6 }, (_, i) => respondent(DEPT_B, String(60 + i), rank(1, 2, 0))),
+  ];
+  const cell = cellOf(buildReleasePlan(withRanking(responses)), COMPANY, RANK);
+  assert.equal(cell.status, "AVAILABLE");
+  const distribution = cell.distribution as {
+    kind: string;
+    total: number;
+    bins: { key: string; count: number; share: string }[];
+  };
+  assert.equal(distribution.kind, "OPTION_SHARES");
+  assert.equal(distribution.total, 12);
+  assert.deepEqual(distribution.bins.map((b) => b.key), opts);
+  assert.deepEqual(distribution.bins.map((b) => b.count), [6, 6, 0]);
+  assert.deepEqual(distribution.bins.map((b) => b.share), ["0.500", "0.500", "0.000"]);
+  // Question analysis stays company-level: no department ranking cell.
+  assert.equal(cellOf(buildReleasePlan(withRanking(responses)), DEPT_A, RANK).status, "SUPPRESSED");
+
+  // Below threshold: in a campaign of twelve, four rankings release nothing.
+  const few = [
+    ...responses.slice(0, 4),
+    ...Array.from({ length: 8 }, (_, i) => respondent(DEPT_B, String(70 + i))),
+  ];
+  const fewCell = cellOf(buildReleasePlan(withRanking(few)), COMPANY, RANK);
+  assert.equal(fewCell.status, "INSUFFICIENT");
+  assert.equal(fewCell.reasonCode, "BELOW_THRESHOLD");
+  assert.equal(fewCell.distribution, null);
+  // A rare first choice withholds the whole distribution.
+  const sparse = [
+    ...responses.slice(0, 6),
+    ...responses.slice(6, 8),
+  ];
+  const sparseCell = cellOf(buildReleasePlan(withRanking(sparse)), COMPANY, RANK);
+  assert.equal(sparseCell.status, "SUPPRESSED");
+  assert.equal(sparseCell.reasonCode, "SPARSE_BIN");
+  assert.equal(sparseCell.distribution, null);
+  // Everyone ranking the same option first is a homogeneous disclosure.
+  assert.equal(
+    cellOf(buildReleasePlan(withRanking(responses.slice(0, 6))), COMPANY, RANK).reasonCode,
+    "HOMOGENEOUS",
+  );
+  // An optional ranking left empty is missing, not a contributor.
+  const empties = [
+    ...responses,
+    ...Array.from({ length: 3 }, (_, i) =>
+      respondent(DEPT_A, String(80 + i), { [RANK_KEY]: { type: "RANKING", optionIds: [] } }),
+    ),
+  ];
+  const withEmpty = cellOf(buildReleasePlan(withRanking(empties)), COMPANY, RANK);
+  assert.equal((withEmpty.distribution as { total: number }).total, 12);
+  assert.equal(withEmpty.contributorCount, 12);
+});

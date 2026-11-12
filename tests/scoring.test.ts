@@ -852,3 +852,87 @@ test("draft scoring still refuses unsafe documents, foreign answers and a substi
       e instanceof ScoringError && e.issues[0].code === "DEFINITION_FORMAT",
   );
 });
+test("D-185: a ranking answer is a full permutation, ranking stays unscored and existing scores are byte-identical", () => {
+  const base = scoringFixture();
+  const ranking = newQuestion("RANKING");
+  ranking.prompt = tr("رتّب", "Rank");
+  ranking.options = ["أ", "ب", "ج"].map((ar, i) => ({
+    ...newIdentity(),
+    label: tr(ar, `Option ${i + 1}`),
+    score: null,
+  }));
+  const withRanking: Instrument = structuredClone(base);
+  withRanking.sections[0].questions.push(ranking);
+  assert.deepEqual(definitionIssues(withRanking, true), []);
+  const [a, b, c] = ranking.options.map((o) => o.id);
+  const rated = answers(base, ["4", "2", "5"]);
+  const full = { ...rated, [ranking.id]: [c, a, b] };
+
+  // Valid: a permutation of every option, first = most preferred.
+  const scored = scoreInstrument(withRanking, full, pin);
+  assert.deepEqual(scored.missingRequired, []);
+  // Unscored: in `unscored`, never in a dimension.
+  assert.deepEqual(scored.unscored, [ranking.id]);
+  assert.deepEqual(Object.keys(scored.dimensions), [base.dimensions[0].id]);
+  // Byte-identical dimension and overall output with the ranking added.
+  const plain = scoreInstrument(base, rated, pin);
+  assert.equal(
+    JSON.stringify({ d: scored.dimensions, o: scored.overall }),
+    JSON.stringify({ d: plain.dimensions, o: plain.overall }),
+  );
+
+  // Refused: partial, duplicate, unknown id, a plain string.
+  for (const [name, value] of [
+    ["partial", [c, a]],
+    ["duplicate", [a, a, b]],
+    ["unknown id", [a, b, newIdentity().id]],
+    ["not a list", a],
+  ] as const)
+    assert.throws(
+      () => scoreInstrument(withRanking, { ...rated, [ranking.id]: value as string | string[] }, pin),
+      (e: unknown) =>
+        e instanceof ScoringError && e.issues[0].code === "ANSWER_RANGE",
+      name,
+    );
+  // Required: empty or absent is missing, never a partial pass.
+  assert.deepEqual(
+    scoreInstrument(withRanking, { ...rated, [ranking.id]: [] }, pin).missingRequired,
+    [ranking.id],
+  );
+  assert.deepEqual(scoreInstrument(withRanking, rated, pin).missingRequired, [ranking.id]);
+  // Optional: empty is fine, full is fine, partial is still refused.
+  ranking.required = false;
+  assert.deepEqual(
+    scoreInstrument(withRanking, { ...rated, [ranking.id]: [] }, pin).missingRequired,
+    [],
+  );
+  assert.deepEqual(scoreInstrument(withRanking, full, pin).missingRequired, []);
+  assert.throws(() =>
+    scoreInstrument(withRanking, { ...rated, [ranking.id]: [b] }, pin),
+  );
+
+  // Synthetic fills give a valid full ranking for it.
+  for (const high of [false, true]) {
+    const synthetic = syntheticBoundaryAnswers(withRanking, high);
+    assert.deepEqual([...(synthetic[ranking.id] as string[])].sort(), [a, b, c].sort());
+    assert.doesNotThrow(() => scoreInstrument(withRanking, synthetic, pin));
+  }
+  // A ranking cannot be put into a dimension, and has no bounds.
+  ranking.scoring.enabled = true;
+  ranking.dimensionId = base.dimensions[0].id;
+  assert.ok(
+    definitionIssues(withRanking, true).some(
+      (i) => i.path === ranking.id && i.code === "SCORING_ELIGIBILITY",
+    ),
+  );
+  assert.throws(() => itemBounds(ranking));
+  // A scored ranking option cannot even be saved.
+  ranking.scoring.enabled = false;
+  ranking.dimensionId = null;
+  ranking.options[0].score = "1";
+  assert.ok(
+    definitionIssues(withRanking, true).some(
+      (i) => i.path === ranking.id && i.code === "TYPE_CONFIG",
+    ),
+  );
+});

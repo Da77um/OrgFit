@@ -79,6 +79,19 @@ export function checkAnswer(
       return no("TOO_MANY");
     return { ok: true, value: v };
   }
+  if (q.type === "RANKING") {
+    // A present ranking is a permutation of EVERY option: no duplicate, no
+    // unknown id, none missing. First = most preferred. An empty array is
+    // missing (isMissing), so "optional" means empty or full, never partial.
+    if (
+      !Array.isArray(v) ||
+      v.length !== q.options.length ||
+      new Set(v).size !== v.length ||
+      v.some((x) => !q.options.some((o) => o.id === x))
+    )
+      return no("INVALID");
+    return { ok: true, value: v };
+  }
   if (typeof v !== "string") return no("INVALID");
   if (["MULTIPLE_CHOICE", "DROPDOWN", "YES_NO", "MATRIX"].includes(q.type))
     return (q.type === "MATRIX" ? q.columns : q.options).some((o) => o.id === v)

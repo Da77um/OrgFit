@@ -105,6 +105,8 @@ export type GroupDefinition = {
 export type TypedValue =
   | { type: "OPTION"; optionId: string }
   | { type: "OPTION_SET"; optionIds: string[] }
+  // The full order, first = most preferred (D-185).
+  | { type: "RANKING"; optionIds: string[] }
   | { type: "NUMBER"; value: string }
   | { type: "DATE"; value: string }
   | { type: "TEXT"; value: string };
@@ -225,7 +227,10 @@ function answerItems(document: Instrument) {
       q.type === "MULTIPLE_CHOICE" ||
       q.type === "DROPDOWN" ||
       q.type === "YES_NO" ||
-      q.type === "CHECKBOXES"
+      q.type === "CHECKBOXES" ||
+      // A ranking's bins are its options; each response contributes only its
+      // first choice, so the shares read "ranked this option first".
+      q.type === "RANKING"
         ? q.options.map((o) => ({ key: o.id, label: o.label }))
         : q.type === "MATRIX"
           ? q.columns.map((o) => ({ key: o.id, label: o.label }))
@@ -364,7 +369,9 @@ function questionCells(
     .map((g) => withheld(g.key, metricKey, "SUPPRESSED", "NOT_RELEASED"));
   const answers = input.responses
     .map((r) => r.answers.find((a) => a.questionKey === key)?.typedValue)
-    .filter((v): v is TypedValue => v !== undefined);
+    .filter((v): v is TypedValue => v !== undefined)
+    // An optional ranking left empty is a missing answer, not a contributor.
+    .filter((v) => v.type !== "RANKING" || v.optionIds.length > 0);
   const blocked = (status: CellStatus, reason: ReasonCode) => [
     withheld(company.key, metricKey, status, reason),
     ...departments,
@@ -405,7 +412,9 @@ function questionCells(
   for (const answer of answers)
     for (const chosen of answer.type === "OPTION_SET"
       ? answer.optionIds
-      : answer.type === "OPTION"
+      : answer.type === "RANKING"
+        ? answer.optionIds.slice(0, 1)
+        : answer.type === "OPTION"
         ? [answer.optionId]
         : answer.type === "NUMBER"
           ? [answer.value]

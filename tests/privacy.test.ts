@@ -10,9 +10,10 @@ import {
   processCampaign,
   reconcile,
   shuffle,
+  typedValue,
   type FaultPoint,
 } from "../src/processor";
-import type { Instrument } from "../src/instrument-input";
+import { newIdentity, newQuestion, tr, type Instrument } from "../src/instrument-input";
 import { respondentFixture, failure, type Fixture } from "./respondent-fixture";
 
 function completeAnswers(document: Instrument, seed: number) {
@@ -683,4 +684,26 @@ test("PostgreSQL privacy processing: anonymous batch, faults and forbidden field
     await anon.end();
     await f.close();
   }
+});
+
+test("D-185: the processor stores a ranking as its full order, first = most preferred, in free jsonb", () => {
+  const q = newQuestion("RANKING");
+  q.options = Array.from({ length: 100 }, (_, i) => ({
+    ...newIdentity(),
+    label: tr(`خيار ${i}`, `Option ${i}`),
+    score: null,
+  }));
+  const order = q.options.map((o) => o.id).reverse();
+  const stored = typedValue(q, order);
+  assert.deepEqual(stored, { type: "RANKING", optionIds: order });
+  // The order is kept exactly, not sorted or deduplicated.
+  assert.equal((stored as { optionIds: string[] }).optionIds[0], q.options[99].id);
+  // anonymous.anonymous_answer.typed_value: a JSON object of at most 64 KiB
+  // (db/anonymous/001_anonymous.sql), so the largest ranking fits unchanged.
+  const json = JSON.stringify(stored);
+  assert.equal(typeof JSON.parse(json), "object");
+  assert.ok(Buffer.byteLength(json) <= 65536);
+  // Checkboxes are unchanged.
+  const cb = newQuestion("CHECKBOXES");
+  assert.deepEqual(typedValue(cb, ["x"]), { type: "OPTION_SET", optionIds: ["x"] });
 });

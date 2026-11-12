@@ -628,6 +628,7 @@ export function InstrumentWorkspace({
     t("رقم", "Number"),
     t("تاريخ", "Date"),
     t("محتوى قسم", "Section content"),
+    t("ترتيب", "Ranking"),
   ];
   return (
     <>

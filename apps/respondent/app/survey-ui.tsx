@@ -11,6 +11,7 @@ import {
 } from "../../../src/answer-rules";
 import { Alert, Label, LoadingState } from "../../../src/ui";
 import { Lockup, Mark, Wordmark } from "../../../src/brand";
+import { RankingControl } from "../../../src/ranking-control";
 import {
   CIPHER_VERSION,
   decryptDraft,
@@ -1507,6 +1508,11 @@ function displayAnswer(
 ) {
   if (value === undefined) return "";
   const options = q.type === "MATRIX" ? q.columns : q.options;
+  // A ranking is read back in its order, with each position: "1. A، 2. B".
+  if (q.type === "RANKING" && Array.isArray(value))
+    return value
+      .map((v, i) => `${i + 1}. ${text(options.find((o) => o.id === v)?.label)}`)
+      .join(locale === "en" ? ", " : "، ");
   if (Array.isArray(value))
     return value
       .map((v) => text(options.find((o) => o.id === v)?.label))
@@ -1566,7 +1572,9 @@ function QuestionField({
     const scope =
       holder.current.querySelector<HTMLElement>(`[data-slot="${focusId}"]`) ??
       holder.current;
-    const control = scope.querySelector<HTMLElement>("input, select, textarea");
+    const control = scope.querySelector<HTMLElement>(
+      "input, select, textarea, button:not([disabled])",
+    );
     control?.focus({ preventScroll: true });
     scope.scrollIntoView({ block: "center" });
     onFocused?.();
@@ -1727,6 +1735,32 @@ function QuestionField({
         </fieldset>
       );
     }
+
+    if (q.type === "RANKING")
+      return (
+        <RankingControl
+          id={q.id}
+          options={options.map((o) => ({ id: o.id, label: text(o.label) }))}
+          value={value}
+          onChange={(order) => onChange(q.id, order)}
+          onBlur={() => onTouch(q.id)}
+          legend={promptLine}
+          notes={notes(q.id)}
+          describedBy={describedBy(q.id)}
+          invalid={!!problem(q.id)}
+          text={{
+            moveUp: (item) => fill(m.rankMoveUp, { item }),
+            moveDown: (item) => fill(m.rankMoveDown, { item }),
+            position: (n, total) => fill(m.rankPosition, { n, total }),
+            moved: (item, n, total) => fill(m.rankMoved, { item, n, total }),
+            keep: m.rankKeep,
+            clear: m.rankClear,
+            unranked: m.rankUnranked,
+            ranked: m.rankRanked,
+            keyboard: m.rankKeyboard,
+          }}
+        />
+      );
 
     if (q.type === "MATRIX") {
       const headingId = `prompt-${q.id}`;

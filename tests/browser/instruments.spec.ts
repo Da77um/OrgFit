@@ -203,7 +203,7 @@ test("all-type AR/EN preview, bilingual completeness, no collection and stale HT
     page.getByLabel("Question SHORT_TEXT", { exact: true }),
   ).toHaveValue("Synthetic only");
   await expect(
-    page.getByText("Progress: 1 / 11", { exact: true }),
+    page.getByText("Progress: 1 / 12", { exact: true }),
   ).toBeVisible();
   await page.setViewportSize({ width: 320, height: 850 });
   expect(
@@ -594,4 +594,93 @@ test("Arabic library list archives a custom questionnaire after confirmation", a
   await page.getByRole("button", { name: "بحث", exact: true }).click();
   await expect(card).toBeVisible();
   await expect(card.getByRole("button", { name: "أرشفة" })).toHaveCount(0);
+});
+
+test("D-185: a ranking question is ranked in the preview with buttons and keys only, RTL and LTR", async ({
+  page,
+  baseURL,
+}) => {
+  await login(page);
+  const root = `/api/v1/organizations/${ids.orgA}/questionnaires`;
+  const created = await page.request.post(root, {
+    headers: { Origin: baseURL!, "Idempotency-Key": randomUUID() },
+    data: { title: tr("استبيان الترتيب", "Ranking questionnaire") },
+  });
+  expect(created.status()).toBe(201);
+  let v = (await created.json()).data;
+  const d = structuredClone(v.document);
+  d.locales = ["ar", "en"];
+  const q = newQuestion("RANKING");
+  q.prompt = tr("رتّب الأولويات", "Rank the priorities");
+  q.options = [
+    tr("أحمر", "Red"),
+    tr("أخضر", "Green"),
+    tr("أزرق", "Blue"),
+  ].map((label) => ({ ...newIdentity(), label, score: null }));
+  d.sections = [
+    { ...newIdentity(), title: tr("قسم", "Section"), content: tr(), questions: [q] },
+  ];
+  const url = `${root}/${v.questionnaire_id}/versions/${v.id}`;
+  const saved = await page.request.patch(url, {
+    headers: {
+      Origin: baseURL!,
+      "Idempotency-Key": randomUUID(),
+      "X-OrgFit-Revision": `"${v.revision}"`,
+    },
+    data: d,
+  });
+  expect(saved.status()).toBe(200);
+  v = (await saved.json()).data;
+  await page.goto(`/questionnaires/${v.questionnaire_id}/versions/${v.id}?organization=${ids.orgA}`);
+  await page.getByRole("button", { name: "معاينة تجريبية", exact: true }).click();
+  const preview = page.locator(".instrument-preview");
+  await expect(preview).toHaveAttribute("dir", "rtl");
+  const items = preview.locator(".ranking-item");
+  const order = async () =>
+    items.evaluateAll((els) =>
+      els.map((el) => {
+        const label = el.querySelector(".ranking-label")!.cloneNode(true) as HTMLElement;
+        label.querySelector(".visually-hidden")?.remove();
+        return `${el.querySelector(".ranking-position")!.textContent}:${label.textContent!.trim()}`;
+      }),
+    );
+  // Untouched: the option order is shown, and it is not yet an answer.
+  expect(await order()).toEqual(["1:أحمر", "2:أخضر", "3:أزرق"]);
+  await expect(preview.getByText("لم تُرتَّب بعد", { exact: false })).toBeVisible();
+  await expect(preview.getByText("التقدم: 0 / 1", { exact: true })).toBeVisible();
+  await expect(preview.getByRole("button", { name: "نقل «أحمر» لأعلى" })).toBeDisabled();
+  // Every move control is a full 44px target.
+  const box = await preview.getByRole("button", { name: "نقل «أزرق» لأعلى" }).boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+
+  // Buttons only: a click, then Enter on the focused button (focus follows the item).
+  await preview.getByRole("button", { name: "نقل «أزرق» لأعلى" }).click();
+  expect(await order()).toEqual(["1:أحمر", "2:أزرق", "3:أخضر"]);
+  await expect(preview.getByRole("button", { name: "نقل «أزرق» لأعلى" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  expect(await order()).toEqual(["1:أزرق", "2:أحمر", "3:أخضر"]);
+  // At the top its "up" is disabled, so focus moved to its "down" button.
+  await expect(preview.getByRole("button", { name: "نقل «أزرق» لأسفل" })).toBeFocused();
+  await expect(preview.getByRole("status").filter({ hasText: "«أزرق» الآن في المرتبة 1 من 3." })).toHaveCount(1);
+  // Arrow keys on a move button move that item.
+  await preview.getByRole("button", { name: "نقل «أخضر» لأعلى" }).focus();
+  await page.keyboard.press("ArrowUp");
+  expect(await order()).toEqual(["1:أزرق", "2:أخضر", "3:أحمر"]);
+  await expect(preview.getByText("تم الترتيب. الأول هو الأكثر تفضيلًا.", { exact: true })).toBeVisible();
+  await expect(preview.getByText("التقدم: 1 / 1", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "work/ranking-preview-ar.png", fullPage: true });
+
+  // English, LTR: the same order, its own names.
+  await page.getByLabel("لغة المعاينة").selectOption("en");
+  await expect(preview).toHaveAttribute("dir", "ltr");
+  expect(await order()).toEqual(["1:Blue", "2:Green", "3:Red"]);
+  await preview.getByRole("button", { name: "Move “Red” up" }).click();
+  expect(await order()).toEqual(["1:Blue", "2:Red", "3:Green"]);
+  await page.setViewportSize({ width: 320, height: 850 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "work/ranking-preview-en-320.png", fullPage: true });
+  // Clear returns to "no answer".
+  await preview.getByRole("button", { name: "Clear ranking" }).click();
+  await expect(preview.getByText("Progress: 0 / 1", { exact: true })).toBeVisible();
 });

@@ -781,6 +781,66 @@ test("PostgreSQL instrument scope, immutability, publication, lifecycle and conc
       },
     );
     await t.test(
+      "D-185: PostgreSQL publishes a ranking question and refuses a scored, single-option or scoring-enabled one",
+      async () => {
+        const draft = () =>
+          save(admin, { org: ids.orgA, action: "CREATE", document: allTypes() });
+        // The whole document, ranking included, publishes through SQL alone.
+        const ok = await draft();
+        assert.ok(ok.document.sections[0].questions.some((q) => q.type === "RANKING"));
+        assert.deepEqual(definitionIssues(ok.document, true), []);
+        await directPublish(admin, ok);
+        const published = (
+          await operator.query(
+            "select state from instrument.questionnaire_version where id=$1",
+            [ok.id],
+          )
+        ).rows[0].state;
+        assert.equal(published, "PUBLISHED");
+        const ranking = "(select id from instrument.question where version_id=$1 and payload->>'type'='RANKING')";
+        const refusals: [string, string][] = [
+          [
+            "a ranking option carries a score",
+            `update instrument.question_option set payload=jsonb_set(payload,'{score}','"1"') where version_id=$1 and parent_id=${ranking} and position=0`,
+          ],
+          [
+            "a ranking question has a single option",
+            `delete from instrument.question_option where version_id=$1 and parent_id=${ranking} and position=1`,
+          ],
+        ];
+        for (const [name, statement] of refusals) {
+          const v = await draft();
+          const changed = await operator.query(statement, [v.id]);
+          assert.equal(changed.rowCount, 1, name);
+          await assert.rejects(directPublish(admin, v), /VALIDATION_FAILED/, name);
+        }
+        // A ranking put into a dimension: the draft saves (SCORING_ELIGIBILITY
+        // is a publication issue), and PostgreSQL alone refuses to publish it.
+        const scored = scoringFixture();
+        assert.deepEqual(definitionIssues(scored, true), []);
+        const rank = newQuestion("RANKING");
+        rank.prompt = tr("رتّب", "Rank");
+        for (const o of rank.options) o.label = tr("خيار", "Option");
+        rank.scoring.enabled = true;
+        rank.dimensionId = scored.dimensions[0].id;
+        scored.sections[0].questions.push(rank);
+        assert.ok(
+          definitionIssues(scored, true).some((i) => i.code === "SCORING_ELIGIBILITY"),
+        );
+        const scoredDraft = await save(admin, { org: ids.orgA, action: "CREATE", document: scored });
+        await assert.rejects(
+          directPublish(admin, scoredDraft),
+          /VALIDATION_FAILED/,
+          "a ranking question is enabled for scoring",
+        );
+        // Without the ranking's scoring, the same document publishes.
+        rank.scoring.enabled = false;
+        rank.dimensionId = null;
+        const plainDraft = await save(admin, { org: ids.orgA, action: "CREATE", document: copyInstrument(scored) });
+        await directPublish(admin, plainDraft);
+      },
+    );
+    await t.test(
       "capability revocation and runtime RLS remain authoritative",
       async () => {
         await operator.query(
