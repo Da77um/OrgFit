@@ -12,7 +12,7 @@ import { ReportsPanel } from "./reports-ui";
 import { ReleasePanel } from "./release-ui";
 import { utcDate } from "../../../../src/zoned-time";
 import { Workspace, organizationName } from "../shell";
-import { Mark } from "../../../../src/brand";
+import { Lockup, Mark } from "../../../../src/brand";
 import { seedFor, signatureScores } from "../../../../src/brand-mark";
 import {
   Alert,
@@ -712,10 +712,12 @@ function RecommendationCard({
         {m.ruleReference}: {item.ruleKey.slice(0, 8)} · {m.rulesVersion}:{" "}
         {item.rulesVersion}
       </p>
-      <div className="note" role="note">
+      <div className="note no-print" role="note">
         <p>{m.frozenNote}</p>
       </div>
-      <div className="stack">
+      {/* The human follow-up form is an editing surface, not a finding: it is
+          left out of the printed page. */}
+      <div className="stack no-print">
         <div className="form-grid">
           <label>
             {m.actionStatus}
@@ -890,7 +892,31 @@ export function Results({
   const [data, setData] = useState<ViewData | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  // Print (D-186): the browser prints what this page already shows. The round
+  // label is read from the existing round endpoint (metadata, not results);
+  // when it cannot be read the header names the round by its closing period.
+  const [roundLabel, setRoundLabel] = useState("");
+  const [printedAt, setPrintedAt] = useState(() => new Date());
   const client = useStaffApi(locale);
+  useEffect(() => {
+    let live = true;
+    void client
+      .read<{ label?: string }>(`/api/v1/organizations/${org}/assessments/${roundId}`)
+      .then((round) => {
+        if (live) setRoundLabel(round.label ?? "");
+      })
+      .catch(() => {
+        /* The header falls back to the period; nothing else depends on it. */
+      });
+    return () => {
+      live = false;
+    };
+  }, [client, org, roundId]);
+  useEffect(() => {
+    const stamp = () => setPrintedAt(new Date());
+    window.addEventListener("beforeprint", stamp);
+    return () => window.removeEventListener("beforeprint", stamp);
+  }, []);
   const hydrated = useSyncExternalStore(
     subscribe,
     () => true,
@@ -950,8 +976,46 @@ export function Results({
     </Workspace>
   );
   if (!hydrated) return shell(<LoadingState label={m.loading} />);
+  const printable = view !== "reports" && data?.view === view;
+  const period = data?.period
+    ? [data.period.startsAt, data.period.closedAt ?? data.period.endsAt]
+        .map((v) => utcDate(v ?? undefined))
+        .filter(Boolean)
+        .join(" – ")
+    : "";
   return shell(
     <>
+      {/* Print only: the identity, the organization, the round, the view and
+          the print date. Hidden on screen; carries no result value. */}
+      {printable && (
+        <div className="print-only print-header">
+          <Lockup cap={22} markSize={64} descriptor={m.printDescriptor} />
+          <dl className="print-facts">
+            <div>
+              <dt>{m.printOrganization}</dt>
+              <dd>{organizationName(organization, locale)}</dd>
+            </div>
+            <div>
+              <dt>{m.printRound}</dt>
+              <dd>{roundLabel || period || "—"}</dd>
+            </div>
+            <div>
+              <dt>{m.printView}</dt>
+              <dd>{m[view]}</dd>
+            </div>
+            <div>
+              <dt>{m.printDate}</dt>
+              <dd>
+                <bdi>
+                  {new Intl.DateTimeFormat(locale === "ar" ? "ar-u-nu-latn" : "en-GB", {
+                    dateStyle: "long",
+                  }).format(printedAt)}
+                </bdi>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      )}
       <PageHeader
         eyebrow={<Label accent>{organizationName(organization, locale)}</Label>}
         title={m.results}
@@ -960,13 +1024,15 @@ export function Results({
           data?.contentHash ? <Micro>SNAPSHOT {data.contentHash.slice(0, 8)}</Micro> : undefined
         }
       />
-      <ReleasePanel
-        org={org}
-        roundId={roundId}
-        locale={locale}
-        onChanged={() => void load(view)}
-      />
-      <nav aria-label={m.results}>
+      <div className="no-print">
+        <ReleasePanel
+          org={org}
+          roundId={roundId}
+          locale={locale}
+          onChanged={() => void load(view)}
+        />
+      </div>
+      <nav aria-label={m.results} className="results-tabs no-print">
         <ul className="tabs">
           {TABS.map((item) => (
             <li key={item}>
@@ -986,10 +1052,32 @@ export function Results({
           ))}
         </ul>
       </nav>
-      {error && <ErrorState title={base.errorTitle} body={error} />}
-      <p role="status" aria-live="polite">
+      {error && (
+        <div className="no-print">
+          <ErrorState title={base.errorTitle} body={error} />
+        </div>
+      )}
+      <p role="status" aria-live="polite" className="no-print">
         {busy ? m.loading : ""}
       </p>
+      {printable && (
+        <div className="print-bar no-print">
+          <button
+            type="button"
+            className="button-secondary"
+            aria-describedby="results-print-hint"
+            onClick={() => {
+              setPrintedAt(new Date());
+              window.print();
+            }}
+          >
+            {m.printPage}
+          </button>
+          <span id="results-print-hint" className="muted">
+            {m.printPageHint}
+          </span>
+        </div>
+      )}
         {/* Each view renders only its OWN payload. The requested tab changes
             before the fetch resolves, and the views do not share a shape — the
             recommendations release carries no cells — so keying the render on

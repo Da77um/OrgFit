@@ -98,6 +98,15 @@ const ar = {
   privacyNote:
     "تعرض هذه الصفحة نتائج مجمّعة معتمدة فقط. لا يمكن للنظام إظهار إجابة فرد، ولا يقل عدد المساهمين في أي قيمة منشورة عن الحد الأدنى. المؤشرات المحجوبة ليست صفرًا.",
   reports: "التقارير",
+  // One-click printing (D-186).
+  printPage: "طباعة",
+  printPageHint:
+    "يطبع هذه الصفحة كما تظهر الآن. لحفظها ملف PDF اختر «حفظ بتنسيق PDF» في نافذة الطباعة.",
+  printDescriptor: "نتائج مجمّعة معتمدة",
+  printOrganization: "المنظمة",
+  printRound: "الجولة",
+  printView: "العرض",
+  printDate: "تاريخ الطباعة",
   reportsNote:
     "يُنشأ التقرير من نتائج منشورة فقط، ويُرسم في عملية منفصلة. لا يُرسل أي ملف تلقائيًا إلى أي جهة، وتنتهي صلاحية رابط التنزيل خلال يوم واحد.",
   requestReport: "طلب تقرير",
@@ -267,6 +276,14 @@ const en: Record<ResultsKey, string> = {
   privacyNote:
     "This page shows approved aggregate results only. No individual answer can be shown, and no published value has fewer contributors than the threshold. A withheld metric is not a zero.",
   reports: "Reports",
+  printPage: "Print",
+  printPageHint:
+    "Prints this page as it is shown now. To keep a PDF, choose “Save as PDF” in the print dialog.",
+  printDescriptor: "Approved aggregate results",
+  printOrganization: "Organization",
+  printRound: "Round",
+  printView: "View",
+  printDate: "Printed on",
   reportsNote:
     "A report is built from published results only and is drawn by a separate process. No file is sent anywhere automatically, and a download link expires within a day.",
   requestReport: "Request a report",

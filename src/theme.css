@@ -2265,6 +2265,19 @@ button.button-on-dark {
   }
 }
 
+/* One-click printing of results (D-186). The print-only header exists in
+   the page but is shown only on paper; the print bar is screen only. */
+.print-only {
+  display: none;
+}
+.print-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block: var(--space-2);
+}
+
 @media print {
   .appbar,
   .rail,
@@ -2283,6 +2296,100 @@ button.button-on-dark {
   }
   .shell {
     display: block;
+  }
+
+  /* Results printing (D-186): only what the screen shows, without the
+     navigation, the live status, the release controls, error alerts or the
+     follow-up form. */
+  .no-print,
+  .results-tabs,
+  .tabs {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  @page {
+    margin: 12mm;
+  }
+  .print-header {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    border-block-end: 1pt solid #000;
+    padding-block-end: var(--space-1);
+    margin-block-end: var(--space-2);
+    background: #fff;
+    color: #000;
+    break-inside: avoid;
+  }
+  .print-facts {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+  }
+  .print-facts dt {
+    font-size: 8pt;
+    color: #444;
+  }
+  .print-facts dd {
+    margin: 0;
+    font-weight: 600;
+  }
+  /* Rows and cards stay whole; headings stay with what follows. */
+  .result-metric,
+  .tile,
+  .tiles,
+  .result-facts,
+  .result-table tr,
+  .alert,
+  .note {
+    break-inside: avoid;
+  }
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+  /* Tables repeat their header on each page and fit the page width: no
+     scrolling box, no sticky column on paper. */
+  .result-table thead {
+    display: table-header-group;
+  }
+  .table-wrap,
+  .scroll {
+    overflow: visible !important;
+    max-inline-size: none;
+    border: 0;
+    background: none;
+  }
+  .result-table {
+    inline-size: 100%;
+    font-size: 9pt;
+  }
+  .heatmap {
+    table-layout: fixed;
+    font-size: 7.5pt;
+  }
+  .heatmap th,
+  .heatmap td {
+    padding: 2pt 3pt;
+    overflow-wrap: anywhere;
+  }
+  .table-sticky tbody th[scope="row"],
+  .table-sticky thead th:first-child {
+    position: static;
+  }
+  /* Colour is kept only where it carries meaning, and there it is always
+     beside the printed number or word: heat cells, meter fills, band badges. */
+  .heatmap [class*="heat-"],
+  .meter-fill,
+  .badge {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }
 
