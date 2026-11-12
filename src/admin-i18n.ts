@@ -286,6 +286,8 @@ const ar = {
   a_SETTINGS_CHANGED: "تغيير الإعدادات العامة",
   a_AUDIT_EXPORTED: "تصدير سجل التدقيق",
   a_RELEASE_REVOKED: "سحب إصدار نتائج منشور",
+  a_INSTRUMENT_DELETED: "حذف استبيان",
+  a_ORGANIZATION_DELETED: "حذف منظمة",
   // Post-Audit Repair Pass 3: scheduled job health.
   jobsTitle: "المهام الخلفية",
   jobsLead: "آخر نجاح وآخر إخفاق لكل مهمة مجدولة كما سجّلتها المهمة نفسها، والأعمال المنتظرة التي تعالجها. تُعدّ المهمة متأخرة إذا لم تنجح خلال ثلاث دورات من موعدها. هذه الشاشة لا تشغّل المهام ولا ترسل تنبيهات؛ يشغّلها المشرف على المهام لدى المشغّل.",
@@ -579,6 +581,8 @@ const en: Record<AdminMessageKey, string> = {
   a_SETTINGS_CHANGED: "Global settings changed",
   a_AUDIT_EXPORTED: "Audit history exported",
   a_RELEASE_REVOKED: "Published release withdrawn",
+  a_INSTRUMENT_DELETED: "Questionnaire deleted",
+  a_ORGANIZATION_DELETED: "Organization deleted",
   jobsTitle: "Background jobs",
   jobsLead: "The last success and last failure of each scheduled job, as the job itself recorded them, and the waiting work each one drains. A job is late when it has not succeeded within three of its intervals. This screen neither runs jobs nor sends alerts; the operator's job supervisor runs them.",
   jobName: "Job",

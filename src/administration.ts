@@ -77,6 +77,9 @@ export const AUDIT_ACTIONS = [
   "SETTINGS_CHANGED",
   "AUDIT_EXPORTED",
   "RELEASE_REVOKED",
+  // Deletion (027, D-187/D-188): no content, only the target id.
+  "INSTRUMENT_DELETED",
+  "ORGANIZATION_DELETED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

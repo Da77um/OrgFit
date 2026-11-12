@@ -143,11 +143,37 @@ export async function questionnaireDetail(
       tx,
     );
   const departments = await targetDepartments(tx, org, [qid]);
+  const blockers = await deleteBlockers(tx, org, [qid]);
   return {
     ...q.rows[0],
     departments: departments.get(qid) ?? [],
     versions: versions.rows,
+    deleteBlocker: blockers.get(qid) ?? null,
   };
+}
+// Why each questionnaire cannot be deleted now (D-187), or null when it can:
+// BUILTIN, USED_IN_ROUND, USED_IN_CAMPAIGN, SERIES_FAMILY, CLONED_FROM.
+export async function deleteBlockers(tx: Tx, org: string | null, ids: string[]) {
+  const out = new Map<string, string | null>();
+  if (!ids.length) return out;
+  const { rows } = await sql<{
+    id: string;
+    reason: string | null;
+  }>`select id,reason from instrument.delete_checks(${org}::uuid,${ids}::uuid[])`.execute(tx);
+  for (const r of rows) out.set(r.id, r.reason);
+  return out;
+}
+export async function deleteQuestionnaire(
+  tx: Tx,
+  args: { org: string | null; qid: string; revision: string | null; idem: string },
+) {
+  const hash = digest(canonicalJson({ ...args, action: "DELETE" }));
+  const { rows } = await sql<{
+    id: string;
+  }>`select instrument.delete_questionnaire(${args.org}::uuid,${args.qid}::uuid,${args.revision}::bigint,${args.idem}::uuid,${hash}) id`.execute(
+    tx,
+  );
+  return { id: rows[0].id };
 }
 export async function instrumentAccess(
   tx: Tx,
@@ -249,14 +275,15 @@ export async function instrumentRoute(
     return response({ items: await departmentOptions(tx, org) });
   }
   const match = path.match(
-    /^(?:organizations\/([^/]+)\/)?questionnaires(?:\/([^/]+)(?:\/(versions|archive|target)(?:\/([^/]+)(?:\/(publish|retire|new-version|validate))?)?)?)?$/,
+    /^(?:organizations\/([^/]+)\/)?questionnaires(?:\/([^/]+)(?:\/(versions|archive|target|delete)(?:\/([^/]+)(?:\/(publish|retire|new-version|validate))?)?)?)?$/,
   );
   if (!match) return null;
   const org = match[1] ? uuid.parse(match[1]) : null,
     qid = match[2] ? uuid.parse(match[2]) : null,
     vid = match[4] ? uuid.parse(match[4]) : null,
     action = match[5];
-  if (match[3] === "target" && vid) throw new AppError("NOT_FOUND", 404);
+  if ((match[3] === "target" || match[3] === "delete") && vid)
+    throw new AppError("NOT_FOUND", 404);
   await instrumentAccess(tx, org, req.method !== "GET");
   if (req.method === "GET" && !qid) {
     const query = z
@@ -288,16 +315,23 @@ export async function instrumentRoute(
       org,
       items.filter((i) => i.target_mode === "DEPARTMENTS").map((i) => i.id),
     );
+    const blockers = await deleteBlockers(
+      tx,
+      org,
+      items.map((i) => i.id),
+    );
     return response({
       items: items.map((i) => ({
         ...i,
         departments: departments.get(i.id) ?? [],
+        deleteBlocker: blockers.get(i.id) ?? null,
       })),
       nextCursor: rows.rows.length > 50 ? rows.rows[49].id : null,
     });
   }
   if (req.method === "GET" && qid) {
-    if (match[3] === "target") throw new AppError("NOT_FOUND", 404);
+    if (match[3] === "target" || match[3] === "delete")
+      throw new AppError("NOT_FOUND", 404);
     if (vid) return response(await getVersion(tx, org, qid, vid));
     return response(await questionnaireDetail(tx, org, qid));
   }
@@ -374,6 +408,12 @@ export async function instrumentRoute(
     return response(
       await saveInstrument(tx, { org, qid, revision, action: "ARCHIVE", idem }),
     );
+  }
+  // Delete (D-187): `{}`, the questionnaire's revision, an Idempotency-Key.
+  // No reason is collected or stored.
+  if (req.method === "POST" && qid && match[3] === "delete") {
+    await jsonInput(req, z.object({}).strict());
+    return response(await deleteQuestionnaire(tx, { org, qid, revision, idem }));
   }
   if (!qid || !vid) throw new AppError("NOT_FOUND", 404);
   if (req.method === "PATCH" && !action) {

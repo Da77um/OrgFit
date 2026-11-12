@@ -53,7 +53,9 @@ export type Tombstone = {
     // Post-Audit Repair Pass 3 (022): a withdrawn release, subject = snapshot.
     | "RELEASE_REVOCATION"
     // Employee messages (025): a revoked organization message link, subject = link.
-    | "MESSAGE_LINK";
+    | "MESSAGE_LINK"
+    // Company deletion (027, D-188): subject = the organization id.
+    | "ORGANIZATION";
   organizationId: string;
   subjectId: string;
   recordedAt: string;

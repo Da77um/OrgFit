@@ -12,7 +12,11 @@ import { generateCustodianKeypair } from "../src/key-custody";
 const SCRATCH = resolve("work");
 for (const dir of ["", "imports", "link-exports", "reports", "participation-exports", "attachments", "key-custody"])
   await mkdir(resolve(SCRATCH, dir), { recursive: true, mode: 0o700 });
-const fixture = await setupDatabase();
+// E2E_OIDC_PORT moves the test identity provider off 4010 when another local
+// server holds it; the default is unchanged.
+const OIDC_PORT = Number(process.env.E2E_OIDC_PORT ?? 4010);
+const OIDC_ISSUER = `http://127.0.0.1:${OIDC_PORT}`;
+const fixture = await setupDatabase(OIDC_ISSUER);
 // Overridable so the harness can run beside another local server (defaults unchanged).
 const STAFF_PORT = Number(process.env.E2E_STAFF_PORT ?? 3000);
 const RESPONDENT_PORT = Number(process.env.E2E_RESPONDENT_PORT ?? 3001);
@@ -23,7 +27,7 @@ const RESPONDENT_ORIGIN = `http://localhost:${RESPONDENT_PORT}`;
 // to the processor alone and is never given to either web process.
 const custodian = await generateCustodianKeypair();
 const custodyDirectory = resolve("work/key-custody");
-const provider = await testProvider(undefined, STAFF_ORIGIN);
+const provider = await testProvider(OIDC_PORT, STAFF_ORIGIN);
 const env: NodeJS.ProcessEnv = {
   ...process.env,
   IMPORT_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
@@ -53,7 +57,7 @@ const env: NodeJS.ProcessEnv = {
   RESPONDENT_ORIGIN,
   DATABASE_URL: fixture.url("orgfit_staff"),
   AUTH_DATABASE_URL: fixture.url("orgfit_auth"),
-  OIDC_ISSUER: "http://127.0.0.1:4010",
+  OIDC_ISSUER,
   OIDC_CLIENT_ID: "orgfit-test",
   OIDC_CLIENT_SECRET: "synthetic-oidc-test-secret",
   OIDC_MFA_ACR: "urn:test:mfa",

@@ -143,7 +143,8 @@ export const markRestorePending = (coreUrl: string) =>
 
 export type ReapplyReport = {
   applied: Record<Tombstone["class"], number>;
-  incidents: { campaignId: string; reason: string }[];
+  // An ORGANIZATION replay that finds activity names the organization instead.
+  incidents: { campaignId?: string; organizationId?: string; reason: string }[];
   retention: Record<string, number>;
   opened: boolean;
 };
@@ -172,6 +173,7 @@ export async function reapplyTombstones(
     ANONYMOUS_CAMPAIGN: 0,
     RELEASE_REVOCATION: 0,
     MESSAGE_LINK: 0,
+    ORGANIZATION: 0,
   };
   const incidents: ReapplyReport["incidents"] = [];
 
@@ -253,6 +255,18 @@ export async function reapplyTombstones(
           .rows[0].changed as boolean,
       );
       if (changed) applied.MESSAGE_LINK++;
+    } else if (t.class === "ORGANIZATION") {
+      // A company deleted after the backup was taken is back in the restored
+      // database, participants included. It is removed again, idempotently
+      // (027, D-188): ABSENT means it is already gone. If the restored copy
+      // somehow shows activity, nothing is removed and a person decides.
+      const outcome = await core(coreUrl, async (c) =>
+        (await c.query("SELECT core.reapply_organization_deletion($1) AS outcome", [t.subjectId]))
+          .rows[0].outcome as string,
+      );
+      if (outcome === "DELETED") applied.ORGANIZATION++;
+      else if (outcome !== "ABSENT")
+        incidents.push({ organizationId: t.subjectId, reason: `ORGANIZATION_DELETION_BLOCKED_${outcome}` });
     }
   }
 

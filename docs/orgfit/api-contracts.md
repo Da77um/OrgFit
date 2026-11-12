@@ -139,3 +139,14 @@ Rate limits start with blueprint exchange 30/min transient IP +10/min keyed toke
 Contract tests must include foreign org and foreign parent UUIDs, disabled/revoked permissions between job request/run/download, unsupported filters, stale revisions and repeated mutation keys, malformed decimal/date/unknown item, public trace/body leakage, token lost-reply rotation, original-link draft confidentiality, close/end races and rejected replay after finalization. PDF/XLSX and all chart/tooltips use the same Snapshot/SafeCell contract; no alternate raw source endpoint exists. Staff result/participation files remain distinct.
 
 Wire version v1 and schemaVersion 1 are development contracts. Breaking changes require a new version plus persisted instrument compatibility review, not silent reinterpretation. No endpoints, tests or authentication provider were implemented in Phase 01.
+
+## Deletion endpoints (migration 027, D-187/D-188)
+
+| Operation | Contract |
+|---|---|
+| GET B (questionnaire list), GET B/:qid | each item/detail carries `deleteBlocker`: `null` when deletable, else `BUILTIN`, `USED_IN_ROUND`, `USED_IN_CAMPAIGN`, `SERIES_FAMILY` or `CLONED_FROM` |
+| POST B/:qid/delete | `{}`, `Idempotency-Key`, `X-OrgFit-Revision` = questionnaire revision; `instruments.manage`; 200 `{data:{id}}` |
+| GET /api/v1/organizations/:org/deletion | Super Admin; 200 `{data:{deletable, deleteBlocker}}` |
+| POST /api/v1/organizations/:org/delete | Super Admin; `{}`, `Idempotency-Key`, `X-OrgFit-Revision` = organization revision; 200 `{data:{id}}` |
+
+A refusal is 409 `STATE_CONFLICT` with `reason` (organization codes: `SERIES`, `ROUNDS`, `CAMPAIGNS`, `INTAKE`, `RELEASES`, `COMPARISONS`, `REPORTS`, `RECOMMENDATION_ACTIONS`, `FIELD_VISITS`, `MESSAGE_LINKS`, `MESSAGES`, `EXPORTS`, `QUESTIONNAIRE_IN_USE`). `reason` is passed only for `STATE_CONFLICT` and only when the database detail matches `REASON:[A-Z_]+`; no other driver text reaches a response. Stale revision → 409 `REVISION_CONFLICT`; reused key with another request → 409 `IDEMPOTENCY_CONFLICT`; replayed key → the original 200.

@@ -1,6 +1,8 @@
 # Proposal: deleting a never-published questionnaire draft
 
-Status: **PROPOSED, not implemented, awaiting the owner's decision** (2026-10-12). Nothing in the code or schema deletes a questionnaire today. Archive (D-173) stays the only way to retire one.
+Status: **DECIDED and IMPLEMENTED** (owner decision 2026-11-12; migration 027, D-187, extended to companies by D-188). Decisions: (1) implement; (2) offer it directly beside Archive, no archive-first step; (3) collect and store no reason; (4) refuse when a clone or a series depends on it. The owner also widened the rule: a questionnaire is deletable when none of its versions was ever used in an assessment, whatever their state (draft, published or retired), so the "every version is a draft" condition below no longer applies. See instruments.md and directory.md for what was built. The text below is the original proposal, kept as written.
+
+Original status: PROPOSED (2026-10-12).
 
 ## What would be deleted
 

@@ -66,6 +66,15 @@ export function safeError(error: unknown, locale: Locale = "ar") {
     code = "VALIDATION_FAILED";
     status = 422;
   }
+  // A deletion refusal (027, D-187/D-188) names its reason as a fixed code in
+  // the PostgreSQL DETAIL ("REASON:USED_IN_CAMPAIGN"). Only that exact shape
+  // is passed on; no other driver text ever reaches a response.
+  const detail =
+    typeof error === "object" && error !== null && "detail" in error
+      ? String((error as { detail?: unknown }).detail ?? "")
+      : "";
+  const reason =
+    code === "STATE_CONFLICT" ? /^REASON:([A-Z_]{2,40})$/.exec(detail)?.[1] : undefined;
   const message =
     status === 401
       ? m.denied
@@ -83,7 +92,7 @@ export function safeError(error: unknown, locale: Locale = "ar") {
                   ? m.invalid
                   : m.unavailable;
   return NextResponse.json(
-    { code, message },
+    reason ? { code, message, reason } : { code, message },
     { status, headers: { "Cache-Control": "no-store" } },
   );
 }

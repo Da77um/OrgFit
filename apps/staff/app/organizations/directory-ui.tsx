@@ -22,6 +22,7 @@ import {
 } from "../request-ui";
 import { navigateAfterSave, useFormDirty, useUnsavedChanges, type SaveOutcome } from "../unsaved";
 import { ArchiveForm } from "../archive-form";
+import { DeleteForm, deleteBlockerText } from "../delete-form";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
 import { directoryMessages } from "../../../../src/directory-i18n";
@@ -166,6 +167,11 @@ export function Directory({
               organization?.status === "ACTIVE" && (
                 <OrganizationArchive locale={locale} organization={organization} />
               )}
+            {/* Delete (D-188): Super Admin only, beside the archive, shown only
+                when the server says nothing depends on the organization. */}
+            {profile.role === "SUPER_ADMIN" && organization && (
+              <OrganizationDelete locale={locale} organization={organization} />
+            )}
           </section>
         ) : section === "settings" ? (
           manage ? (
@@ -277,6 +283,71 @@ function OrganizationArchive({
         <p>
           <button type="button" className="button-secondary" onClick={() => setOpen(true)}>
             {m.archive}
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+function OrganizationDelete({
+  locale,
+  organization,
+}: {
+  locale: Locale;
+  organization: DirectoryRecord;
+}) {
+  const m = directoryMessages(locale);
+  const ledger = useLedger();
+  const [open, setOpen] = useState(false);
+  const [check, setCheck] = useState<{ deletable: boolean; deleteBlocker: string | null } | null>(null);
+  useEffect(() => {
+    let live = true;
+    api(`organizations/${organization.id}/deletion`, locale)
+      .then((data) => {
+        if (live) setCheck(data);
+      })
+      .catch(() => {
+        /* Without an answer the action is simply not offered. */
+      });
+    return () => {
+      live = false;
+    };
+  }, [organization.id, locale]);
+  if (!check) return null;
+  const scope = `delete:${organization.id}`;
+  return (
+    <div className="card stack" data-testid="organization-delete">
+      {!check.deletable ? (
+        <p className="muted">
+          {m.deleteUnavailable} {deleteBlockerText(m, "o", check.deleteBlocker)}
+        </p>
+      ) : open ? (
+        <DeleteForm
+          locale={locale}
+          ledger={ledger}
+          scope={scope}
+          expected={String(organization.code ?? "")}
+          prefix="o"
+          title={m.deleteOrganization}
+          help={m.deleteOrganizationHelp}
+          testId="organization-delete-form"
+          submit={async (again) => {
+            await api(
+              `organizations/${organization.id}/delete`,
+              locale,
+              "POST",
+              {},
+              String(organization.revision),
+              { ledger, scope, replace: true, retry: again },
+            );
+            navigateAfterSave("/organizations");
+          }}
+          onCancel={() => setOpen(false)}
+        />
+      ) : (
+        <p>
+          <button type="button" className="button-danger" onClick={() => setOpen(true)}>
+            {m.deleteOrganization}
           </button>
         </p>
       )}

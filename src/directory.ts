@@ -138,6 +138,29 @@ export async function saveDirectory(
     rows[0].id,
   );
 }
+// Company deletion (D-188), Super Admin only. `deletion` answers whether the
+// company could be deleted now and, if not, which activity stops it (a fixed
+// code); `delete` removes it in one transaction, re-checking everything.
+export async function organizationDeletion(tx: Tx, org: string) {
+  const { rows } = await sql<{
+    reason: string | null;
+  }>`select core.organization_delete_check(${org}::uuid) reason`.execute(tx);
+  return { deletable: rows[0].reason === null, deleteBlocker: rows[0].reason };
+}
+export async function deleteOrganization(
+  tx: Tx,
+  org: string,
+  revision: string | null,
+  idem: string,
+) {
+  const hash = digest(JSON.stringify({ kind: "organization-delete", org, revision }));
+  const { rows } = await sql<{
+    id: string;
+  }>`select core.delete_organization(${org}::uuid,${revision}::bigint,${idem}::uuid,${hash}) id`.execute(
+    tx,
+  );
+  return { id: rows[0].id };
+}
 export async function directoryRoute(
   req: Request,
   path: string,
@@ -148,6 +171,19 @@ export async function directoryRoute(
   if (parts[0] !== "organizations") return null;
   const org = parts[1] ? uuid.parse(parts[1]) : null;
   if (parts[2] === "access" || parts[2] === "imports") return null;
+  if (org && (parts[2] === "delete" || parts[2] === "deletion")) {
+    if (parts.length !== 3) throw new AppError("NOT_FOUND", 404);
+    if (profile.role !== "SUPER_ADMIN") throw new AppError("FORBIDDEN", 403);
+    await requireAccess(tx, org);
+    if (parts[2] === "deletion" && req.method === "GET")
+      return response(await organizationDeletion(tx, org));
+    if (parts[2] === "delete" && req.method === "POST") {
+      const { idem, revision } = preconditions(req, true);
+      await jsonInput(req, z.object({}).strict());
+      return response(await deleteOrganization(tx, org, revision, idem));
+    }
+    throw new AppError("NOT_FOUND", 404);
+  }
   const kind: DirectoryKind | undefined =
     parts.length <= 2 || parts[2] === "archive"
       ? "organization"

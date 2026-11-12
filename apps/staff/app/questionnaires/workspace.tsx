@@ -4,6 +4,8 @@ import { RequestFailure } from "../staff-request";
 import { navigateAfterSave, useUnsavedChanges, type SaveOutcome } from "../unsaved";
 import { ConfirmAction } from "../admin-controls";
 import { ArchiveForm } from "../archive-form";
+import { DeleteForm, deleteBlockerText } from "../delete-form";
+import { directoryMessages } from "../../../../src/directory-i18n";
 import { adminMessages } from "../../../../src/admin-i18n";
 import {
   afterSetAside,
@@ -68,6 +70,8 @@ type LibraryItem = {
   source: string;
   status: string;
   revision: string;
+  /** Why it cannot be deleted now (D-187), or null when it can. */
+  deleteBlocker?: string | null;
 } & Partial<QuestionnaireTarget>;
 type LibraryDetail = LibraryItem & {
   organization_id: string | null;
@@ -127,6 +131,8 @@ export function InstrumentWorkspace({
     [announce, setAnnounce] = useState(false),
     // The questionnaire whose archive confirmation is open, if any.
     [archiving, setArchiving] = useState<string | null>(null),
+    // The questionnaire whose delete confirmation is open, if any (D-187).
+    [deleting, setDeleting] = useState<string | null>(null),
     [newTypes, setNewTypes] = useState<Record<string, QuestionType>>({}),
     // Department targeting beneath the organization. Changing an organization
     // clears its department selection in the same event, so identifiers from
@@ -549,6 +555,29 @@ export function InstrumentWorkspace({
       );
     }
   };
+  // Delete (D-187): offered only where the server says nothing depends on
+  // the questionnaire; the server re-checks under its locks. A stale revision
+  // reloads the entry like archive does.
+  const deleteQuestionnaire = async (id: string, revision: string, again: boolean) => {
+    const url = `${base}/${id}/delete`;
+    try {
+      await api(url, "POST", {}, revision, `POST ${url}`, again);
+    } catch (e) {
+      if (e instanceof RequestFailure && e.code === "STATE_CONFLICT") throw e;
+      if (!isConflict(e)) throw e;
+      if (path[0]) showDetail(await api(`${base}/${id}`));
+      else await loadList();
+      throw new RequestFailure(
+        t(
+          "تغيّر هذا الاستبيان منذ عرضه؛ حُمّلت حالته الحالية، فأعد المحاولة.",
+          "This questionnaire changed since it was shown; its current state is loaded, so try again.",
+        ),
+        "REJECTED",
+        { status: 409, code: "REVISION_CONFLICT" },
+      );
+    }
+  };
+  const dm = directoryMessages(locale);
   const archiveHelp = t(
     "تحتفظ الأرشفة بالاستبيان وكل نسخه كما هي، ولا يمكن تعديله بعدها. لا يُحذف شيء.",
     "Archiving keeps the questionnaire and all its versions as they are; it can no longer be edited. Nothing is deleted.",
@@ -999,6 +1028,38 @@ export function InstrumentWorkspace({
                             </button>
                           </p>
                         ))}
+                      {canManage &&
+                        item.source !== "BUILTIN" &&
+                        item.deleteBlocker === null &&
+                        (deleting === item.id ? (
+                          <DeleteForm
+                            locale={locale}
+                            ledger={client.ledger}
+                            scope={`POST ${base}/${item.id}/delete`}
+                            expected={locale === "ar" ? item.name_ar : item.name_en || item.name_ar}
+                            prefix="q"
+                            title={dm.deleteQuestionnaire}
+                            help={dm.deleteQuestionnaireHelp}
+                            testId="questionnaire-delete"
+                            submit={async (again) => {
+                              await deleteQuestionnaire(item.id, item.revision, again);
+                              setDeleting(null);
+                              setMessage(t("حُذف الاستبيان.", "Questionnaire deleted."));
+                              await loadList();
+                            }}
+                            onCancel={() => setDeleting(null)}
+                          />
+                        ) : (
+                          <p>
+                            <button
+                              type="button"
+                              className="button-danger"
+                              onClick={() => setDeleting(item.id)}
+                            >
+                              {dm.delete}
+                            </button>
+                          </p>
+                        ))}
                     </li>
                   ))}
                 </ul>
@@ -1110,6 +1171,34 @@ export function InstrumentWorkspace({
                       </button>
                     )
                   )}
+                {canManage && detail.source !== "BUILTIN" &&
+                  (detail.deleteBlocker === null ? (
+                    deleting === detail.id ? (
+                      <DeleteForm
+                        locale={locale}
+                        ledger={client.ledger}
+                        scope={`POST ${base}/${detail.id}/delete`}
+                        expected={locale === "ar" ? detail.name_ar : detail.name_en || detail.name_ar}
+                        prefix="q"
+                        title={dm.deleteQuestionnaire}
+                        help={dm.deleteQuestionnaireHelp}
+                        testId="questionnaire-delete"
+                        submit={async (again) => {
+                          await deleteQuestionnaire(detail.id, detail.revision, again);
+                          navigateAfterSave(`/questionnaires${suffix}`);
+                        }}
+                        onCancel={() => setDeleting(null)}
+                      />
+                    ) : (
+                      <button className="button-danger" disabled={busy} onClick={() => setDeleting(detail.id)}>
+                        {dm.deleteQuestionnaire}
+                      </button>
+                    )
+                  ) : detail.deleteBlocker ? (
+                    <p className="muted" data-testid="questionnaire-delete-blocked">
+                      {dm.deleteUnavailable} {deleteBlockerText(dm, "q", detail.deleteBlocker)}
+                    </p>
+                  ) : null)}
               </>
             )}
             {version && doc && (
