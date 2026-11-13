@@ -881,7 +881,12 @@ export function Campaigns({
               <bdi>{String(totals.outstanding)}</bdi> · {m.revoked}:{" "}
               <bdi>{String(totals.revoked)}</bdi> · {m.eligibleCount}:{" "}
               <bdi>{String(totals.eligible)}</bdi> · {m.rate}:{" "}
-              <bdi>{totals.rate === null ? m.none : String(totals.rate)}</bdi>
+              {/* The API's rate is a fraction (0–1); shown as the report shows it. */}
+              <bdi>
+                {totals.rate === null
+                  ? m.none
+                  : `${(Number(totals.rate) * 100).toFixed(1)}%`}
+              </bdi>
             </p>
             <p>{m.linkOnce}</p>
             <p>{m.linkPrivacy}</p>
