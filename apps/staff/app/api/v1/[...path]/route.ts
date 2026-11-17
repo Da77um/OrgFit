@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { sql } from "kysely";
 import { z } from "zod";
 import {
@@ -38,6 +38,7 @@ import { revocationRoute } from "../../../../../../src/revocation";
 import { recommendationActionRoute } from "../../../../../../src/recommendations";
 import { historyRoute } from "../../../../../../src/history";
 import { reportRoute } from "../../../../../../src/reports";
+import { wakeReportRenderer } from "../../../report-wake";
 import { visitRoute } from "../../../../../../src/visits";
 import { messageRoute } from "../../../../../../src/employee-messages";
 import { administrationRoute } from "../../../../../../src/administration";
@@ -185,7 +186,7 @@ async function handle(req: Request, ctx: Context) {
       });
       return res;
     }
-    return await withStaff(
+    const staffResponse = await withStaff(
       jar.get(sessionCookie())?.value,
       async (tx, profile) => {
         if (req.method === "GET" && (path === "profile" || path === "home"))
@@ -248,6 +249,11 @@ async function handle(req: Request, ctx: Context) {
         throw new AppError("NOT_FOUND", 404);
       },
     );
+    // A report request has committed: wake the renderer after the response
+    // (D-191). Nothing about the request is passed on.
+    if (req.method === "POST" && staffResponse.status === 202 && /^organizations\/[\w-]+\/reports$/.test(path))
+      after(() => wakeReportRenderer().then(() => undefined));
+    return staffResponse;
   } catch (e) {
     const res = safeError(
       e instanceof z.ZodError ? new AppError("VALIDATION_FAILED", 422) : e,

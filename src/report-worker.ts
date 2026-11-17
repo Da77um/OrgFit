@@ -99,7 +99,7 @@ export async function renderClaimedJob(
       bytes = await renderReportWorkbook(model);
     }
     stage = "STORAGE_FAILED";
-    const storageKey = await putReport(job.organizationId, job.id, bytes);
+    const storageKey = await putReport(job.organizationId, job.id, bytes, db);
     const hash = createHash("sha256").update(bytes).digest();
     const { rows: done } = await db.query<{ state: string }>(
       "SELECT publication.complete_report_job($1,$2,$3,$4,$5,$6::interval) AS state",
@@ -109,14 +109,14 @@ export async function renderClaimedJob(
       // Another worker already delivered this job. The bytes just written are
       // not the ones staff will download, so they are removed rather than left
       // behind as an unreferenced private object.
-      await deleteReport(job.organizationId, job.id).catch(() => {});
+      await deleteReport(job.organizationId, job.id, db).catch(() => {});
       return { ...base, state: "REUSED", networkAttempts };
     }
     if (done[0].state === "REVOKED") {
       // The release was withdrawn while this job rendered. No row points at
       // these bytes and none ever will; they are removed now, and the purge
       // queue the revocation wrote removes them again if this delete failed.
-      await deleteReport(job.organizationId, job.id).catch(() => {});
+      await deleteReport(job.organizationId, job.id, db).catch(() => {});
       return { ...base, state: "REVOKED", networkAttempts };
     }
     return {
@@ -156,7 +156,7 @@ export async function purgeRevokedReports(db: pg.Pool, limit = 100) {
   );
   let purged = 0;
   for (const item of rows[0].data) {
-    await deleteReport(item.organizationId, item.id);
+    await deleteReport(item.organizationId, item.id, db);
     await db.query("SELECT publication.confirm_report_purge($1,$2)", [item.organizationId, item.id]);
     purged++;
   }

@@ -23,6 +23,26 @@ Settings for every project:
 - **NODE_ENV:** do not set it. Vercel runs with `production`, so every production guard applies.
 - **Plan:** the owner's account is **Hobby** (D-181). Hobby runs a cron job at most once a day (a more frequent expression fails the deployment) and a function for at most 300 s. So `apps/jobs/vercel.json` calls one tick, `/api/cron/daily-all`, at 03:17 UTC (Hobby fires it within that hour). Each job project then runs every job of its own process once, in manifest order: the processor runs `privacy:process` and then `publication:release`. The route's `maxDuration` is 300. Scores therefore appear up to a day after a campaign closes; for results sooner, run the two processor commands by hand (`npx tsx --env-file=.env.staging.processor scripts/process-campaigns.ts`, then `scripts/publish-campaigns.ts`). **On Pro:** copy `apps/jobs/vercel.pro.json` over `vercel.json` (the original 1–5 minute ticks) and raise `maxDuration` to 800 in `apps/jobs/app/api/cron/[tick]/route.ts`.
 
+
+## Reports on Vercel (D-191)
+
+The report renderer runs in its own project, **`orgfit-jobs-report`** (Root Directory `apps/jobs`, the same settings as the processor). It needs no AWS: with `REPORT_STORAGE=database` the encrypted report files are kept in the core database (migration 028).
+
+**`orgfit-jobs-report` variables**
+- `ORGFIT_JOB_PROCESS=report`
+- `REPORT_DATABASE_URL` (orgfit_report, with `sslrootcert=../../deploy/certs/supabase-root-2021-ca.crt`)
+- `REPORT_ENCRYPTION_KEY`: **the same value as in `orgfit-staff`** (staff decrypts what the renderer encrypted).
+- `REPORT_STORAGE=database`
+- `CRON_SECRET` (at least 32 characters, its own value)
+- `REPORT_WAKE_SECRET` (at least 32 characters; the same value as in staff)
+
+**Add to `orgfit-staff`**
+- `REPORT_STORAGE=database`
+- `REPORT_WAKE_URL=https://<the report project's domain>/api/wake`
+- `REPORT_WAKE_SECRET` (the same value as above)
+
+Then redeploy both. Requesting a report wakes the renderer at once; the daily cron (03:17 UTC) also renders anything still queued and removes expired files.
+
 ## Database URLs on Vercel
 
 Use the same URLs as `.env.staging.*`, with one change. Replace the local certificate path with the copy in the repository:

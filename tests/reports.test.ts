@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { writeFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import pg from "pg";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
@@ -1148,6 +1150,52 @@ test("PostgreSQL Phase 11: report jobs, PDF and XLSX artifacts", async (t) => {
     );
     // Everything else the sweeps above touched is put back to work.
     await renderDueReports(db, 10);
+  });
+
+  await t.test("D-191: REPORT_STORAGE=database keeps the ciphertext in the database, nowhere else", async () => {
+    process.env.REPORT_STORAGE = "database";
+    try {
+      const created = await request({ roundId: first.roundId, format: "XLSX", locale: "ar", comparisonId: null });
+      const jobId = created.data.id as string;
+      const outcomes = await renderDueReports(reportPool(), 10);
+      assert.ok(outcomes.some((o) => o.jobId === jobId && o.state === "READY"), JSON.stringify(outcomes));
+      // Stored as ciphertext in ops.report_blob, never as a local file.
+      const stored = await f.operator.query<{ n: number; head: string; key: string }>(
+        `select octet_length(b.bytes)::int as n, encode(substring(b.bytes from 13 for 2),'hex') as head, j.storage_key as key
+           from ops.report_blob b join ops.report_job j on j.id=b.job_id where b.job_id=$1`,
+        [jobId],
+      );
+      assert.equal(stored.rows.length, 1);
+      assert.notEqual(stored.rows[0].head, "504b", "the stored bytes are not a plain workbook");
+      assert.equal(stored.rows[0].key, `reports/${f.orgA}/${jobId}.bin`);
+      assert.equal(existsSync(join(process.env.REPORT_LOCAL_DIRECTORY!, f.orgA, `${jobId}.bin`)), false);
+      // Staff downloads the same workbook through the authorized route.
+      const xlsx = await bytesOf(`organizations/${f.orgA}/reports/${jobId}/download`);
+      assert.equal(xlsx.status, 200);
+      assert.equal(xlsx.bytes.subarray(0, 2).toString("latin1"), "PK");
+      const book = new ExcelJS.Workbook();
+      await book.xlsx.load(xlsx.bytes as unknown as ArrayBuffer);
+      assert.ok(book.worksheets.length >= 1);
+      // Another organization's staff path reaches nothing.
+      assert.match(await deny(`organizations/${f.orgB}/reports/${jobId}/download`), /NOT_FOUND|FORBIDDEN/);
+      // The renderer cannot remove the bytes of a READY report.
+      const removed = await reportPool().query<{ removed: boolean }>(
+        "select publication.delete_report_blob($1) as removed",
+        [jobId],
+      );
+      assert.equal(removed.rows[0].removed, false);
+      assert.equal((await bytesOf(`organizations/${f.orgA}/reports/${jobId}/download`)).status, 200);
+      // Staff has no privilege on the table itself, and neither has the renderer.
+      for (const role of ["orgfit_staff", "orgfit_report"]) {
+        const priv = await f.operator.query<{ n: number }>(
+          "select count(*)::int as n from information_schema.table_privileges where grantee=$1 and table_schema='ops' and table_name='report_blob'",
+          [role],
+        );
+        assert.equal(priv.rows[0].n, 0, role);
+      }
+    } finally {
+      delete process.env.REPORT_STORAGE;
+    }
   });
 
   await t.test("a download expires, and expiry retires the artifact", async () => {

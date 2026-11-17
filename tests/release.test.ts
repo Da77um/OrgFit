@@ -106,6 +106,13 @@ test("R-1 the process manifest describes a complete, separated deployment and pr
     for (const [k, v] of Object.entries(change)) if (v === undefined) delete env[k];
     assert.ok(failures(checkEnvironment("staff", env, { production: true, manifest })).includes(check), label);
   }
+  // D-191: reports may keep their ciphertext in the core database instead of a bucket.
+  for (const name of ["staff", "report"]) {
+    const env: Record<string, string | undefined> = { ...productionEnv(name), REPORT_STORAGE: "database" };
+    delete env.REPORT_S3_BUCKET;
+    const findings = checkEnvironment(name, env, { production: true, manifest });
+    assert.ok(findings.some((f) => f.check === "storage:REPORT" && f.outcome === "PASS" && f.detail.includes("database")), name);
+  }
   // The respondent without a trusted proxy header is warned, not silently accepted (SEC-M2).
   const respondent = productionEnv("respondent");
   delete respondent.RATE_LIMIT_CLIENT_IP_HEADER;

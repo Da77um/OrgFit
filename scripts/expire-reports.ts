@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { reportPool, reportReadiness, closeReportPool } from "../src/report-db";
-import { deleteReport, cleanLocalReports } from "../src/report-storage";
+import { deleteReport, cleanLocalReports, reportStorageMode } from "../src/report-storage";
 import { purgeRevokedReports } from "../src/report-worker";
 import { runDefinedJob, type JobDefinition } from "../src/job-run";
 
@@ -21,10 +21,17 @@ export async function expireReports(limit = 100) {
     }>("SELECT publication.expire_report_jobs($1) AS data", [limit]);
     let removed = 0;
     for (const row of rows[0].data) {
-      await deleteReport(row.organizationId, row.id);
+      await deleteReport(row.organizationId, row.id, reportPool());
       removed++;
     }
-    return { expired: removed, revoked: await purgeRevokedReports(reportPool(), limit) };
+    const revoked = await purgeRevokedReports(reportPool(), limit);
+    // Database storage (D-191): bytes of jobs that never reached READY, or
+    // that are past expiry, are swept by the routine; there is no local sweep.
+    const orphans =
+      reportStorageMode() === "database"
+        ? (await reportPool().query<{ n: number }>("SELECT publication.sweep_report_blobs($1) AS n", [limit])).rows[0].n
+        : null;
+    return { expired: removed, revoked, orphans };
   } finally {
     await closeReportPool();
   }
@@ -35,8 +42,8 @@ export const reportsExpireJob: JobDefinition = {
   unavailable:
     "Report cleanup unavailable. Check the report credential and artifact storage configuration.",
   work: async () => {
-    const { expired, revoked } = await expireReports();
-    const orphans = process.env.REPORT_S3_BUCKET ? 0 : await cleanLocalReports();
+    const { expired, revoked, orphans: swept } = await expireReports();
+    const orphans = swept ?? (reportStorageMode() === "s3" ? 0 : await cleanLocalReports());
     console.log(
       `Expired report artifacts removed: ${expired}; revoked artifacts removed: ${revoked}; orphans removed: ${orphans}`,
     );

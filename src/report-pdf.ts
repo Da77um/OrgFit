@@ -34,7 +34,19 @@ export type RenderedPdf = {
   networkAttempts: number;
 };
 
+// On Vercel (D-191) the function has no browser installed, so the report job
+// launches the serverless Chromium build of the same major version as this
+// Playwright (153). Everything else about the render stays sealed exactly as
+// below: offline context, every request aborted and counted, no script.
 export async function openReportBrowser(): Promise<Browser> {
+  if (process.env.VERCEL) {
+    const { default: serverless } = await import("@sparticuz/chromium");
+    serverless.setGraphicsMode = false;
+    return chromium.launch({
+      args: [...serverless.args, "--font-render-hinting=none"],
+      executablePath: await serverless.executablePath(),
+    });
+  }
   return chromium.launch({
     args: ["--disable-gpu", "--font-render-hinting=none"],
   });

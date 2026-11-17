@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "kysely";
+import { CompiledQuery, sql } from "kysely";
 import { z } from "zod";
 import { type Tx, requireAccess } from "./db";
 import { AppError, digest, jsonInput, uuid } from "./security";
@@ -219,7 +219,9 @@ export async function reportRoute(
     // A workbook is never rendered inline: a view of one is a 404, not a
     // silent download.
     if (action === "view" && !inline) throw new AppError("NOT_FOUND", 404);
-    const bytes = await getReport(org, id);
+    const bytes = await getReport(org, id, {
+      query: async (text, params) => tx.executeQuery(CompiledQuery.raw(text, params)) as Promise<{ rows: Record<string, unknown>[] }>,
+    });
     return new Response(new Uint8Array(bytes), {
       status: 200,
       headers: {

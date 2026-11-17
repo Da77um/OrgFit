@@ -15,6 +15,7 @@ import {
   jobsForProcess,
   jobsForTick,
   tickOf,
+  wakeDecision,
 } from "../src/vercel-cron";
 import { privacyProcessJob } from "../scripts/process-campaigns";
 import { publicationReleaseJob } from "../scripts/publish-campaigns";
@@ -165,4 +166,28 @@ test("executeJob refuses a foreign credential before any work and leaves the pro
     if (saved === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = saved;
   }
+});
+
+// D-191: the report wake-up route. It answers 401 without the wake secret and
+// 404 outside the report project, and it takes no input at all.
+test("the report wake-up route refuses a missing secret and any non-report project", () => {
+  const secret = "w".repeat(40);
+  const env = { REPORT_WAKE_SECRET: secret, ORGFIT_JOB_PROCESS: "report" };
+  assert.equal(wakeDecision(null, env), 401);
+  assert.equal(wakeDecision("Bearer wrong", env), 401);
+  assert.equal(wakeDecision(`Bearer ${secret}`, env), 202);
+  assert.equal(wakeDecision(`Bearer ${secret}`, { ...env, ORGFIT_JOB_PROCESS: "processor" }), 404);
+  assert.equal(wakeDecision(`Bearer ${secret}`, { ORGFIT_JOB_PROCESS: "report" }), 401, "no secret configured refuses everything");
+  assert.equal(wakeDecision("Bearer short", { REPORT_WAKE_SECRET: "short", ORGFIT_JOB_PROCESS: "report" }), 401, "a short secret is refused");
+  const source = readFileSync("apps/jobs/app/api/wake/route.ts", "utf8");
+  assert.ok(source.includes('wakeDecision(req.headers.get("authorization"), process.env)'));
+  assert.equal(/req\.(json|text|formData|body)|searchParams/.test(source), false, "the wake-up reads no input");
+  assert.ok(source.includes("executeJob(reportsGenerateJob"));
+});
+
+test("the staff app wakes the renderer only over https with both variables", async () => {
+  const { wakeReportRenderer } = await import("../apps/staff/app/report-wake");
+  assert.equal(await wakeReportRenderer({}), false);
+  assert.equal(await wakeReportRenderer({ REPORT_WAKE_URL: "http://jobs.example/api/wake", REPORT_WAKE_SECRET: "x".repeat(40) }), false);
+  assert.equal(await wakeReportRenderer({ REPORT_WAKE_URL: "https://jobs.example/api/wake" }), false);
 });

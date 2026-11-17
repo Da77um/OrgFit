@@ -109,3 +109,10 @@ export function authorizeCron(header: string | null, secret: string | undefined)
   const digest = (s: string) => createHash("sha256").update(s).digest();
   return timingSafeEqual(digest(header), digest(`Bearer ${secret}`));
 }
+
+// D-191: the report wake-up route. 401 without the wake secret, 404 outside
+// the report project, otherwise accepted. It reads no input of any kind.
+export function wakeDecision(header: string | null, env: Record<string, string | undefined>): 202 | 401 | 404 {
+  if (!authorizeCron(header, env.REPORT_WAKE_SECRET)) return 401;
+  return env.ORGFIT_JOB_PROCESS === "report" ? 202 : 404;
+}

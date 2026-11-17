@@ -7,11 +7,15 @@ const config: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
   reactStrictMode: true,
-  serverExternalPackages: ["pg", "kysely", "playwright", "playwright-core"],
+  serverExternalPackages: ["pg", "kysely", "playwright", "playwright-core", "@sparticuz/chromium"],
   logging: { incomingRequests: false },
   experimental: { externalDir: true },
   // The database CA certificate is named by path in each database URL
   // (sslrootcert), so it is never imported and must be traced explicitly.
-  outputFileTracingIncludes: { "/**": ["../../deploy/certs/**"] },
+  // The serverless Chromium (D-191) finds its compressed binary by path at run
+  // time, so the report job traces it explicitly as well.
+  outputFileTracingIncludes: {
+    "/**": ["../../deploy/certs/**", "../../node_modules/@sparticuz/chromium/bin/**"],
+  },
 };
 export default config;

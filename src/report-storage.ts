@@ -37,15 +37,30 @@ function localPath(org: string, id: string) {
     id + ".bin",
   );
 }
+// D-191: REPORT_STORAGE=database keeps the same ciphertext in the core
+// database (ops.report_blob, migration 028) for a deployment without object
+// storage. The caller passes its own connection: the renderer's pool or the
+// staff transaction; each reaches the bytes only through its definer routine.
+export type ReportBlobDb = {
+  query(text: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+};
+export function reportStorageMode(): "database" | "s3" | "local" {
+  if (process.env.REPORT_STORAGE === "database") return "database";
+  return process.env.REPORT_S3_BUCKET ? "s3" : "local";
+}
+function blobDb(db: ReportBlobDb | undefined) {
+  if (!db) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+  return db;
+}
 function s3() {
-  if (!process.env.REPORT_S3_BUCKET) return null;
+  if (reportStorageMode() !== "s3") return null;
   return new S3Client({
     region: process.env.AWS_REGION ?? "us-east-1",
     endpoint: process.env.REPORT_S3_ENDPOINT,
     forcePathStyle: !!process.env.REPORT_S3_ENDPOINT,
   });
 }
-export async function putReport(org: string, id: string, body: Buffer) {
+export async function putReport(org: string, id: string, body: Buffer, db?: ReportBlobDb) {
   if (body.length > MAX_BYTES) throw new AppError("VALIDATION_FAILED", 422);
   const name = objectKey(org, id),
     nonce = randomBytes(12),
@@ -57,6 +72,10 @@ export async function putReport(org: string, id: string, body: Buffer) {
     cipher.final(),
     cipher.getAuthTag(),
   ]);
+  if (reportStorageMode() === "database") {
+    await blobDb(db).query("SELECT publication.put_report_blob($1,$2) AS key", [id, bytes]);
+    return name;
+  }
   const client = s3();
   if (client)
     await client.send(
@@ -74,10 +93,14 @@ export async function putReport(org: string, id: string, body: Buffer) {
   }
   return name;
 }
-export async function getReport(org: string, id: string) {
+export async function getReport(org: string, id: string, db?: ReportBlobDb) {
   const name = objectKey(org, id),
     client = s3();
-  const bytes = client
+  const bytes = reportStorageMode() === "database"
+    ? Buffer.from(
+        (await blobDb(db).query("SELECT core.report_blob($1,$2) AS bytes", [org, id])).rows[0].bytes as Uint8Array,
+      )
+    : client
     ? Buffer.from(
         await (
           await client.send(
@@ -99,7 +122,12 @@ export async function getReport(org: string, id: string) {
     cipher.final(),
   ]);
 }
-export async function deleteReport(org: string, id: string) {
+export async function deleteReport(org: string, id: string, db?: ReportBlobDb) {
+  if (reportStorageMode() === "database") {
+    objectKey(org, id);
+    await blobDb(db).query("SELECT publication.delete_report_blob($1) AS removed", [id]);
+    return;
+  }
   const client = s3();
   if (client)
     await client.send(
