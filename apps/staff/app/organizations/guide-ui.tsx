@@ -100,7 +100,7 @@ export function ResultsIndex({
       {!status && !error && <LoadingState label={m.loading} />}
       {status && status.items === null && <p role="note">{m.resultsHidden}</p>}
       {status?.items && status.items.length === 0 && (
-        <EmptyState title={m.resultsNone} body={fill(m.resultsHow, { t: threshold })} action={send} />
+        <EmptyState title={m.resultsNone} action={send} />
       )}
       {status?.items && status.items.length > 0 && (
         <section className="card stack" data-testid="results-status">
