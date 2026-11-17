@@ -55,9 +55,11 @@ test("the default campaign audience is everyone the questionnaire targets, enfor
   });
 
   await page.goto(`/${org}/assessments`);
+  await page.getByText("Advanced manual setup").click();
   const form = page.locator("form").filter({ hasText: "New campaign" });
-  await form.getByLabel("Round").selectOption({ label: `Round ${suffix}` });
-  await form.getByLabel("Published questionnaire version").fill(version.id);
+  await form.getByLabel("Round", { exact: true }).selectOption({ label: `Round ${suffix}` });
+  // The round's published questionnaire is preselected from a list (D-189).
+  await expect(form.getByLabel("Published questionnaire")).toHaveValue(version.id);
   await expect(form.getByLabel("Targeting")).toHaveValue("ALL");
   const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
   await form.getByLabel("Collection starts").fill(local(new Date(Date.now() - 60_000)));

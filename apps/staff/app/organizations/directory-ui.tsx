@@ -33,6 +33,7 @@ import {
 } from "../../../../src/directory-input";
 import { AccountControls } from "../ui";
 import { Frame, Workspace, organizationName, type Section } from "../shell";
+import { GettingStarted } from "./guide-ui";
 import {
   Badge,
   DeniedState,
@@ -133,6 +134,7 @@ export function Directory({
           />
         ) : section === "overview" ? (
           <section className="stack">
+            <GettingStarted org={org} locale={locale} />
             <div className="tiles">
               <Tile label={m.timezone} value={String(organization?.timezone ?? "—")} />
               <Tile

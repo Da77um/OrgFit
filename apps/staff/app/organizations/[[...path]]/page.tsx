@@ -15,12 +15,17 @@ import { Results } from "../results-ui";
 import { History } from "../history-ui";
 import { Visits } from "../visits-ui";
 import { Inbox } from "../messages-ui";
+import { SendQuestionnaire } from "../send-ui";
+import { ResultsIndex } from "../guide-ui";
 export default async function DirectoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ path?: string[] }>;
+  searchParams: Promise<{ version?: string | string[] }>;
 }) {
   const { path = [] } = await params,
+    { version } = await searchParams,
     jar = await cookies();
   // The address is validated before the boundary, so an unknown route still
   // answers 404 instead of streaming a loading state first.
@@ -39,6 +44,7 @@ export default async function DirectoryPage({
       "history",
       "visits",
       "messages",
+      "send",
     ].includes(path[1])
   )
     notFound();
@@ -59,12 +65,27 @@ export default async function DirectoryPage({
         <OrganizationLoading locale={localeOf(jar.get("orgfit-locale")?.value)} />
       }
     >
-      <DirectoryScreen path={path} />
+      <DirectoryScreen
+        path={path}
+        // The guided send flow may start from a questionnaire version (D-189).
+        // Anything but one identifier is ignored, never echoed.
+        version={
+          path[1] === "send" && typeof version === "string" && uuid.safeParse(version).success
+            ? version
+            : null
+        }
+      />
     </Suspense>
   );
 }
 
-async function DirectoryScreen({ path }: { path: string[] }) {
+async function DirectoryScreen({
+  path,
+  version,
+}: {
+  path: string[];
+  version: string | null;
+}) {
   const jar = await cookies();
   try {
     const data = await withStaff(
@@ -97,12 +118,16 @@ async function DirectoryScreen({ path }: { path: string[] }) {
         };
       },
     );
-    return path[1] === "messages" ? (
+    return path[1] === "send" ? (
+      <SendQuestionnaire key={path.join("/")} path={path} version={version} {...data} />
+    ) : path[1] === "messages" ? (
       <Inbox key={path.join("/")} path={path} {...data} />
     ) : path[1] === "visits" ? (
       <Visits key={path.join("/")} path={path} {...data} />
     ) : path[1] === "history" ? (
       <History key={path.join("/")} path={path} {...data} />
+    ) : path[1] === "results" && !path[2] ? (
+      <ResultsIndex key={path.join("/")} path={path} {...data} />
     ) : path[1] === "results" ? (
       <Results key={path.join("/")} path={path} {...data} />
     ) : ["assessments", "campaigns"].includes(path[1] ?? "") ? (

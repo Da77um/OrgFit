@@ -8,6 +8,7 @@ import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
 import { messages, type Locale } from "../../../../src/i18n";
 import { historyMessages } from "../../../../src/history-i18n";
+import { campaignMessages, fill } from "../../../../src/campaign-i18n";
 import { localeText } from "../../../../src/results-i18n";
 import { utcDate } from "../../../../src/zoned-time";
 import { Workspace, organizationName } from "../shell";
@@ -457,7 +458,27 @@ export function History({
           {busy ? m.loading : note}
         </p>
 
-        {!seriesId && (
+        {!seriesId && !busy && !list.some((s) => Number(s.released_count) >= 2) && (
+          <section className="card stack" data-testid="history-needs">
+            {!list.length && <p>{m.empty}</p>}
+            <p>{m.needsTwo}</p>
+            <p>
+              <bdi>
+                {fill(m.publishedSoFar, {
+                  n: Math.max(0, ...list.map((s) => Number(s.released_count) || 0)),
+                })}
+              </bdi>
+            </p>
+            {(profile.role === "SUPER_ADMIN" || profile.capabilities.includes("campaigns.manage")) && (
+              <div className="row">
+                <a className="button" href={`/organizations/${org}/send`}>
+                  {campaignMessages(locale).send}
+                </a>
+              </div>
+            )}
+          </section>
+        )}
+        {!seriesId && list.length > 0 && (
           <div
             className="table-wrap scroll"
             tabIndex={0}
@@ -491,7 +512,6 @@ export function History({
             </table>
           </div>
         )}
-        {!seriesId && !busy && !list.length && <p className="muted">{m.empty}</p>}
 
         {seriesId && series && (
           <>

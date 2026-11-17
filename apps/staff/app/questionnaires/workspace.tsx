@@ -7,6 +7,7 @@ import { ArchiveForm } from "../archive-form";
 import { DeleteForm, deleteBlockerText } from "../delete-form";
 import { directoryMessages } from "../../../../src/directory-i18n";
 import { adminMessages } from "../../../../src/admin-i18n";
+import { campaignMessages } from "../../../../src/campaign-i18n";
 import {
   afterSetAside,
   conflictOf,
@@ -142,7 +143,9 @@ export function InstrumentWorkspace({
     [cloneTargetValue, setCloneTargetValue] = useState<TargetValue>(entireOrganization),
     [editTarget, setEditTarget] = useState<TargetValue>(entireOrganization),
     [targetDirty, setTargetDirty] = useState(false),
-    [departmentFilter, setDepartmentFilter] = useState("");
+    [departmentFilter, setDepartmentFilter] = useState(""),
+    // The organization a published global version is sent to (D-189).
+    [sendOrg, setSendOrg] = useState("");
   const base = `/api/v1/${org ? `organizations/${org}/` : ""}questionnaires`,
     suffix = org ? `?organization=${org}` : "";
   const canManage =
@@ -1218,6 +1221,39 @@ export function InstrumentWorkspace({
                     {t("كل النسخ", "All versions")}
                   </a>
                 </div>
+                {version.state === "PUBLISHED" &&
+                  (profile.role === "SUPER_ADMIN" || profile.capabilities.includes("campaigns.manage")) && (
+                    <div className="row" data-testid="send-entry">
+                      {org ? (
+                        <a className="button" href={`/organizations/${org}/send?version=${version.id}`}>
+                          {campaignMessages(locale).sendToOrganization}
+                        </a>
+                      ) : (
+                        <>
+                          <label htmlFor="send-org-pick">{campaignMessages(locale).organization}</label>
+                          <select
+                            id="send-org-pick"
+                            value={sendOrg}
+                            onChange={(e) => setSendOrg(e.currentTarget.value)}
+                          >
+                            <option value="">{campaignMessages(locale).chooseOrganization}</option>
+                            {organizations.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {locale === "en" ? o.name_en || o.name_ar : o.name_ar}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={!sendOrg}
+                            onClick={() => location.assign(`/organizations/${sendOrg}/send?version=${version.id}`)}
+                          >
+                            {campaignMessages(locale).sendToOrganization}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 {org && detail && (
                   <TargetSummary t={t} locale={locale} organization={orgLabel(org)} target={detail} />
                 )}

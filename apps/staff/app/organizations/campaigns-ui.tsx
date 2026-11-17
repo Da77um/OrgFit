@@ -24,7 +24,15 @@ import {
 } from "react";
 import type { Profile } from "../../../../src/db";
 import type { DirectoryRecord } from "../../../../src/directory";
-import { campaignMessages } from "../../../../src/campaign-i18n";
+import { campaignMessages, fill } from "../../../../src/campaign-i18n";
+import {
+  DepartmentSelect,
+  FamilySelect,
+  ParticipantPicker,
+  VersionSelect,
+  useCampaignOptions,
+  type Person,
+} from "./campaign-pickers";
 import { messages, type Locale } from "../../../../src/i18n";
 import { historyMessages } from "../../../../src/history-i18n";
 import { Workspace, organizationName } from "../shell";
@@ -101,6 +109,7 @@ type Round = {
   state: string;
   series_id: string;
   period_start: string;
+  questionnaire_version_id: string;
   campaign_id: string | null;
   campaign_state: string | null;
   campaign_effective_state: string | null;
@@ -188,9 +197,22 @@ export function Campaigns({
   const [problem, setProblem] = useState<ChangeFailure | null>(null);
   // The three creation forms: typed values are lost by a reload, so leaving or
   // switching language asks first. They are not saved from the leave dialog.
+  // The advanced forms choose from lists (D-189); no field takes an identifier.
+  const { options } = useCampaignOptions(org, locale, section === "assessments" && manage);
+  const [roundVersion, setRoundVersion] = useState("");
+  const [campaignRoundId, setCampaignRoundId] = useState("");
+  const [campaignVersion, setCampaignVersion] = useState<string | null>(null);
+  const [campaignMode, setCampaignMode] = useState("ALL");
+  const [campaignDepartment, setCampaignDepartment] = useState("");
+  const [singlePerson, setSinglePerson] = useState<Person[]>([]);
+  const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
+  // Issue links for everyone: replace links already issued only when asked.
+  const [rotateAll, setRotateAll] = useState(false);
   const seriesForm = useFormDirty();
   const roundForm = useFormDirty();
-  const campaignForm = useFormDirty();
+  const campaignForm = useFormDirty(
+    JSON.stringify([campaignVersion, campaignDepartment, singlePerson, selectedPeople]),
+  );
   useUnsavedChanges(seriesForm.dirty || roundForm.dirty || campaignForm.dirty);
 
   // `retry` is given for a change: an unknown outcome (or an ended session)
@@ -346,6 +368,7 @@ export function Campaigns({
       el,
       roundForm.markClean,
       async () => {
+        setRoundVersion("");
         setNotice(m.saved);
         await reload();
       },
@@ -355,19 +378,15 @@ export function Campaigns({
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     const mode = String(form.get("mode"));
+    // Chosen people travel as one hidden field per person.
     const target =
       mode === "ALL"
         ? { mode }
         : mode === "SINGLE"
-        ? { mode, participantId: String(form.get("participantId")).trim() }
+        ? { mode, participantId: String(form.get("participantId") ?? "") }
         : mode === "DEPARTMENT"
-          ? { mode, departmentId: String(form.get("departmentId")).trim() }
-          : {
-              mode,
-              participantIds: String(form.get("participantIds"))
-                .split(/\s+/)
-                .filter(Boolean),
-            };
+          ? { mode, departmentId: String(form.get("departmentId") ?? "") }
+          : { mode, participantIds: form.getAll("participantIds").map(String) };
     const el = e.currentTarget;
     await create(
       "campaign-create",
@@ -487,7 +506,18 @@ export function Campaigns({
       { scope: "link-export", again: () => void exportLinks(body, true) },
     );
 
-  if (section === "assessments")
+  if (section === "assessments") {
+    const eligibleRounds = rounds.filter((r) => !r.campaign_id && r.state === "DRAFT");
+    const campaignRound =
+      eligibleRounds.find((r) => r.id === campaignRoundId) ?? eligibleRounds[0];
+    const versions = options?.versions ?? [];
+    const departments = options?.departments ?? [];
+    const nothingYet = series.length === 0 && rounds.length === 0;
+    const sendButton = (
+      <a className="button" href={`/${base}/send`} data-testid="send-start">
+        {m.send}
+      </a>
+    );
     return shell(
       <>
           <PageHeader
@@ -495,96 +525,115 @@ export function Campaigns({
             title={m.assessments}
             sub={historyMessages(locale).history}
             actions={
-              <a className="button button-secondary" href={`/${base}/history`}>
-                {historyMessages(locale).history}
-              </a>
+              <>
+                {manage && sendButton}
+                <a className="button button-secondary" href={`/${base}/results`}>
+                  {m.results}
+                </a>
+                <a className="button button-secondary" href={`/${base}/history`}>
+                  {historyMessages(locale).history}
+                </a>
+              </>
             }
           />
           {alerts}
-          <section className="card stack">
-            <div className="card-head">
-              <h2>{m.series}</h2>
-              <Micro>{series.length} SERIES</Micro>
-            </div>
-            {series.length === 0 ? (
-              <EmptyState title={messages(locale).emptyTitle} body={m.empty} />
-            ) : (
-              <ul className="plain-list stack stack-tight">
-                {series.map((s) => (
-                  <li key={s.id}>
-                    <bdi>
-                      {locale === "en" && s.name_en ? s.name_en : s.name_ar}
-                    </bdi>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          {manage && (
-            <form className="stack" onSubmit={createSeries} {...seriesForm.bind}>
-              <h3>{m.newSeries}</h3>
-              <label htmlFor="nameAr">{m.seriesName}</label>
-              <input id="nameAr" name="nameAr" required maxLength={500} />
-              <label htmlFor="nameEn">{m.seriesNameEn}</label>
-              <input id="nameEn" name="nameEn" maxLength={500} />
-              <label htmlFor="purpose">{m.purpose}</label>
-              <input id="purpose" name="purpose" required maxLength={2000} />
-              <label htmlFor="family">{m.family}</label>
-              <input id="family" name="family" required />
-              <button disabled={busy}>{m.create}</button>
-            </form>
-          )}
-          <h2>{m.rounds}</h2>
-          {rounds.length === 0 && <p>{m.empty}</p>}
-          <div
-            className="scroll"
-            tabIndex={0}
-            role="region"
-            aria-label={m.rounds}
-          >
-            <table>
-              <caption>{m.rounds}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{m.label}</th>
-                  <th scope="col">{m.periodStart}</th>
-                  <th scope="col">{m.state}</th>
-                  <th scope="col">{m.campaign}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rounds.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <bdi>{r.label}</bdi>
-                    </td>
-                    <td>
-                      <bdi>{String(r.period_start).slice(0, 10)}</bdi>
-                    </td>
-                    <td>{label(m, r.state)}</td>
-                    <td>
-                      {r.campaign_id ? (
-                        <a href={`/${base}/campaigns/${r.campaign_id}`}>
-                          {label(m, r.campaign_effective_state)}
-                        </a>
-                      ) : (
-                        m.none
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {manage && (
+          {nothingYet ? (
+            <EmptyState
+              title={m.assessmentsEmptyTitle}
+              body={m.assessmentsEmptyBody}
+              action={manage ? sendButton : undefined}
+            />
+          ) : (
             <>
+              <section className="card stack">
+                <div className="card-head">
+                  <h2>{m.series}</h2>
+                  <Micro>{series.length} SERIES</Micro>
+                </div>
+                {series.length === 0 ? (
+                  <p className="muted">{m.seriesEmpty}</p>
+                ) : (
+                  <ul className="plain-list stack stack-tight">
+                    {series.map((s) => (
+                      <li key={s.id}>
+                        <bdi>
+                          {locale === "en" && s.name_en ? s.name_en : s.name_ar}
+                        </bdi>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <h2>{m.rounds}</h2>
+              {rounds.length === 0 ? (
+                <p className="muted">{m.roundsEmpty}</p>
+              ) : (
+                <div
+                  className="scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label={m.rounds}
+                >
+                  <table>
+                    <caption>{m.rounds}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">{m.label}</th>
+                        <th scope="col">{m.periodStart}</th>
+                        <th scope="col">{m.state}</th>
+                        <th scope="col">{m.campaign}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rounds.map((r) => (
+                        <tr key={r.id}>
+                          <td>
+                            <bdi>{r.label}</bdi>
+                          </td>
+                          <td>
+                            <bdi>{String(r.period_start).slice(0, 10)}</bdi>
+                          </td>
+                          <td>{label(m, r.state)}</td>
+                          <td>
+                            {r.campaign_id ? (
+                              <a href={`/${base}/campaigns/${r.campaign_id}`}>
+                                {label(m, r.campaign_effective_state)}
+                              </a>
+                            ) : (
+                              m.none
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+          {manage && (
+            <details className="card stack" data-testid="advanced-setup">
+              <summary>{m.advanced}</summary>
+              <p className="muted">{m.advancedHelp}</p>
+              <form className="stack" onSubmit={createSeries} {...seriesForm.bind}>
+                <h3>{m.newSeries}</h3>
+                <label htmlFor="nameAr">{m.seriesName}</label>
+                <input id="nameAr" name="nameAr" required maxLength={500} />
+                <label htmlFor="nameEn">{m.seriesNameEn}</label>
+                <input id="nameEn" name="nameEn" maxLength={500} />
+                <label htmlFor="purpose">{m.purpose}</label>
+                <input id="purpose" name="purpose" required maxLength={2000} />
+                <label htmlFor="family">{m.family}</label>
+                <FamilySelect id="family" name="family" versions={versions} locale={locale} />
+                <button disabled={busy}>{m.create}</button>
+              </form>
               <form className="stack" onSubmit={createRound} {...roundForm.bind}>
                 <h3>{m.newRound}</h3>
                 <label htmlFor="seriesId">{m.series}</label>
                 <select id="seriesId" name="seriesId" required>
                   {series.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name_ar}
+                      {locale === "en" && s.name_en ? s.name_en : s.name_ar}
                     </option>
                   ))}
                 </select>
@@ -600,7 +649,14 @@ export function Campaigns({
                 <label htmlFor="periodEnd">{m.periodEnd}</label>
                 <input id="periodEnd" name="periodEnd" type="date" />
                 <label htmlFor="versionId">{m.version}</label>
-                <input id="versionId" name="versionId" required />
+                <VersionSelect
+                  id="versionId"
+                  name="versionId"
+                  versions={versions}
+                  value={roundVersion}
+                  onChange={setRoundVersion}
+                  locale={locale}
+                />
                 <label htmlFor="population">{m.population}</label>
                 <input id="population" name="population" maxLength={2000} />
                 <button disabled={busy}>{m.create}</button>
@@ -609,19 +665,41 @@ export function Campaigns({
                 <h3>{m.newCampaign}</h3>
                 <p>{m.launchHelp}</p>
                 <label htmlFor="roundId">{m.round}</label>
-                <select id="roundId" name="roundId" required>
-                  {rounds
-                    .filter((r) => !r.campaign_id && r.state === "DRAFT")
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
+                <select
+                  id="roundId"
+                  name="roundId"
+                  required
+                  value={campaignRound?.id ?? ""}
+                  onChange={(e) => {
+                    setCampaignRoundId(e.currentTarget.value);
+                    setCampaignVersion(null);
+                  }}
+                >
+                  {eligibleRounds.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
                 </select>
+                {/* A campaign pins its round's version; the round's choice is
+                    preselected. */}
                 <label htmlFor="campaignVersion">{m.version}</label>
-                <input id="campaignVersion" name="versionId" required />
+                <VersionSelect
+                  id="campaignVersion"
+                  name="versionId"
+                  versions={versions}
+                  value={campaignVersion ?? campaignRound?.questionnaire_version_id ?? ""}
+                  onChange={setCampaignVersion}
+                  locale={locale}
+                />
                 <label htmlFor="mode">{m.targetMode}</label>
-                <select id="mode" name="mode" defaultValue="ALL" aria-describedby="modeHelp">
+                <select
+                  id="mode"
+                  name="mode"
+                  value={campaignMode}
+                  onChange={(e) => setCampaignMode(e.currentTarget.value)}
+                  aria-describedby="modeHelp"
+                >
                   <option value="ALL">{m.ALL}</option>
                   <option value="SINGLE">{m.SINGLE}</option>
                   <option value="SELECTED">{m.SELECTED}</option>
@@ -630,12 +708,46 @@ export function Campaigns({
                 <p className="muted" id="modeHelp">
                   {m.allHelp}
                 </p>
-                <label htmlFor="departmentId">{m.departmentId}</label>
-                <input id="departmentId" name="departmentId" />
-                <label htmlFor="participantId">{m.participantId}</label>
-                <input id="participantId" name="participantId" />
-                <label htmlFor="participantIds">{m.participantIds}</label>
-                <textarea id="participantIds" name="participantIds" rows={3} />
+                {campaignMode === "DEPARTMENT" && (
+                  <>
+                    <label htmlFor="departmentId">{m.departmentId}</label>
+                    <DepartmentSelect
+                      id="departmentId"
+                      name="departmentId"
+                      departments={departments}
+                      value={campaignDepartment}
+                      onChange={setCampaignDepartment}
+                      locale={locale}
+                    />
+                  </>
+                )}
+                {(campaignMode === "SINGLE" || campaignMode === "SELECTED") &&
+                  (options?.directoryReadable ? (
+                    campaignMode === "SINGLE" ? (
+                      <ParticipantPicker
+                        org={org}
+                        locale={locale}
+                        name="participantId"
+                        idPrefix="participantId"
+                        single
+                        selected={singlePerson}
+                        onChange={setSinglePerson}
+                        label={m.participantId}
+                      />
+                    ) : (
+                      <ParticipantPicker
+                        org={org}
+                        locale={locale}
+                        name="participantIds"
+                        idPrefix="participantIds"
+                        selected={selectedPeople}
+                        onChange={setSelectedPeople}
+                        label={m.participantIds}
+                      />
+                    )
+                  ) : (
+                    <p className="muted">{m.peopleHidden}</p>
+                  ))}
                 <p className="muted" id="campaignTimesHelp">
                   {m.timesInZone}
                 </p>
@@ -671,10 +783,11 @@ export function Campaigns({
                 />
                 <button disabled={busy}>{m.create}</button>
               </form>
-            </>
+            </details>
           )}
       </>,
     );
+  }
 
   if (!campaign)
     return shell(
@@ -888,6 +1001,58 @@ export function Campaigns({
                   : `${(Number(totals.rate) * 100).toFixed(1)}%`}
               </bdi>
             </p>
+            {manage && collecting && (() => {
+              // Everyone who has not completed gets a link through the existing
+              // link export; a link already issued is replaced only when asked.
+              const ready = people.items.filter((i) => i.status === "READY");
+              const alreadyIssued = ready.filter((i) => i.issued).length;
+              const pending = ready.filter((i) => rotateAll || !i.issued);
+              const batch = pending.slice(0, 500);
+              return (
+                <section className="card stack" data-testid="distribute">
+                  <h3>{m.distribute}</h3>
+                  <p>{m.consultantSends}</p>
+                  <p className="muted">{m.issueAllNote}</p>
+                  {alreadyIssued > 0 && (
+                    <label htmlFor="rotateAll">
+                      <input
+                        id="rotateAll"
+                        type="checkbox"
+                        checked={rotateAll}
+                        onChange={(e) => setRotateAll(e.currentTarget.checked)}
+                      />{" "}
+                      {fill(m.alsoRotate, { n: alreadyIssued })}
+                    </label>
+                  )}
+                  {pending.length > 500 && <p className="muted">{m.batchLimit}</p>}
+                  {!batch.length && <p role="note">{m.nothingToIssue}</p>}
+                  <div className="row">
+                    <button
+                      className="button"
+                      disabled={busy || !batch.length}
+                      onClick={() =>
+                        void exportLinks({
+                          invitationIds: batch.map((i) => i.invitationId),
+                          expectedGenerations: batch.map((i) => i.generation),
+                          confirmRotation: rotateAll && batch.some((i) => i.issued),
+                        })
+                      }
+                    >
+                      {m.issueAll}
+                    </button>
+                    {exportId && (
+                      <a
+                        className="button button-secondary"
+                        href={`/api/v1/${base}/campaigns/${id}/link-exports/${exportId}`}
+                      >
+                        {m.download}
+                      </a>
+                    )}
+                  </div>
+                  <p className="muted">{m.perPerson}</p>
+                </section>
+              );
+            })()}
             <p>{m.linkOnce}</p>
             <p>{m.linkPrivacy}</p>
             <div
@@ -986,45 +1151,6 @@ export function Campaigns({
                 </tbody>
               </table>
             </div>
-            {manage && collecting && (
-              <form
-                className="stack"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const confirmRotation =
-                    new FormData(e.currentTarget).get("confirmRotation") ===
-                    "on";
-                  void exportLinks({
-                    invitationIds: people.items
-                      .filter((i) => i.status === "READY")
-                      .map((i) => i.invitationId),
-                    expectedGenerations: people.items
-                      .filter((i) => i.status === "READY")
-                      .map((i) => i.generation),
-                    confirmRotation,
-                  });
-                }}
-              >
-                <h3>{m.export}</h3>
-                <p>{m.exportHelp}</p>
-                <label htmlFor="confirmRotation">
-                  <input
-                    id="confirmRotation"
-                    name="confirmRotation"
-                    type="checkbox"
-                  />
-                  {m.confirmRotation}
-                </label>
-                <button disabled={busy}>{m.export}</button>
-              </form>
-            )}
-            {exportId && (
-              <a
-                href={`/api/v1/${base}/campaigns/${id}/link-exports/${exportId}`}
-              >
-                {m.download}
-              </a>
-            )}
           </section>
         )}
     </>,

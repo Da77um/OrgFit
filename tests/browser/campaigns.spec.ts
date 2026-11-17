@@ -58,29 +58,28 @@ test("Arabic campaign journey: review warnings, launch freeze, one-time link, pa
 
   await page.goto(`/organizations/${ids.orgA}/assessments`);
   await expect(page.getByRole("heading", { name: "التقييمات" })).toBeVisible();
+  // The manual forms: under the advanced section, pickers only (D-189).
+  await page.getByText("إعداد يدوي متقدم").click();
   await page.getByLabel("اسم السلسلة").fill("سلسلة المتصفح");
   await page.getByLabel("الغرض").fill("قياس تجريبي عبر المتصفح");
-  await page.getByLabel("عائلة الاستبانة").fill(family);
-  await page
-    .locator("form")
-    .filter({ hasText: "سلسلة جديدة" })
-    .getByRole("button", { name: "إنشاء" })
-    .click();
+  const seriesForm = page.locator("form").filter({ hasText: "سلسلة جديدة" });
+  await seriesForm.getByLabel("الاستبانة", { exact: true }).selectOption(family);
+  await seriesForm.getByRole("button", { name: "إنشاء" }).click();
   await expect(page.getByText("تم الحفظ.")).toBeVisible();
 
   const roundForm = page.locator("form").filter({ hasText: "جولة جديدة" });
+  await roundForm.getByLabel("سلاسل التقييم").selectOption({ label: "سلسلة المتصفح" });
   await roundForm.getByLabel("اسم الجولة").fill("جولة المتصفح");
   await roundForm.getByLabel("بداية الفترة").fill("2026-02-01");
-  await roundForm.getByLabel("نسخة الاستبانة المنشورة").fill(BUILTIN_VERSION);
+  await roundForm.getByLabel("الاستبانة المنشورة").selectOption(BUILTIN_VERSION);
   await roundForm.getByRole("button", { name: "إنشاء" }).click();
-  await expect(page.getByRole("cell", { name: "جولة المتصفح" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "جولة المتصفح" }).first()).toBeVisible();
 
   const campaignForm = page.locator("form").filter({ hasText: "حملة جديدة" });
-  await campaignForm
-    .getByLabel("نسخة الاستبانة المنشورة")
-    .fill(BUILTIN_VERSION);
+  await campaignForm.getByLabel("الجولة", { exact: true }).selectOption({ label: "جولة المتصفح" });
+  await expect(campaignForm.getByLabel("الاستبانة المنشورة")).toHaveValue(BUILTIN_VERSION);
   await campaignForm.getByLabel("نمط الاستهداف").selectOption("DEPARTMENT");
-  await campaignForm.getByLabel("معرّف القسم").fill(departmentId);
+  await campaignForm.getByLabel("القسم", { exact: true }).selectOption(departmentId);
   const start = new Date(Date.now() - 60_000);
   const local = (d: Date) =>
     new Date(d.getTime() - d.getTimezoneOffset() * 60_000)

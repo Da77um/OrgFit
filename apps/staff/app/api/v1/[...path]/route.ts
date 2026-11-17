@@ -32,6 +32,7 @@ import {
   campaignRoute,
   invitationRoute,
 } from "../../../../../../src/campaigns";
+import { campaignGuideRoute } from "../../../../../../src/campaign-guide";
 import { resultsRoute } from "../../../../../../src/results";
 import { revocationRoute } from "../../../../../../src/revocation";
 import { recommendationActionRoute } from "../../../../../../src/recommendations";
@@ -223,6 +224,7 @@ async function handle(req: Request, ctx: Context) {
           (await instrumentRoute(req, path, tx)) ??
           (await invitationRoute(req, path, tx)) ??
           (await campaignRoute(req, path, tx)) ??
+          (await campaignGuideRoute(req, path, tx)) ??
           (await directoryRoute(req, path, tx, profile)) ??
           (await importRoute(req, path, tx));
         if (directoryResponse) return directoryResponse;

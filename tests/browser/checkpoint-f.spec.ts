@@ -387,15 +387,19 @@ test("F-2 clone, edit, preview the scoring and publish an instrument", async () 
 
 test("F-3 series, round and campaign through the screens; links obtained manually", async () => {
   await admin.goto(`${STAFF}/organizations/${P.id}/assessments`);
+  // The manual forms live under the advanced section and choose from lists
+  // (D-189); no field takes an identifier.
+  await admin.getByText("إعداد يدوي متقدم").click();
   await admin.getByLabel("اسم السلسلة").fill("سلسلة نقطة الفحص");
   await admin.getByLabel("الغرض").fill("رحلة كاملة");
-  await admin.getByLabel("عائلة الاستبانة").fill(S.family);
-  await admin.locator("form").filter({ hasText: "سلسلة جديدة" }).getByRole("button", { name: "إنشاء" }).click();
+  const seriesForm = admin.locator("form").filter({ hasText: "سلسلة جديدة" });
+  await seriesForm.getByLabel("الاستبانة", { exact: true }).selectOption(S.family);
+  await seriesForm.getByRole("button", { name: "إنشاء" }).click();
   await expect(admin.getByText("تم الحفظ.")).toBeVisible();
   const roundForm = admin.locator("form").filter({ hasText: "جولة جديدة" });
   await roundForm.getByLabel("اسم الجولة").fill("الجولة الأولى");
   await roundForm.getByLabel("بداية الفترة").fill("2026-01-01");
-  await roundForm.getByLabel("نسخة الاستبانة المنشورة").fill(S.v1);
+  await roundForm.getByLabel("الاستبانة المنشورة").selectOption(S.v1);
   await roundForm.getByRole("button", { name: "إنشاء" }).click();
   await expect(admin.getByRole("cell", { name: "الجولة الأولى" })).toBeVisible();
 
@@ -406,9 +410,14 @@ test("F-3 series, round and campaign through the screens; links obtained manuall
   await db.end();
 
   const form = admin.locator("form").filter({ hasText: "حملة جديدة" });
-  await form.getByLabel("نسخة الاستبانة المنشورة").fill(S.v1);
+  await form.getByLabel("الجولة", { exact: true }).selectOption({ label: "الجولة الأولى" });
+  await expect(form.getByLabel("الاستبانة المنشورة")).toHaveValue(S.v1);
   await form.getByLabel("نمط الاستهداف").selectOption("SELECTED");
-  await form.getByLabel("معرّفات المشاركين (سطر لكل معرّف)").fill(S.participantIds.join("\n"));
+  // The organization's twelve imported people, chosen from the picker.
+  const picker = form.getByRole("group", { name: "المشاركون" });
+  await expect(picker.getByRole("button", { name: /^إضافة: / })).toHaveCount(S.participantIds.length);
+  for (const add of await picker.getByRole("button", { name: /^إضافة: / }).all()) await add.click();
+  await expect(picker.getByText(`المختارون (${S.participantIds.length})`).first()).toBeVisible();
   // The start is typed as a Riyadh wall-clock time, one minute ago.
   await form.getByLabel("بداية الجمع").fill(formatInZone(new Date(Date.now() - 60_000).toISOString(), "Asia/Riyadh").replace(" ", "T"));
   await form.getByRole("button", { name: "إنشاء" }).click();

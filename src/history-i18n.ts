@@ -67,6 +67,10 @@ const ar = {
   descriptive:
     "الفروق وصفية فقط ولا تعني دلالة إحصائية أو سببية أو مقارنة معيارية، ولا يجري ربط أي مشارك بين الجولات.",
   empty: "لا توجد سلاسل قياس بعد.",
+  // D-189: what a comparison needs, and how far this organization is.
+  needsTwo:
+    "تحتاج المقارنة التاريخية إلى جولتين مكتملتين ومنشورتين على الأقل من سلسلة الاستبانة نفسها.",
+  publishedSoFar: "الجولات المنشورة حتى الآن في أكثر السلاسل اكتمالًا: {n}",
   noComparisons: "لا توجد مقارنات معتمدة لهذه السلسلة.",
   loading: "جارٍ التحميل…",
   saved: "تم الحفظ.",
@@ -142,6 +146,9 @@ const en: Record<HistoryKey, string> = {
   descriptive:
     "Differences are descriptive only. No statistical significance, causation or benchmark is implied, and no participant is linked across rounds.",
   empty: "No assessment series yet.",
+  needsTwo:
+    "A historical comparison needs at least two completed, published rounds of the same questionnaire series.",
+  publishedSoFar: "Published rounds so far in the most complete series: {n}",
   noComparisons: "No reviewed comparisons for this series.",
   loading: "Loading…",
   saved: "Saved.",

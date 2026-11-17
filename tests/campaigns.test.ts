@@ -28,6 +28,7 @@ import {
   type IssuedLink,
 } from "../src/campaigns";
 import { campaignInput, linkExportInput } from "../src/campaign-input";
+import { campaignOptions, campaignStatus } from "../src/campaign-guide";
 import { tokenDigest, invitationUrl } from "../src/invitation-token";
 import { getExport, cleanLocalExports } from "../src/link-storage";
 import { exchange, status } from "../src/gateway";
@@ -1729,6 +1730,83 @@ test("PostgreSQL campaigns: targeting, freezing, invitations, boundaries and lin
           ),
           "NOT_FOUND",
         );
+      },
+    );
+
+    await t.test(
+      "D-189 guide reads: usable versions, real counts, hidden counts stay hidden, nothing written",
+      async () => {
+        const writes = async () =>
+          Number(
+            (
+              await operator.query(
+                "select (select count(*) from ops.audit_log)+(select count(*) from access.staff_mutation) n",
+              )
+            ).rows[0].n,
+          );
+        const before = await writes();
+        const options = await withStaff(admin, (tx) => campaignOptions(tx, ids.orgA));
+        assert.ok(options.versions.some((v) => v.id === BUILTIN_VERSION && v.scope === "GLOBAL"));
+        // Exactly the versions save_round accepts: published, global or this
+        // organization's own.
+        const owners = await operator.query(
+          "select state,organization_id from instrument.questionnaire_version where id=any($1)",
+          [options.versions.map((v) => v.id)],
+        );
+        assert.ok(
+          owners.rows.every(
+            (r) => r.state === "PUBLISHED" && (r.organization_id === null || r.organization_id === ids.orgA),
+          ),
+        );
+        const counted = async (where: string, args: unknown[]) =>
+          Number(
+            (
+              await operator.query(
+                `select count(*) n from core.participant where organization_id=$1 and status='ACTIVE' ${where}`,
+                [ids.orgA, ...args],
+              )
+            ).rows[0].n,
+          );
+        assert.equal(options.directoryReadable, true);
+        assert.equal(
+          options.departments.find((d) => d.id === dept.d1)?.active,
+          await counted("and department_id=$2", [dept.d1]),
+        );
+        assert.equal(options.organizationActive, await counted("", []));
+        assert.ok(options.series.some((x) => x.familyKey === family));
+
+        // Campaigns without the directory: department names, but no count
+        // that a hidden row could turn into a false zero.
+        await operator.query(
+          "insert into access.staff_user(id,issuer,provider_subject,email,display_name,role,status) values($1,$2,'guide-limited','guide-limited@example.invalid','موظف محدود','STAFF','ACTIVE')",
+          [randomUUID(), process.env.OIDC_ISSUER],
+        );
+        await operator.query(
+          "insert into access.organization_access select id,$1 from access.staff_user where provider_subject='guide-limited'",
+          [ids.orgA],
+        );
+        await operator.query(
+          "insert into access.staff_capability select id,'campaigns.manage' from access.staff_user where provider_subject='guide-limited'",
+        );
+        const limited = await session("guide-limited");
+        const hidden = await withStaff(limited, (tx) => campaignOptions(tx, ids.orgA));
+        assert.equal(hidden.directoryReadable, false);
+        assert.equal(hidden.organizationActive, null);
+        assert.ok(hidden.departments.length > 0 && hidden.departments.every((d) => d.active === null));
+        const status = await withStaff(limited, (tx) => campaignStatus(tx, ids.orgA));
+        assert.equal(status.participants, null);
+        assert.ok((status.campaigns ?? 0) >= 1 && status.items?.every((i) => i.state && i.releaseState));
+        const totals = (
+          await operator.query(
+            "select count(*) filter (where token_generation>0) issued,count(*) filter (where status='COMPLETED') done from core.invitation where organization_id=$1",
+            [ids.orgA],
+          )
+        ).rows[0];
+        assert.equal(status.linksIssued, Number(totals.issued));
+        assert.equal(status.responses, Number(totals.done));
+        assert.equal(await failure(() => withStaff(limited, (tx) => campaignOptions(tx, ids.orgB))), "NOT_FOUND");
+        assert.equal(await failure(() => withStaff(limited, (tx) => campaignStatus(tx, ids.orgB))), "NOT_FOUND");
+        assert.equal(await writes(), before, "the guide routes write nothing");
       },
     );
   } finally {
