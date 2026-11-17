@@ -36,6 +36,7 @@ import {
 import { messages, type Locale } from "../../../../src/i18n";
 import { historyMessages } from "../../../../src/history-i18n";
 import { Workspace, organizationName } from "../shell";
+import { CampaignJourney } from "./guide-ui";
 import {
   Alert,
   Badge,
@@ -146,6 +147,10 @@ type Review = {
   targetProblem?: string | null;
   groups: { kind: string; label: unknown; count: number }[];
 };
+type BatchLink = { invitationId: string; displayName: string; displayReference: string; url: string };
+// Links issued in one press. Each is one request; the staff API allows 600 a
+// minute per session, so a press stays far below it.
+const BATCH_SIZE = 200;
 type Participation = {
   items: {
     invitationId: string;
@@ -195,7 +200,11 @@ export function Campaigns({
   const [review, setReview] = useState<Review | null>(null);
   const [people, setPeople] = useState<Participation | null>(null);
   const [links, setLinks] = useState<Record<string, string>>({});
-  const [exportId, setExportId] = useState("");
+  // Links issued together (D-190): held only in this tab until it is left or
+  // reloaded, like a single issued link; never fetched again.
+  const [batch, setBatch] = useState<BatchLink[]>([]);
+  const [batchKept, setBatchKept] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const ledger = useLedger();
   const [problem, setProblem] = useState<ChangeFailure | null>(null);
   // The three creation forms: typed values are lost by a reload, so leaving or
@@ -209,14 +218,14 @@ export function Campaigns({
   const [campaignDepartment, setCampaignDepartment] = useState("");
   const [singlePerson, setSinglePerson] = useState<Person[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<Person[]>([]);
-  // Issue links for everyone: replace links already issued only when asked.
-  const [rotateAll, setRotateAll] = useState(false);
   const seriesForm = useFormDirty();
   const roundForm = useFormDirty();
   const campaignForm = useFormDirty(
     JSON.stringify([campaignVersion, campaignDepartment, singlePerson, selectedPeople]),
   );
-  useUnsavedChanges(seriesForm.dirty || roundForm.dirty || campaignForm.dirty);
+  useUnsavedChanges(
+    seriesForm.dirty || roundForm.dirty || campaignForm.dirty || (batch.length > 0 && !batchKept),
+  );
 
   // `retry` is given for a change: an unknown outcome (or an ended session)
   // is shown with the exact retry instead of as a refusal.
@@ -481,35 +490,98 @@ export function Campaigns({
     );
   };
 
-  // A link export issues credentials and writes a file whose identifier is
-  // only in the answer. Retrying the same attempt after a lost answer is safe
-  // (nothing is issued twice) but cannot recover that file.
-  const exportLinks = (body: unknown, again = false): Promise<void> =>
-    run(
+  // Everyone's links in one action (D-190): each link is issued through the
+  // same per-person endpoint, one after another, so no file and no storage is
+  // involved. A lost answer stops the run; the retry resends that same request
+  // and then continues with the rest. A link whose answer was lost cannot be
+  // shown again; that person keeps an issued link and can be given a new one.
+  const issueEveryone = (items: Participation["items"], again = false): Promise<void> => {
+    let at = 0;
+    return run(
       async () => {
-        let result: { exportId: string };
+        const got: BatchLink[] = [];
+        let lost = 0;
+        setProgress({ done: 0, total: items.length });
         try {
-          result = (await api(`${base}/campaigns/${id}/link-exports`, locale, "POST", body, undefined, {
-            ledger,
-            scope: "link-export",
-            retry: again,
-          })) as { exportId: string };
-        } catch (e) {
-          if (again && tokenReplay(e)) {
-            ledger.settle("link-export");
-            setExportId("");
-            setNotice(m.exportLostAnswer);
-            await reload();
-            return;
+          for (; at < items.length; at++) {
+            const i = items[at];
+            const scope = `invitation-issue:${i.invitationId}`;
+            const retry = again && at === 0;
+            try {
+              const r = (await api(
+                `${base}/campaigns/${id}/invitations/${i.invitationId}/issue`,
+                locale,
+                "POST",
+                { expectedGeneration: i.generation },
+                undefined,
+                { ledger, scope, retry },
+              )) as { url?: string };
+              if (r.url)
+                got.push({
+                  invitationId: i.invitationId,
+                  displayName: i.displayName,
+                  displayReference: i.displayReference,
+                  url: r.url,
+                });
+            } catch (e) {
+              if (retry && tokenReplay(e)) {
+                ledger.settle(scope);
+                lost++;
+                continue;
+              }
+              throw e;
+            }
+            setProgress({ done: at + 1, total: items.length });
           }
-          throw e;
+        } finally {
+          if (got.length) {
+            setBatch((v) => [...v, ...got]);
+            setBatchKept(false);
+            setLinks((v) => ({ ...v, ...Object.fromEntries(got.map((g) => [g.invitationId, g.url])) }));
+          }
+          setProgress(null);
         }
-        setExportId(result.exportId);
-        setNotice(m.exportReady);
+        setNotice(fill(lost ? m.batchIssuedLost : m.batchIssued, { n: got.length, lost }));
         await reload();
       },
-      { scope: "link-export", again: () => void exportLinks(body, true) },
+      {
+        // The problem names the request that was cut off, so its retry is the
+        // same attempt the ledger kept under that invitation's scope.
+        get scope() {
+          return at < items.length ? `invitation-issue:${items[at].invitationId}` : "link-batch";
+        },
+        again: () => void issueEveryone(items.slice(at), true),
+      },
     );
+  };
+  const copyBatch = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        batch.map((b) => `${b.displayName}\t${b.displayReference}\t${b.url}`).join("\n"),
+      );
+      setBatchKept(true);
+      setNotice(m.batchCopied);
+    } catch {
+      setError(m.batchCopyFailed);
+    }
+  };
+  const downloadBatch = () => {
+    // Built in this tab; nothing is stored on the server. A leading formula
+    // character is neutralized so a spreadsheet does not execute a cell.
+    const cell = (v: string) => `"${(/^[=+\-@\t\r]/.test(v) ? "'" + v : v).replace(/"/g, '""')}"`;
+    const csv =
+      "\uFEFF" +
+      [[m.displayName, m.displayReference, m.batchLink], ...batch.map((b) => [b.displayName, b.displayReference, b.url])]
+        .map((row) => row.map(cell).join(","))
+        .join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "orgfit-links.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setBatchKept(true);
+  };
 
   if (section === "assessments") {
     const eligibleRounds = rounds.filter((r) => !r.campaign_id && r.state === "DRAFT");
@@ -807,7 +879,7 @@ export function Campaigns({
   // still collect answers; a closed or cancelled campaign offers none of them.
   const collecting = ["SCHEDULED", "OPEN"].includes(campaign.state);
   const nearLinks =
-    manage && collecting && !!people && (place === "link-export" || place.startsWith("invitation-"));
+    manage && collecting && !!people && (place === "link-batch" || place.startsWith("invitation-"));
   return shell(
     <>
         <PageHeader
@@ -833,6 +905,14 @@ export function Campaigns({
         <Alert tone="info" role="note">
           {m.noAnswers}
         </Alert>
+        <CampaignJourney
+          locale={locale}
+          base={base}
+          campaign={campaign}
+          invited={Number(totals.invited ?? campaign.frozen_invited_count ?? review?.invited ?? 0)}
+          completed={Number(totals.completed ?? 0)}
+          issued={people ? people.items.filter((i) => i.issued).length : 0}
+        />
 
         <section className="stack">
           <h2>{m.review}</h2>
@@ -885,23 +965,8 @@ export function Campaigns({
           )}
         </section>
 
-        {/* A closed campaign that finished below the threshold says so, rather
-            than leaving the results page to be the first to mention it (CF-003). */}
-        {campaign.release_state === "INSUFFICIENT_DATA" && (
-          <section className="stack">
-            <h2>{m.results}</h2>
-            <p role="note">{m.belowThresholdFinal}</p>
-          </section>
-        )}
-        {campaign.release_state === "PUBLISHED" && (
-          <section className="stack">
-            <h2>{m.results}</h2>
-            <a href={`/${base}/results/${campaign.round_id}`}>
-              {m.viewResults}
-            </a>
-          </section>
-        )}
-
+        {/* Below-threshold closure and published results are stated in the
+            journey above (CF-003, D-190). */}
         {manage && (
           <section className="stack">
             <h2>{m.campaign}</h2>
@@ -1012,51 +1077,81 @@ export function Campaigns({
               // Everyone who has not completed gets a link through the existing
               // link export; a link already issued is replaced only when asked.
               const ready = people.items.filter((i) => i.status === "READY");
-              const alreadyIssued = ready.filter((i) => i.issued).length;
-              const pending = ready.filter((i) => rotateAll || !i.issued);
-              const batch = pending.slice(0, 500);
+              const pending = ready.filter((i) => !i.issued);
+              const next = pending.slice(0, BATCH_SIZE);
               return (
                 <section className="card stack" data-testid="distribute">
                   <h3>{m.distribute}</h3>
                   {nearLinks && alerts}
                   <p>{m.consultantSends}</p>
                   <p className="muted">{m.issueAllNote}</p>
-                  {alreadyIssued > 0 && (
-                    <label htmlFor="rotateAll">
-                      <input
-                        id="rotateAll"
-                        type="checkbox"
-                        checked={rotateAll}
-                        onChange={(e) => setRotateAll(e.currentTarget.checked)}
-                      />{" "}
-                      {fill(m.alsoRotate, { n: alreadyIssued })}
-                    </label>
-                  )}
-                  {pending.length > 500 && <p className="muted">{m.batchLimit}</p>}
-                  {!batch.length && <p role="note">{m.nothingToIssue}</p>}
+                  {pending.length > BATCH_SIZE && <p className="muted">{fill(m.batchLimit, { n: BATCH_SIZE })}</p>}
+                  {!pending.length && <p role="note">{m.nothingToIssue}</p>}
                   <div className="row">
                     <button
                       className="button"
-                      disabled={busy || !batch.length}
-                      onClick={() =>
-                        void exportLinks({
-                          invitationIds: batch.map((i) => i.invitationId),
-                          expectedGenerations: batch.map((i) => i.generation),
-                          confirmRotation: rotateAll && batch.some((i) => i.issued),
-                        })
-                      }
+                      disabled={busy || !next.length}
+                      onClick={() => void issueEveryone(next)}
                     >
-                      {m.issueAll}
+                      {pending.length ? fill(m.issueAllCount, { n: next.length }) : m.issueAll}
                     </button>
-                    {exportId && (
-                      <a
-                        className="button button-secondary"
-                        href={`/api/v1/${base}/campaigns/${id}/link-exports/${exportId}`}
-                      >
-                        {m.download}
-                      </a>
+                    {progress && (
+                      <span role="status" data-testid="batch-progress">
+                        {fill(m.batchProgress, { done: progress.done, total: progress.total })}
+                      </span>
                     )}
                   </div>
+                  {batch.length > 0 && (
+                    <div className="stack" data-testid="batch-links">
+                      <Alert tone="warning" role="note">
+                        {m.batchOnce}
+                      </Alert>
+                      <div className="row">
+                        <button className="button" onClick={() => void copyBatch()}>
+                          {m.batchCopyAll}
+                        </button>
+                        <button className="button button-secondary" onClick={downloadBatch}>
+                          {m.batchDownload}
+                        </button>
+                      </div>
+                      <div className="scroll" tabIndex={0} role="region" aria-label={fill(m.batchTitle, { n: batch.length })}>
+                        <table>
+                          <caption>{fill(m.batchTitle, { n: batch.length })}</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">{m.displayName}</th>
+                              <th scope="col">{m.displayReference}</th>
+                              <th scope="col">{m.batchLink}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {batch.map((b) => (
+                              <tr key={b.invitationId}>
+                                <td>
+                                  <bdi>{b.displayName}</bdi>
+                                </td>
+                                <td>
+                                  <bdi>{b.displayReference}</bdi>
+                                </td>
+                                <td>
+                                  <input
+                                    readOnly
+                                    dir="ltr"
+                                    translate="no"
+                                    spellCheck={false}
+                                    className="code"
+                                    aria-label={fill(m.batchLinkOf, { name: b.displayName })}
+                                    value={b.url}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                   <p className="muted">{m.perPerson}</p>
                 </section>
               );

@@ -129,6 +129,10 @@ floor; this screen states the limitation rather than implying a future result.
 
 ### Manual link export
 
+Since D-190 the campaign page issues everyone's links through the per-person
+issue endpoint and offers them once in the tab (copy all, CSV built in the
+browser); it no longer calls this endpoint, which remains for API use.
+
 `POST .../campaigns/:id/link-exports` takes the invitation identifiers, the
 generation the operator expects for each, and `confirmRotation`. The plan is
 applied atomically in identifier order: any unexpected generation, foreign

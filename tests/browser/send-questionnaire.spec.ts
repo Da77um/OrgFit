@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { ids } from "../../scripts/seed";
 
 // The guided "send a questionnaire" flow (D-189): pickers only, the existing
@@ -81,7 +82,6 @@ test("guided send from a published questionnaire to a department, pickers only, 
 
   await page.getByRole("button", { name: "إنشاء الحملة وفتح مراجعة الإطلاق" }).click();
   await expect(page).toHaveURL(new RegExp(`/${org}/campaigns/[0-9a-f-]{36}$`));
-  const campaignId = page.url().split("/").at(-1)!;
   // The existing launch review, unchanged.
   await expect(page.getByRole("heading", { name: "مراجعة ما سيتم تجميده" })).toBeVisible();
   await expect(page.getByText("عدد المدعوين: 6", { exact: false })).toBeVisible();
@@ -91,14 +91,22 @@ test("guided send from a published questionnaire to a department, pickers only, 
 
   await page.getByRole("button", { name: "إطلاق الحملة" }).click();
   await expect(page.getByText("مفتوحة")).toBeVisible();
+  // Where the campaign stands, before any link: launched, 0 of 6 answered.
+  const journey = page.getByTestId("campaign-journey");
+  await expect(journey.getByTestId("journey-launch")).toHaveAttribute("data-state", "done");
+  await expect(journey.getByTestId("journey-answers")).toContainText("أكمل 0 من 6");
+  await expect(journey.getByTestId("journey-close")).toContainText("لا يوجد موعد انتهاء");
+  await expect(journey.getByTestId("journey-process")).toHaveAttribute("data-state", "later");
+  await expect(journey).toContainText("لا تعرض أي شاشة إجابة شخص بعينه");
   const distribute = page.getByTestId("distribute");
   await expect(distribute.getByRole("heading", { name: "إيصال الروابط إلى المشاركين" })).toBeVisible();
   await expect(distribute.getByText("لا يرسل النظام أي رسالة", { exact: false })).toBeVisible();
-  await expect(distribute.getByText("تنتهي صلاحيته بعد ٢٤ ساعة", { exact: false })).toBeVisible();
-  // A refused export is reported beside the button, not at the page top far
-  // above it; the retry offered there sends the same request.
+  await expect(distribute.getByText("لا يُحفظ أي ملف على الخادم", { exact: false })).toBeVisible();
+  // Everyone's links through the per-person path (D-190), no file storage.
+  // A refused issue is reported beside the button, not at the page top far
+  // above it; the retry offered there resends that request and goes on.
   await page.route(
-    "**/link-exports",
+    "**/invitations/*/issue",
     (route) =>
       route.fulfill({
         status: 503,
@@ -107,23 +115,35 @@ test("guided send from a published questionnaire to a department, pickers only, 
       }),
     { times: 1 },
   );
-  await distribute.getByRole("button", { name: "إصدار الروابط لجميع المشاركين" }).click();
+  const exports: string[] = [];
+  page.on("request", (r) => {
+    if (/link-exports/.test(r.url())) exports.push(r.url());
+  });
+  await distribute.getByRole("button", { name: "إصدار الروابط لجميع المشاركين (6)" }).click();
   await expect(distribute.getByRole("alert")).toContainText("لم يتأكد حفظ هذا التغيير");
   await expect(distribute.getByRole("alert")).toBeInViewport();
   await distribute.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }).click();
-  await expect(page.getByText("الملف جاهز للتنزيل")).toBeVisible();
-  await expect(distribute.getByText("الملف جاهز للتنزيل")).toBeVisible();
-  const download = distribute.getByRole("link", { name: "تنزيل" });
-  const href = (await download.getAttribute("href"))!;
-  expect(href).toMatch(new RegExp(`/api/v1/${org}/campaigns/${campaignId}/link-exports/[0-9a-f-]{36}$`));
-  const csv = await (await page.request.get(href, { headers: { Origin: baseURL! } })).text();
-  const rows = csv.trim().split(/\r?\n/);
+  const batch = distribute.getByTestId("batch-links");
+  await expect(batch.getByRole("textbox")).toHaveCount(6);
+  await expect(distribute.getByText("صدر 6 رابط.")).toBeVisible();
+  for (const box of await batch.getByRole("textbox").all())
+    expect(await box.inputValue()).toMatch(/^http:\/\/localhost:\d+\/s#[A-Za-z0-9_-]{43}$/);
+  await expect(batch.getByText("تظهر هذه الروابط مرة واحدة فقط", { exact: false })).toBeVisible();
+  const [file] = await Promise.all([
+    page.waitForEvent("download"),
+    batch.getByRole("button", { name: "تنزيل ملف CSV" }).click(),
+  ]);
+  expect(file.suggestedFilename()).toBe("orgfit-links.csv");
+  const csv = readFileSync((await file.path())!, "utf8");
+  const rows = csv.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
   expect(rows).toHaveLength(7);
   for (const row of rows.slice(1)) expect(row).toMatch(/"http:\/\/localhost:\d+\/s#[A-Za-z0-9_-]{43}"$/);
-  // Everyone has a link now; issuing again needs the explicit replacement.
+  expect(exports).toEqual([]);
+  // Everyone has a link now; a new link for someone is the per-person Replace.
   await expect(distribute.getByRole("button", { name: "إصدار الروابط لجميع المشاركين" })).toBeDisabled();
-  await expect(distribute.getByLabel(/استبدال الروابط المُصدرة سابقًا أيضًا \(6\)/)).toBeVisible();
+  await expect(distribute.getByText("لكل من لم يُكمل رابط مُصدر", { exact: false })).toBeVisible();
   await expect(page.getByText("بلا رابط")).toHaveCount(0);
+  await expect(journey.getByTestId("journey-links")).toContainText("صدر 6 رابط من 6");
   await page.screenshot({ path: "work/send-distribute-ar.png", fullPage: true });
 
   // A second send of the same questionnaire reuses the series.

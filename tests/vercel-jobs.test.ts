@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import manifest from "../deploy/processes.json";
+import { PROCESSING_UTC, nextProcessingRun } from "../src/processing-schedule";
 import { JOBS, executeJob, type JobDefinition } from "../src/job-run";
 import {
   DAILY_ALL_SCHEDULE,
@@ -71,6 +72,10 @@ test("apps/jobs/vercel.json (Hobby) runs every job of the project once a day, wi
   const vercel = JSON.parse(readFileSync("apps/jobs/vercel.json", "utf8")) as { crons: { path: string; schedule: string }[] };
   assert.deepEqual(vercel.crons, [{ path: `/api/cron/${DAILY_ALL_TICK}`, schedule: DAILY_ALL_SCHEDULE }]);
   assert.match(DAILY_ALL_SCHEDULE, /^\d{1,2} \d{1,2} \* \* \*$/, "at most once a day");
+  // The staff pages tell operators when the next run is (D-190).
+  assert.equal(DAILY_ALL_SCHEDULE, `${PROCESSING_UTC.minute} ${PROCESSING_UTC.hour} * * *`);
+  assert.equal(nextProcessingRun(new Date("2026-11-17T03:16:00Z")).toISOString(), "2026-11-17T03:17:00.000Z");
+  assert.equal(nextProcessingRun(new Date("2026-11-17T03:17:00Z")).toISOString(), "2026-11-18T03:17:00.000Z");
   assert.equal(isTick(DAILY_ALL_TICK), false, "not one of the Pro ticks");
   // Processing before publication, in one call: a release never runs before
   // the batch it would publish.
