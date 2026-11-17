@@ -95,8 +95,24 @@ test("guided send from a published questionnaire to a department, pickers only, 
   await expect(distribute.getByRole("heading", { name: "إيصال الروابط إلى المشاركين" })).toBeVisible();
   await expect(distribute.getByText("لا يرسل النظام أي رسالة", { exact: false })).toBeVisible();
   await expect(distribute.getByText("تنتهي صلاحيته بعد ٢٤ ساعة", { exact: false })).toBeVisible();
+  // A refused export is reported beside the button, not at the page top far
+  // above it; the retry offered there sends the same request.
+  await page.route(
+    "**/link-exports",
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "TEMPORARILY_UNAVAILABLE", message: "الخدمة غير متاحة حاليًا. حاول مرة أخرى لاحقًا." }),
+      }),
+    { times: 1 },
+  );
   await distribute.getByRole("button", { name: "إصدار الروابط لجميع المشاركين" }).click();
+  await expect(distribute.getByRole("alert")).toContainText("لم يتأكد حفظ هذا التغيير");
+  await expect(distribute.getByRole("alert")).toBeInViewport();
+  await distribute.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }).click();
   await expect(page.getByText("الملف جاهز للتنزيل")).toBeVisible();
+  await expect(distribute.getByText("الملف جاهز للتنزيل")).toBeVisible();
   const download = distribute.getByRole("link", { name: "تنزيل" });
   const href = (await download.getAttribute("href"))!;
   expect(href).toMatch(new RegExp(`/api/v1/${org}/campaigns/${campaignId}/link-exports/[0-9a-f-]{36}$`));

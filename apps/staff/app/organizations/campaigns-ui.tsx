@@ -185,6 +185,9 @@ export function Campaigns({
   const base = `organizations/${org}`;
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Where the last action was started: link actions sit far below the page
+  // header, so their outcome is shown beside them instead of off-screen.
+  const [place, setPlace] = useState("");
   const [busy, setBusy] = useState(false);
   const [series, setSeries] = useState<Series[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -221,7 +224,9 @@ export function Campaigns({
     async (fn: () => Promise<void>, retry?: { scope: string; again: () => void }) => {
       setBusy(true);
       setError("");
+      setNotice("");
       setProblem(null);
+      setPlace(retry?.scope ?? "");
       try {
         await fn();
       } catch (e) {
@@ -801,6 +806,8 @@ export function Campaigns({
   // Issuing, rotating and revoking are possible only while a campaign can
   // still collect answers; a closed or cancelled campaign offers none of them.
   const collecting = ["SCHEDULED", "OPEN"].includes(campaign.state);
+  const nearLinks =
+    manage && collecting && !!people && (place === "link-export" || place.startsWith("invitation-"));
   return shell(
     <>
         <PageHeader
@@ -822,7 +829,7 @@ export function Campaigns({
             </>
           }
         />
-        {alerts}
+        {!nearLinks && alerts}
         <Alert tone="info" role="note">
           {m.noAnswers}
         </Alert>
@@ -1011,6 +1018,7 @@ export function Campaigns({
               return (
                 <section className="card stack" data-testid="distribute">
                   <h3>{m.distribute}</h3>
+                  {nearLinks && alerts}
                   <p>{m.consultantSends}</p>
                   <p className="muted">{m.issueAllNote}</p>
                   {alreadyIssued > 0 && (
