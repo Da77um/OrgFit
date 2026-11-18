@@ -16,7 +16,7 @@ import {
   directoryList,
 } from "../src/directory";
 import { importRoute } from "../src/imports";
-import { parseSource, validateRows, errorCsv } from "../src/import-parser";
+import { parseSource, FileRejected, FILE_REASONS, validateRows, errorCsv } from "../src/import-parser";
 import { getSource, cleanLocalSources } from "../src/import-storage";
 import { directoryMessages } from "../src/directory-i18n";
 
@@ -51,10 +51,10 @@ test("CSV/XLSX parsing and reviewed row validation", async () => {
   const bytes = Buffer.from(await book.xlsx.writeBuffer());
   const parsed = await parseSource(bytes, "XLSX");
   assert.equal(parsed.rows[0][0], "001");
+  // D-193 (restated deliberately): a formula is read as its stored result,
+  // never evaluated; it no longer refuses the whole file.
   sheet.getCell("B2").value = { formula: "1+1", result: 2 };
-  await assert.rejects(
-    parseSource(Buffer.from(await book.xlsx.writeBuffer()), "XLSX"),
-  );
+  assert.equal((await parseSource(Buffer.from(await book.xlsx.writeBuffer()), "XLSX")).rows[0][1], "2");
   await assert.rejects(parseSource(Buffer.from("x,x\n1,2"), "CSV"));
   await assert.rejects(parseSource(Buffer.from('x,y\n"bad'), "CSV"));
   await assert.rejects(
@@ -67,6 +67,70 @@ test("CSV/XLSX parsing and reviewed row validation", async () => {
     Object.keys(directoryMessages("ar")).sort(),
     Object.keys(directoryMessages("en")).sort(),
   );
+});
+
+// D-193: ordinary company spreadsheets are read as the text they show, and a
+// refused file names its reason.
+test("everyday Excel files import, and a refused file says why", async () => {
+  const build = async (fill: (wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet) => void) => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Sheet1");
+    ws.addRow(["الرقم المرجعي", "الاسم", "البريد الإلكتروني"]);
+    ws.addRow(["E-1", "موظف 1", "a@example.com"]);
+    fill(wb, ws);
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  };
+  const reason = async (bytes: Buffer, format: "CSV" | "XLSX" = "XLSX") => {
+    try {
+      await parseSource(bytes, format);
+      return "ACCEPTED";
+    } catch (e) {
+      return e instanceof FileRejected ? e.reason : "OTHER";
+    }
+  };
+  const read = async (fill: (wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet) => void) => parseSource(await build(fill), "XLSX");
+  // An email Excel turned into a link, formatted text, a date and a formula.
+  const rich = await read((_, ws) => {
+    ws.getCell("C2").value = { text: "a@example.com", hyperlink: "mailto:a@example.com" };
+    ws.getCell("B2").value = { richText: [{ text: "موظف " }, { font: { bold: true }, text: "1" }] };
+    ws.getCell("D1").value = "تاريخ التعيين";
+    ws.getCell("D2").value = new Date("2020-01-01T00:00:00Z");
+    ws.getCell("E1").value = "رقم";
+    ws.getCell("E2").value = { formula: "1+1", result: 2 };
+  });
+  assert.deepEqual(rich.rows[0], ["E-1", "موظف 1", "a@example.com", "2020-01-01", "2"]);
+  // Extra sheets are ignored; the sheet that looks like a participant list is read.
+  const sheets = await (async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet("تعليمات").addRows([["اقرأ هذا أولًا"], ["املأ الورقة التالية"]]);
+    const ws = wb.addWorksheet("الموظفون");
+    ws.addRows([["الرقم المرجعي", "الاسم"], ["E-9", "موظف 9"]]);
+    return parseSource(Buffer.from(await wb.xlsx.writeBuffer()), "XLSX");
+  })();
+  assert.deepEqual(sheets.headers, ["الرقم المرجعي", "الاسم"]);
+  // Formatted empty columns and empty rows are not data.
+  const tidy = await read((_, ws) => {
+    ws.getCell("F1").style = { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } } };
+    ws.addRow([]);
+    ws.addRow(["E-2", "موظف 2", ""]);
+  });
+  assert.equal(tidy.headers.length, 3);
+  assert.equal(tidy.rows.length, 2);
+  // Excel on Arabic Windows saves "CSV" as Windows-1256.
+  const cp1256: Record<string, number> = { "ا": 0xc7, "ل": 0xe1, "س": 0xd3, "م": 0xe3, "أ": 0xc3, "ح": 0xcd, "د": 0xcf };
+  const legacy = await parseSource(Buffer.from([..."الاسم,ref\nأحمد,1\n"].map((ch) => cp1256[ch] ?? ch.charCodeAt(0))), "CSV");
+  assert.deepEqual(legacy.rows[0], ["أحمد", "1"]);
+  // Each refusal names its reason.
+  assert.equal(await reason(await build((_, ws) => { for (let i = 2; i <= 501; i++) ws.addRow([`E-${i}`, "x", ""]); })), "TOO_MANY_ROWS");
+  assert.equal(await reason(await build((_, ws) => { ws.getCell("D2").value = "x"; })), "MISSING_HEADER");
+  assert.equal(await reason(await build((_, ws) => { ws.getCell("D1").value = "الاسم"; })), "DUPLICATE_HEADER");
+  assert.equal(await reason(Buffer.from("hello")), "UNREADABLE");
+  assert.equal(await reason(Buffer.from("x,y\n"), "CSV"), "NO_DATA");
+  assert.equal(await reason(Buffer.alloc(1024 * 1024 + 1, 0x41), "CSV"), "TOO_LARGE");
+  // The page has a sentence for every reason, in both languages.
+  for (const code of FILE_REASONS)
+    for (const locale of ["ar", "en"] as const)
+      assert.ok((directoryMessages(locale) as Record<string, string>)[`file${code}`], `${locale} file${code}`);
 });
 
 test("directory PostgreSQL isolation, history and import transactions", async (t) => {

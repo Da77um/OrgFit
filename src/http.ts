@@ -73,8 +73,17 @@ export function safeError(error: unknown, locale: Locale = "ar") {
     typeof error === "object" && error !== null && "detail" in error
       ? String((error as { detail?: unknown }).detail ?? "")
       : "";
+  // A refused import file (D-193) carries its own fixed reason code.
+  const ownReason =
+    error instanceof AppError && typeof (error as { reason?: unknown }).reason === "string"
+      ? String((error as { reason?: unknown }).reason)
+      : undefined;
   const reason =
-    code === "STATE_CONFLICT" ? /^REASON:([A-Z_]{2,40})$/.exec(detail)?.[1] : undefined;
+    ownReason && /^[A-Z_]{2,40}$/.test(ownReason)
+      ? ownReason
+      : code === "STATE_CONFLICT"
+        ? /^REASON:([A-Z_]{2,40})$/.exec(detail)?.[1]
+        : undefined;
   const message =
     status === 401
       ? m.denied

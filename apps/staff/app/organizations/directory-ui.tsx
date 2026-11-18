@@ -1023,7 +1023,12 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
     if (silent(e)) return;
     if (e instanceof RequestFailure && (e.uncertain || e.kind === "SESSION"))
       setProblem({ failure: e, scope, retry });
-    else setError(failureMessage(e, locale));
+    else {
+      // A refused file says why (D-193), in the reader's language.
+      const reason = e instanceof RequestFailure ? (e.body as { reason?: unknown } | null | undefined)?.reason : undefined;
+      const specific = typeof reason === "string" ? (m as Record<string, string>)[`file${reason}`] : undefined;
+      setError(specific ?? failureMessage(e, locale));
+    }
   };
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("import");
@@ -1075,7 +1080,7 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
     const form = e.currentTarget;
     const file = new FormData(form).get("file") as File;
     if (!file || file.size > 1048576) {
-      setError(m.fileHelp);
+      setError(file && file.size > 1048576 ? m.fileTOO_LARGE : m.fileHelp);
       return;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());

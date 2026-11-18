@@ -13,6 +13,7 @@ import {
 import { safeError } from "../src/http";
 import { z } from "zod";
 import { suggestMapping, normalizeHeading } from "../src/import-mapping";
+import { FileRejected } from "../src/import-parser";
 import { RequestFailure } from "../apps/staff/app/staff-request";
 import {
   afterSetAside,
@@ -489,4 +490,13 @@ test("participant import headings are suggested from Arabic and English names", 
   assert.deepEqual(suggestMapping(["الجنس (اختياري)", "سنوات الخدمة"]), { "الجنس (اختياري)": "gender", "سنوات الخدمة": "yearsOfService" });
   // Each field is suggested once; an unknown heading is left to the reviewer.
   assert.deepEqual(suggestMapping(["الاسم", "اسم الموظف", "ملاحظات"]), { "الاسم": "displayName" });
+});
+
+// D-193: a refused import file carries its fixed reason to the page, and nothing else.
+test("a refused import file answers 422 with its reason code", async () => {
+  const res = safeError(new FileRejected("TOO_MANY_ROWS"), "ar");
+  assert.equal(res.status, 422);
+  const body = await res.json();
+  assert.equal(body.code, "VALIDATION_FAILED");
+  assert.equal(body.reason, "TOO_MANY_ROWS");
 });
