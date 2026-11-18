@@ -40,15 +40,30 @@ function localPath(org: string, id: string) {
     id + ".bin",
   );
 }
+// D-194: PARTICIPATION_EXPORT_STORAGE=database keeps the same ciphertext in
+// the core database (ops.participation_blob, migration 030) for a deployment
+// without object storage, through core.put_participation_blob /
+// core.participation_blob and the staff transaction passed in.
+export type ParticipationBlobDb = {
+  query(text: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+};
+export function participationStorageMode(): "database" | "s3" | "local" {
+  if (process.env.PARTICIPATION_EXPORT_STORAGE === "database") return "database";
+  return process.env.PARTICIPATION_EXPORT_S3_BUCKET ? "s3" : "local";
+}
+function blobDb(db: ParticipationBlobDb | undefined) {
+  if (!db) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+  return db;
+}
 function s3() {
-  if (!process.env.PARTICIPATION_EXPORT_S3_BUCKET) return null;
+  if (participationStorageMode() !== "s3") return null;
   return new S3Client({
     region: process.env.AWS_REGION ?? "us-east-1",
     endpoint: process.env.PARTICIPATION_EXPORT_S3_ENDPOINT,
     forcePathStyle: !!process.env.PARTICIPATION_EXPORT_S3_ENDPOINT,
   });
 }
-export async function putParticipationExport(org: string, id: string, body: Buffer) {
+export async function putParticipationExport(org: string, id: string, body: Buffer, db?: ParticipationBlobDb) {
   if (body.length > MAX_BYTES) throw new AppError("VALIDATION_FAILED", 422);
   const name = objectKey(org, id),
     nonce = randomBytes(12),
@@ -60,6 +75,10 @@ export async function putParticipationExport(org: string, id: string, body: Buff
     cipher.final(),
     cipher.getAuthTag(),
   ]);
+  if (participationStorageMode() === "database") {
+    await blobDb(db).query("SELECT core.put_participation_blob($1,$2,$3)", [org, id, bytes]);
+    return name;
+  }
   const client = s3();
   if (client)
     await client.send(
@@ -78,10 +97,14 @@ export async function putParticipationExport(org: string, id: string, body: Buff
   }
   return name;
 }
-export async function getParticipationExport(org: string, id: string) {
+export async function getParticipationExport(org: string, id: string, db?: ParticipationBlobDb) {
   const name = objectKey(org, id),
     client = s3();
-  const bytes = client
+  const bytes = participationStorageMode() === "database"
+    ? Buffer.from(
+        (await blobDb(db).query("SELECT core.participation_blob($1,$2) AS bytes", [org, id])).rows[0].bytes as Uint8Array,
+      )
+    : client
     ? Buffer.from(
         await (
           await client.send(

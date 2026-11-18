@@ -155,10 +155,12 @@ export function Visits({
   profile,
   organization,
   path,
+  attachmentsAvailable = true,
 }: {
   profile: Profile;
   organization: DirectoryRecord | null;
   path: string[];
+  attachmentsAvailable?: boolean;
 }) {
   const locale = profile.locale as Locale;
   const m: M = visitMessages(locale);
@@ -1008,9 +1010,14 @@ export function Visits({
 
             <section className="stack">
               <h2>{m.attachments}</h2>
-              <p role="note">{m.quarantineNote}</p>
-              <p role="note">{m.allowedTypes}</p>
-              {visit.state !== "CANCELLED" && (
+              {!attachmentsAvailable && (
+                <p role="note" data-testid="attachments-off">
+                  {m.attachmentsOff}
+                </p>
+              )}
+              {attachmentsAvailable && <p role="note">{m.quarantineNote}</p>}
+              {attachmentsAvailable && <p role="note">{m.allowedTypes}</p>}
+              {attachmentsAvailable && visit.state !== "CANCELLED" && (
                 <label>
                   {m.addAttachment}
                   <input

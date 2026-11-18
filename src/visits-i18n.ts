@@ -84,6 +84,7 @@ const ar = {
   REJECTED: "مرفوض",
   FAILED: "تعذّر الفحص",
   EXPIRED: "منتهي",
+  attachmentsOff: "إرفاق الملفات بالزيارات غير متاح حاليًا في هذه النسخة. احتفظ بالملفات لديك أو شاركها عبر قناة الشركة المعتادة.",
   quarantineNote:
     "لا يمكن تنزيل أي مرفق قبل اكتمال فحصه. تعذُّر الفحص يعني منع التنزيل، لا السماح به.",
   allowedTypes:
@@ -203,6 +204,7 @@ const en: Record<VisitMessageKey, string> = {
   REJECTED: "Rejected",
   FAILED: "Scan failed",
   EXPIRED: "Expired",
+  attachmentsOff: "Attaching files to visits is not available in this version yet. Keep the files yourself or share them through the company's usual channel.",
   quarantineNote:
     "No attachment can be downloaded before its scan completes. A failed scan blocks the download; it never permits it.",
   allowedTypes:

@@ -945,6 +945,31 @@ test("PostgreSQL Phase 11: report jobs, PDF and XLSX artifacts", async (t) => {
     assert.match(refused, /NOT_FOUND/);
   });
 
+  await t.test("D-194: PARTICIPATION_EXPORT_STORAGE=database keeps the named list encrypted in the database", async () => {
+    process.env.PARTICIPATION_EXPORT_STORAGE = "database";
+    try {
+      const created = await call(`organizations/${f.orgA}/participation-exports`, post({ campaignId: second.campaignId }));
+      assert.equal(created.status, 201);
+      const id = created.data.exportId as string;
+      const stored = await f.operator.query<{ plain: boolean }>(
+        "select position(convert_to('مشارك 1','UTF8') in bytes)>0 as plain from ops.participation_blob where organization_id=$1 and export_id=$2",
+        [f.orgA, id],
+      );
+      assert.equal(stored.rows.length, 1);
+      assert.equal(stored.rows[0].plain, false, "only ciphertext is stored");
+      assert.equal(existsSync(join(process.env.PARTICIPATION_EXPORT_LOCAL_DIRECTORY!, f.orgA, `${id}.bin`)), false);
+      const download = await bytesOf(`organizations/${f.orgA}/participation-exports/${id}/download`);
+      assert.equal(download.status, 200);
+      assert.ok(download.bytes.toString("utf8").includes("مشارك 1"));
+      const priv = await f.operator.query<{ n: number }>(
+        "select count(*)::int as n from information_schema.table_privileges where grantee='orgfit_staff' and table_schema='ops' and table_name='participation_blob'",
+      );
+      assert.equal(priv.rows[0].n, 0);
+    } finally {
+      delete process.env.PARTICIPATION_EXPORT_STORAGE;
+    }
+  });
+
   await t.test("named participation lists stay a separate file and a separate right", async () => {
     const created = await call(
       `organizations/${f.orgA}/participation-exports`,

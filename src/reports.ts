@@ -143,6 +143,7 @@ export async function createParticipationExport(
     org,
     exportId,
     Buffer.from(participationCsv(rows[0].data), "utf8"),
+    txBlobs(tx),
   );
   await sql`select core.record_participation_export(${org}::uuid,${campaignId}::uuid,
     ${exportId}::uuid,${randomUUID()}::uuid,${storageKey},${rows[0].data.length},
@@ -153,6 +154,12 @@ export async function createParticipationExport(
     expiresInHours: PARTICIPATION_EXPORT_TTL_HOURS,
   };
 }
+
+// The staff transaction as a database storage adapter (D-191, D-194).
+const txBlobs = (tx: Tx) => ({
+  query: async (text: string, params: unknown[]) =>
+    tx.executeQuery(CompiledQuery.raw(text, params)) as Promise<{ rows: Record<string, unknown>[] }>,
+});
 
 const reportPath = /^organizations\/([\w-]+)\/reports(?:\/([\w-]+))?(?:\/([\w-]+))?$/;
 const participationExportPath =
@@ -177,7 +184,7 @@ export async function reportRoute(
       await sql`select core.participation_export_download(${org}::uuid,${id}::uuid)`.execute(
         tx,
       );
-      const bytes = await getParticipationExport(org, id);
+      const bytes = await getParticipationExport(org, id, txBlobs(tx));
       return new Response(new Uint8Array(bytes), {
         status: 200,
         headers: {

@@ -14,9 +14,11 @@ import { Campaigns } from "../campaigns-ui";
 import { Results } from "../results-ui";
 import { History } from "../history-ui";
 import { Visits } from "../visits-ui";
+import { attachmentsAvailable } from "../../../../../src/attachments-availability";
 import { Inbox } from "../messages-ui";
 import { SendQuestionnaire } from "../send-ui";
 import { ResultsIndex } from "../guide-ui";
+
 export default async function DirectoryPage({
   params,
   searchParams,
@@ -123,7 +125,7 @@ async function DirectoryScreen({
     ) : path[1] === "messages" ? (
       <Inbox key={path.join("/")} path={path} {...data} />
     ) : path[1] === "visits" ? (
-      <Visits key={path.join("/")} path={path} {...data} />
+      <Visits key={path.join("/")} path={path} attachmentsAvailable={attachmentsAvailable()} {...data} />
     ) : path[1] === "history" ? (
       <History key={path.join("/")} path={path} {...data} />
     ) : path[1] === "results" && !path[2] ? (

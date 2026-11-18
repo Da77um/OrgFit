@@ -14,6 +14,7 @@ import { safeError } from "../src/http";
 import { z } from "zod";
 import { suggestMapping, normalizeHeading } from "../src/import-mapping";
 import { FileRejected } from "../src/import-parser";
+import { attachmentsAvailable } from "../src/attachments-availability";
 import { RequestFailure } from "../apps/staff/app/staff-request";
 import {
   afterSetAside,
@@ -499,4 +500,11 @@ test("a refused import file answers 422 with its reason code", async () => {
   const body = await res.json();
   assert.equal(body.code, "VALIDATION_FAILED");
   assert.equal(body.reason, "TOO_MANY_ROWS");
+});
+
+// D-195: visit attachments are hidden where they cannot work.
+test("visit attachments are off in production without an attachment bucket", () => {
+  assert.equal(attachmentsAvailable({ NODE_ENV: "production" }), false);
+  assert.equal(attachmentsAvailable({ NODE_ENV: "production", ATTACHMENT_S3_BUCKET: "b" }), true);
+  assert.equal(attachmentsAvailable({ NODE_ENV: "development" }), true);
 });
