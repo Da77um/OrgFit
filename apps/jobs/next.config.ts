@@ -15,7 +15,19 @@ const config: NextConfig = {
   // The serverless Chromium (D-191) finds its compressed binary by path at run
   // time, so the report job traces it explicitly as well.
   outputFileTracingIncludes: {
-    "/**": ["../../deploy/certs/**", "../../node_modules/@sparticuz/chromium/bin/**"],
+    "/**": [
+      "../../deploy/certs/**",
+      "../../node_modules/@sparticuz/chromium/bin/**",
+      // Report fonts are read from disk by src/report-fonts.ts (D-191).
+      "../../node_modules/@fontsource/cairo/package.json",
+      "../../node_modules/@fontsource/cairo/files/cairo-arabic-400-normal.woff2",
+      "../../node_modules/@fontsource/cairo/files/cairo-arabic-700-normal.woff2",
+      "../../node_modules/@fontsource/cairo/files/cairo-latin-400-normal.woff2",
+      "../../node_modules/@fontsource/cairo/files/cairo-latin-700-normal.woff2",
+      "../../node_modules/@fontsource/noto-sans/package.json",
+      "../../node_modules/@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff2",
+      "../../node_modules/@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff2",
+    ],
   },
 };
 export default config;

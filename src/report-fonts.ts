@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { Locale } from "./i18n";
@@ -40,8 +41,21 @@ const faces = [
   { family: "OrgFit Latin", weight: 700, package: "@fontsource/noto-sans", file: "noto-sans-latin-700-normal.woff2" },
 ] as const;
 
-const packageDirectory = (name: string) =>
-  dirname(require.resolve(`${name}/package.json`));
+// The font package is found by module resolution where it works (Node, the
+// test runner) and otherwise by walking up from the working directory: in a
+// bundled serverless function (D-191) the module path may be rewritten while
+// the traced node_modules sits above the app folder.
+function packageDirectory(name: string) {
+  try {
+    return dirname(require.resolve(`${name}/package.json`));
+  } catch {
+    for (let dir = process.cwd(); ; dir = dirname(dir)) {
+      const candidate = join(dir, "node_modules", name);
+      if (existsSync(join(candidate, "package.json"))) return candidate;
+      if (dirname(dir) === dir) throw new Error(`font package ${name} not found`);
+    }
+  }
+}
 
 let cached: string | undefined;
 
