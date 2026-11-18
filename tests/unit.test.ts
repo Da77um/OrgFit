@@ -12,6 +12,7 @@ import {
 } from "../src/security";
 import { safeError } from "../src/http";
 import { z } from "zod";
+import { suggestMapping, normalizeHeading } from "../src/import-mapping";
 import { RequestFailure } from "../apps/staff/app/staff-request";
 import {
   afterSetAside,
@@ -468,4 +469,24 @@ test("publish checklist: no questions and too many answer items are different in
   assert.equal(issueMessage("NO_QUESTIONS", "ar").startsWith("أضف سؤالاً واحداً على الأقل قبل النشر"), true);
   assert.notEqual(issueMessage("QUESTION_COUNT", "ar"), issueMessage("NO_QUESTIONS", "ar"));
   assert.equal(issueMessage("NOT_A_CODE", "en"), "Review the referenced field.");
+});
+
+// D-192: an uploaded file with ordinary Arabic or English headings starts mapped.
+test("participant import headings are suggested from Arabic and English names", () => {
+  assert.deepEqual(suggestMapping(["الرقم المرجعي", "الاسم", "القسم"]), {
+    "الرقم المرجعي": "privateReference",
+    "الاسم": "displayName",
+    "القسم": "departmentCode",
+  });
+  assert.deepEqual(suggestMapping(["Employee ID", "Full Name", "Department Code", "E-mail", "Notes"]), {
+    "Employee ID": "privateReference",
+    "Full Name": "displayName",
+    "Department Code": "departmentCode",
+    "E-mail": "email",
+  });
+  // Letter variants, diacritics and the optional marker do not matter.
+  assert.equal(normalizeHeading("الإدارة"), normalizeHeading("الادارة"));
+  assert.deepEqual(suggestMapping(["الجنس (اختياري)", "سنوات الخدمة"]), { "الجنس (اختياري)": "gender", "سنوات الخدمة": "yearsOfService" });
+  // Each field is suggested once; an unknown heading is left to the reviewer.
+  assert.deepEqual(suggestMapping(["الاسم", "اسم الموظف", "ملاحظات"]), { "الاسم": "displayName" });
 });

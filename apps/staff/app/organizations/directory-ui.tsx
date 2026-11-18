@@ -31,6 +31,7 @@ import {
   importFields,
   type DirectoryKind,
 } from "../../../../src/directory-input";
+import { suggestMapping } from "../../../../src/import-mapping";
 import { AccountControls } from "../ui";
 import { Frame, Workspace, organizationName, type Section } from "../shell";
 import { GettingStarted } from "./guide-ui";
@@ -1009,7 +1010,9 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
     [error, setError] = useState(""),
     [problem, setProblem] = useState<ChangeFailure | null>(null),
     [picked, setPicked] = useState(false),
-    [mappingDirty, setMappingDirty] = useState(false);
+    [mappingDirty, setMappingDirty] = useState(false),
+    // Department names for the preview, which carries department ids (D-192).
+    [departmentNames, setDepartmentNames] = useState<Record<string, string>>({});
   const ledger = useLedger();
   const endpoint = `organizations/${org}/imports`;
   // A chosen file not yet uploaded, or a mapping changed since the last
@@ -1031,7 +1034,9 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
       .then((data: Review) => {
         if (active) {
           setRecord(data);
-          setMapping(data.mapping ?? {});
+          setMapping(
+            data.mapping && Object.keys(data.mapping).length ? data.mapping : suggestMapping(data.headers ?? []),
+          );
         }
       })
       .catch((e) => {
@@ -1044,6 +1049,24 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
       active = false;
     };
   }, [endpoint, locale]);
+  const hasPreview = !!record?.preview?.length;
+  useEffect(() => {
+    if (!hasPreview) return;
+    let active = true;
+    api(`organizations/${org}/departments?limit=100`, locale)
+      .then((data: { items: { id: string; name_ar: string; name_en: string | null; code: string }[] }) => {
+        if (active)
+          setDepartmentNames(
+            Object.fromEntries(
+              data.items.map((d) => [d.id, `${locale === "en" && d.name_en ? d.name_en : d.name_ar} (${d.code})`]),
+            ),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [hasPreview, org, locale]);
   // The upload is a keyed create. Its body (the file, base64) is held in this
   // tab's memory only while its outcome is unconfirmed, so "send the same
   // request again" can replay it; it is never written to storage.
@@ -1079,13 +1102,9 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
       setRecord(data);
       window.history.replaceState(null, "", `?import=${data.id}`);
       setConfirmed(false);
-      setMapping(
-        Object.fromEntries(
-          data.headers
-            .filter((h: string) => importFields.includes(h as never))
-            .map((h: string) => [h, h]),
-        ),
-      );
+      // Headings that clearly name a field («الاسم», "Employee ID", …) start
+      // mapped; the reviewer still checks and can change every column.
+      setMapping(suggestMapping(data.headers));
     } catch (e) {
       failed(e, "import-upload", () => void sendUpload(body, true));
     } finally {
@@ -1224,7 +1243,7 @@ function ImportPanel({ locale, org }: { locale: Locale; org: string }) {
                       .map(([key, v]) => (
                         <span key={key}>
                           <strong>{m[key as keyof M] ?? key}: </strong>
-                          <bdi>{String(v)}</bdi>
+                          <bdi>{key === "departmentId" ? (departmentNames[String(v)] ?? String(v)) : String(v)}</bdi>
                           {" · "}
                         </span>
                       ))}
