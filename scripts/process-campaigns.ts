@@ -20,6 +20,10 @@ export async function processDueCampaigns(limit = 20) {
     anon = anonymousPool();
   const results: Record<string, unknown>[] = [];
   try {
+    // Campaigns past their end date are first brought up to the clock (D-196),
+    // so one that ended since the last run is closed and processed now rather
+    // than waiting for the operator's normalizer.
+    await core.query("SELECT publication.normalize_due_campaigns(200)");
     // Closed campaigns that have not reached a terminal batch state. The
     // processor holds no SELECT on core.campaign or intake.processing_batch, so
     // the queue is a routine returning campaign identifiers and nothing else.

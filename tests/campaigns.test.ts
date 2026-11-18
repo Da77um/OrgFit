@@ -1164,9 +1164,28 @@ test("PostgreSQL campaigns: targeting, freezing, invitations, boundaries and lin
         );
         // Reach the start instant by waiting for it.
         await wait(START_DELAY_MS + 500);
+        // D-196 (restated deliberately): the processor's routine brings the
+        // due campaign up to the clock, so the operator's normalizer then
+        // finds nothing left; the processor still cannot call the operator's
+        // own routine, and the routine takes no campaign or value.
+        {
+          const processor = new pg.Client({ connectionString: fixture.url("orgfit_processor") });
+          await processor.connect();
+          try {
+            const caught = await processor.query<{ n: number }>("select publication.normalize_due_campaigns(200) as n");
+            assert.equal(caught.rows[0].n, 1);
+            assert.notEqual(
+              await failure(() => processor.query("select core.normalize_due(1)")),
+              "NO_ERROR",
+              "the processor holds no EXECUTE on the operator's normalizer",
+            );
+          } finally {
+            await processor.end();
+          }
+        }
         assert.equal(
           await normalizeCampaigns(fixture.url("orgfit_migrator")),
-          1,
+          0,
         );
         assert.equal(
           (

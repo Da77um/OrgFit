@@ -45,6 +45,11 @@ Participant imports (D-192): also add `IMPORT_STORAGE=database` to `orgfit-staff
 
 Then redeploy both. Requesting a report wakes the renderer at once; the daily cron (03:17 UTC) also renders anything still queued and removes expired files.
 
+
+## Housekeeping on Vercel (D-196)
+
+`orgfit-jobs-operator` (Root Directory `apps/jobs`, same settings as the processor) runs the operator jobs once a day: `ORGFIT_JOB_PROCESS=operator`, `MIGRATION_DATABASE_URL`, `ANONYMOUS_MIGRATION_DATABASE_URL` (with the repository certificate path) and its own `CRON_SECRET`. Campaign closing no longer depends on it: the processor closes past-due campaigns itself before processing (migration 031). Without `TOMBSTONE_LEDGER_S3_BUCKET`, `tombstones:ship` fails every run by design.
+
 ## Database URLs on Vercel
 
 Use the same URLs as `.env.staging.*`, with one change. Replace the local certificate path with the copy in the repository:

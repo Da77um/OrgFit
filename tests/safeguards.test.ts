@@ -390,7 +390,8 @@ test("RG-5 the browser harness creates its scratch directories before writing (C
   const source = await readFile("tests/serve.ts", "utf8");
   const mkdirAt = source.indexOf("await mkdir(resolve(SCRATCH");
   const fixtureAt = source.indexOf("e2e-fixture.json");
-  const setupAt = source.indexOf("await setupDatabase()");
+  // Since 73e68e3 the call passes the test issuer: setupDatabase(OIDC_ISSUER).
+  const setupAt = source.indexOf("await setupDatabase(");
   assert.ok(mkdirAt > 0 && mkdirAt < setupAt && mkdirAt < fixtureAt, "scratch directories are created before the database fixture and the fixture file");
   // The real behaviour is proven by a clean-clone browser start (phase-status.md).
   void spawn;
