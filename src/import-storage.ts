@@ -29,15 +29,30 @@ function localPath(org: string, id: string) {
     id + ".bin",
   );
 }
+// D-192: IMPORT_STORAGE=database keeps the same ciphertext in the core
+// database (ops.import_blob, migration 029) for a deployment without object
+// storage. The staff transaction is passed in; it reaches the bytes only
+// through core.put_import_blob / core.import_blob.
+export type ImportBlobDb = {
+  query(text: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+};
+export function importStorageMode(): "database" | "s3" | "local" {
+  if (process.env.IMPORT_STORAGE === "database") return "database";
+  return process.env.IMPORT_S3_BUCKET ? "s3" : "local";
+}
+function blobDb(db: ImportBlobDb | undefined) {
+  if (!db) throw new AppError("TEMPORARILY_UNAVAILABLE", 503);
+  return db;
+}
 function s3() {
-  if (!process.env.IMPORT_S3_BUCKET) return null;
+  if (importStorageMode() !== "s3") return null;
   return new S3Client({
     region: process.env.AWS_REGION ?? "us-east-1",
     endpoint: process.env.IMPORT_S3_ENDPOINT,
     forcePathStyle: !!process.env.IMPORT_S3_ENDPOINT,
   });
 }
-export async function putSource(org: string, id: string, source: Buffer) {
+export async function putSource(org: string, id: string, source: Buffer, db?: ImportBlobDb) {
   const name = objectKey(org, id),
     nonce = randomBytes(12),
     cipher = createCipheriv("aes-256-gcm", key(), nonce);
@@ -48,6 +63,10 @@ export async function putSource(org: string, id: string, source: Buffer) {
     cipher.final(),
     cipher.getAuthTag(),
   ]);
+  if (importStorageMode() === "database") {
+    await blobDb(db).query("SELECT core.put_import_blob($1,$2,$3)", [org, id, bytes]);
+    return;
+  }
   const client = s3();
   if (client)
     await client.send(
@@ -65,10 +84,14 @@ export async function putSource(org: string, id: string, source: Buffer) {
     await writeFile(path, bytes, { mode: 0o600 });
   }
 }
-export async function getSource(org: string, id: string) {
+export async function getSource(org: string, id: string, db?: ImportBlobDb) {
   const name = objectKey(org, id),
     client = s3();
-  const bytes = client
+  const bytes = importStorageMode() === "database"
+    ? Buffer.from(
+        (await blobDb(db).query("SELECT core.import_blob($1,$2) AS bytes", [org, id])).rows[0].bytes as Uint8Array,
+      )
+    : client
     ? Buffer.from(
         await (
           await client.send(

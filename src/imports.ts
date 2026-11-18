@@ -1,12 +1,18 @@
 import { randomUUID, createHash } from "node:crypto";
-import { sql } from "kysely";
+import { CompiledQuery, sql } from "kysely";
 import { z } from "zod";
 import { type Tx, requireAccess } from "./db";
 import { AppError, jsonInput, uuid, digest } from "./security";
 import { response } from "./http";
 import { preconditions, saveDirectory } from "./directory";
 import { mappingInput } from "./directory-input";
-import { putSource, getSource } from "./import-storage";
+import { putSource, getSource, type ImportBlobDb } from "./import-storage";
+
+// The staff transaction as the database storage adapter (D-192).
+const blobs = (tx: Tx): ImportBlobDb => ({
+  query: async (text, params) =>
+    tx.executeQuery(CompiledQuery.raw(text, params)) as Promise<{ rows: Record<string, unknown>[] }>,
+});
 import {
   parseSource,
   validateRows,
@@ -48,7 +54,7 @@ async function validate(
   record: ImportRecord,
   mapping: unknown,
 ) {
-  const bytes = await getSource(org, record.id);
+  const bytes = await getSource(org, record.id, blobs(tx));
   if (hash(bytes) !== record.source_digest)
     throw new AppError("VALIDATION_FAILED", 422);
   const source = await parseSource(bytes, record.format);
@@ -139,7 +145,7 @@ export async function importRoute(
         200,
       );
     }
-    await putSource(org, target, bytes);
+    await putSource(org, target, bytes, blobs(tx));
     await sql`select core.save_import(${org}::uuid,${target}::uuid,null,${JSON.stringify({ sourceDigest, format: body.format })}::jsonb)`.execute(
       tx,
     );
@@ -153,7 +159,7 @@ export async function importRoute(
     await sql`select core.directory_guard(${org}::uuid)`.execute(tx);
   const record = await getImport(tx, org, id);
   if (req.method === "GET" && !action) {
-    const source = await parseSource(await getSource(org, id), record.format);
+    const source = await parseSource(await getSource(org, id, blobs(tx)), record.format);
     return response({
       ...record,
       headers: source.headers,

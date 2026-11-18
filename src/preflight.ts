@@ -215,8 +215,9 @@ export function checkEnvironment(
   // 8. Private storage.
   for (const kind of spec.storage ?? []) {
     const [bucket, local] = manifest.storage[kind];
-    // D-191: reports may keep their ciphertext in the core database.
-    if (kind === "REPORT" && env.REPORT_STORAGE === "database") add(`storage:${kind}`, "PASS", "database (ops.report_blob)");
+    // D-191, D-192: reports and import uploads may keep their ciphertext in the core database.
+    if ((kind === "REPORT" || kind === "IMPORT") && env[`${kind}_STORAGE`] === "database")
+      add(`storage:${kind}`, "PASS", `database (ops.${kind.toLowerCase()}_blob)`);
     else if (present(bucket)) add(`storage:${kind}`, "PASS", "bucket");
     else if (present(local))
       add(`storage:${kind}`, options.production ? "FAIL" : "PASS", options.production ? `${local} is development-only; set ${bucket}` : "local directory (development)");

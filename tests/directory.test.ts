@@ -417,6 +417,37 @@ test("directory PostgreSQL isolation, history and import transactions", async (t
         );
       },
     );
+    await t.test("D-192: IMPORT_STORAGE=database keeps the upload encrypted in the database, nowhere else", async () => {
+      process.env.IMPORT_STORAGE = "database";
+      try {
+        const endpoint = `organizations/${ids.orgA}/imports`,
+          source = "ref,name\nDBSTORE-1,اسم في قاعدة البيانات";
+        const uploaded = await data(
+          call(staffToken, endpoint, "POST", { format: "CSV", base64: Buffer.from(source).toString("base64") }, undefined, randomUUID()),
+        );
+        const stored = await operator.query<{ n: number; plain: boolean }>(
+          "select octet_length(bytes)::int as n, position(convert_to('اسم في قاعدة البيانات','UTF8') in bytes)>0 as plain from ops.import_blob where organization_id=$1 and import_id=$2",
+          [ids.orgA, uploaded.id],
+        );
+        assert.equal(stored.rows.length, 1);
+        assert.equal(stored.rows[0].plain, false, "only ciphertext is stored");
+        await assert.rejects(readFile(resolve("work/imports", ids.orgA, uploaded.id + ".bin")));
+        // The preview reads it back through the route.
+        const shown = await data(call(staffToken, `${endpoint}/${uploaded.id}`));
+        assert.deepEqual(shown.headers, ["ref", "name"]);
+        const reviewed = await data(
+          call(staffToken, `${endpoint}/${uploaded.id}/validate`, "POST", { mapping: { ref: "privateReference", name: "displayName" } }, "1"),
+        );
+        assert.deepEqual(reviewed.validation.validRows, [2], "row 1 is the header");
+        // Staff holds no privilege on the table itself.
+        const priv = await operator.query<{ n: number }>(
+          "select count(*)::int as n from information_schema.table_privileges where grantee='orgfit_staff' and table_schema='ops' and table_name='import_blob'",
+        );
+        assert.equal(priv.rows[0].n, 0);
+      } finally {
+        delete process.env.IMPORT_STORAGE;
+      }
+    });
     await t.test(
       "encrypted source, dry run, scoped downloads, commit replay and concurrent commit",
       async () => {

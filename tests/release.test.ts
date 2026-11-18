@@ -113,6 +113,13 @@ test("R-1 the process manifest describes a complete, separated deployment and pr
     const findings = checkEnvironment(name, env, { production: true, manifest });
     assert.ok(findings.some((f) => f.check === "storage:REPORT" && f.outcome === "PASS" && f.detail.includes("database")), name);
   }
+  // D-192: participant import uploads may also be kept in the core database.
+  {
+    const env: Record<string, string | undefined> = { ...productionEnv("staff"), IMPORT_STORAGE: "database" };
+    delete env.IMPORT_S3_BUCKET;
+    const findings = checkEnvironment("staff", env, { production: true, manifest });
+    assert.ok(findings.some((f) => f.check === "storage:IMPORT" && f.outcome === "PASS" && f.detail.includes("database")));
+  }
   // The respondent without a trusted proxy header is warned, not silently accepted (SEC-M2).
   const respondent = productionEnv("respondent");
   delete respondent.RATE_LIMIT_CLIENT_IP_HEADER;

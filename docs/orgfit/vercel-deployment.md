@@ -41,6 +41,8 @@ The report renderer runs in its own project, **`orgfit-jobs-report`** (Root Dire
 - `REPORT_WAKE_URL=https://<the report project's domain>/api/wake`
 - `REPORT_WAKE_SECRET` (the same value as above)
 
+Participant imports (D-192): also add `IMPORT_STORAGE=database` to `orgfit-staff`; uploaded CSV/XLSX files are then kept encrypted in the core database for one day instead of a bucket.
+
 Then redeploy both. Requesting a report wakes the renderer at once; the daily cron (03:17 UTC) also renders anything still queued and removes expired files.
 
 ## Database URLs on Vercel
